@@ -15,6 +15,14 @@ export interface MailboxSettings {
 	autoReply?: { enabled: boolean; subject: string; message: string };
 	agentSystemPrompt?: string;
 	resendApiKey?: string;
+	aiProvider?: AiProviderSettings;
+}
+
+export interface AiProviderSettings {
+	provider?: "cloudflare" | "openai-compatible";
+	baseUrl?: string;
+	modelName?: string;
+	apiKey?: string;
 }
 
 export interface Mailbox {

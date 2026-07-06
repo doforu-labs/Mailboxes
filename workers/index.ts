@@ -688,11 +688,91 @@ async function executeToolCall(
 	}
 }
 
+// ── AI Provider Helpers ───────────────────────────────────────────
+
+interface AiProviderCfg {
+	provider: "cloudflare" | "openai-compatible";
+	baseUrl?: string;
+	modelName?: string;
+	apiKey?: string;
+}
+
+/** Load AI provider settings from R2 mailbox config */
+async function loadAiProvider(bucket: R2Bucket, mailboxId: string): Promise<AiProviderCfg | null> {
+	try {
+		const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
+		if (!obj) return null;
+		const settings: any = await obj.json();
+		const cfg = settings?.aiProvider as AiProviderCfg | undefined;
+		return cfg?.provider === "openai-compatible" && cfg?.baseUrl ? cfg : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Unified AI call — either Cloudflare Workers AI or OpenAI-compatible API */
+async function callAi(
+	ai: Ai,
+	bucket: R2Bucket,
+	mailboxId: string,
+	messages: any[],
+	model: string,
+	fallback: string,
+	withTools: boolean,
+): Promise<AiTextGenerationOutput | null> {
+	const providerCfg = await loadAiProvider(bucket, mailboxId);
+
+	if (providerCfg?.apiKey) {
+		// ── OpenAI-compatible provider (falls back to CF on failure) ──
+		const body: Record<string, any> = {
+			model: providerCfg.modelName || model,
+			messages,
+			stream: false,
+		};
+		if (withTools) {
+			body.tools = TOOL_DEFINITIONS;
+		}
+		try {
+			const res = await fetch(`${providerCfg.baseUrl!.replace(/\/+$/, "")}/chat/completions`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${providerCfg.apiKey}`,
+				},
+				body: JSON.stringify(body),
+			});
+			if (res.ok) {
+				return (await res.json()) as unknown as AiTextGenerationOutput;
+			}
+			const errText = await res.text().catch(() => "");
+			console.error(`[AI Provider] ${res.status} from ${providerCfg.baseUrl}: ${errText} — falling back to Cloudflare`);
+		} catch (e) {
+			console.error(`[AI Provider] fetch failed:`, e, "— falling back to Cloudflare");
+		}
+	}
+
+	// ── Cloudflare Workers AI (fallback) ──
+	try {
+		const params: any = { messages };
+		if (withTools) params.tools = TOOL_DEFINITIONS;
+		return (await ai.run(model, params)) as unknown as AiTextGenerationOutput;
+	} catch {
+		try {
+			const params: any = { messages };
+			if (withTools) params.tools = TOOL_DEFINITIONS;
+			return (await ai.run(fallback, params)) as unknown as AiTextGenerationOutput;
+		} catch {
+			return null;
+		}
+	}
+}
+
 app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 	const { message, emailContext } = await c.req.json<{ message: string; emailContext?: { emailId?: string; threadId?: string } }>();
 	const mailboxId = c.var.mailboxId;
 	const d1 = c.var.db;
 	const ai = c.env.AI;
+	const bucket = c.env.BUCKET;
 
 	if (!message || typeof message !== "string") {
 		return c.json({ error: "message is required" }, 400);
@@ -742,25 +822,8 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 					}
 				}
 
-				async function runAI(messages: any[], model: string, withTools = true) {
-					const params: any = { messages };
-					if (withTools) {
-						params.tools = TOOL_DEFINITIONS;
-					}
-					const result = await ai.run(model, params);
-					return result as unknown as AiTextGenerationOutput;
-				}
-
-				async function tryRunAI(messages: any[], callTools: boolean) {
-					try {
-						return await runAI(messages, MODEL, callTools);
-					} catch {
-						return await runAI(messages, FALLBACK, callTools);
-					}
-				}
-
 				// Step 1: First AI call with tools enabled
-				let output = await tryRunAI(msgs, true).catch(() => null);
+				let output = await callAi(ai, bucket, mailboxId, msgs, MODEL, FALLBACK, true).catch(() => null);
 				if (!output) {
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
 					controller.close();
@@ -815,7 +878,7 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 						{ role: "user", content: "Based on the tool results above, please provide a helpful response to the user." },
 					];
 
-					const finalOutput = await tryRunAI(messagesWithResults, false).catch(() => null);
+					const finalOutput = await callAi(ai, bucket, mailboxId, messagesWithResults, MODEL, FALLBACK, false).catch(() => null);
 					if (finalOutput) {
 						const finalText = (finalOutput as any).choices?.[0]?.message?.content || (finalOutput as any).response || "";
 						if (finalText) {
@@ -853,19 +916,8 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 		const MODEL = "@cf/moonshotai/kimi-k2.6" as string;
 		const FALLBACK = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string;
 
-		async function tryRun(msg: any[], m: string, t: boolean) {
-			const p: any = { messages: msg };
-			if (t) p.tools = TOOL_DEFINITIONS;
-			return (await ai.run(m, p)) as unknown as AiTextGenerationOutput;
-		}
-
-		async function runFB(msg: any[], t: boolean) {
-			try { return await tryRun(msg, MODEL, t); }
-			catch { return await tryRun(msg, FALLBACK, t); }
-		}
-
 		// Step 1: first call with tools
-		const output = await runFB(msgs, true).catch(() => null);
+		const output = await callAi(ai, bucket, mailboxId, msgs, MODEL, FALLBACK, true).catch(() => null);
 		if (!output) return c.json({ error: "AI temporarily unavailable" }, 503);
 
 		const msg0 = output.choices?.[0]?.message;
@@ -901,7 +953,7 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 				...toolResultsSafe,
 				{ role: "user", content: "Based on the tool results above, please provide a helpful response to the user." },
 			];
-			const o2 = await runFB(msgs2, false).catch(() => null);
+			const o2 = await callAi(ai, bucket, mailboxId, msgs2, MODEL, FALLBACK, false).catch(() => null);
 			if (o2) {
 				fullReply = (o2 as any).choices?.[0]?.message?.content || (o2 as any).response || "";
 			}
