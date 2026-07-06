@@ -49,6 +49,11 @@ app.use("*", async (c, next) => {
 		return next();
 	}
 
+	// Skip JWT for Resend inbound webhook — called by Resend servers, not browsers
+	if (c.req.path.startsWith("/api/v1/inbound/")) {
+		return next();
+	}
+
 	const { POLICY_AUD, TEAM_DOMAIN } = c.env;
 
 	// Fail closed in production if Access is not configured.

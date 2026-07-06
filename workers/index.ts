@@ -20,6 +20,7 @@ import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
+import { handleResendInbound } from "./inbound";
 
 type AppContext = Context<MailboxContext>;
 
@@ -270,6 +271,14 @@ app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c: AppCon
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/reply", handleReplyEmail);
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/forward", handleForwardEmail);
+
+// -- Inbound Webhooks ---------------------------------------------
+
+app.post("/api/v1/inbound/resend", async (c) => {
+	const payload = await c.req.json();
+	await handleResendInbound(payload, c.env, c.executionCtx);
+	return c.json({ ok: true });
+});
 
 // -- Folders --------------------------------------------------------
 

@@ -98,6 +98,7 @@
 		"patch-package": "^8.0.1",
 		"postinstall-postinstall": "^2.1.0",
 		"tailwindcss": "^4.1.4",
+		"tsx": "^4.23.0",
 		"typescript": "^5.8.3",
 		"vite": "^6.3.3",
 		"vite-tsconfig-paths": "^5.1.4",
