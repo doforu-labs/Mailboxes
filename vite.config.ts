@@ -26,5 +26,19 @@ export default defineConfig({
       "react/jsx-dev-runtime": path.resolve(__dirname, "shim/jsx-dev-runtime.js"),
     },
   },
+  // Force React-dependent packages to share the same ESM React instance.
+  // Without this, esbuild bundles CJS React (react/cjs/react.production.js) into
+  // a separate chunk with exports.useContext, creating a conflicting second React.
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "react-router",
+      "@cloudflare/kumo",
+      "@phosphor-icons/react",
+      "@tanstack/react-query",
+    ],
+  },
 
 });
