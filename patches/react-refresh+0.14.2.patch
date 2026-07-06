@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-refresh/cjs/react-refresh-runtime.development.js b/node_modules/react-refresh/cjs/react-refresh-runtime.development.js
+index 73748ad..339d2b4 100644
+--- a/node_modules/react-refresh/cjs/react-refresh-runtime.development.js
++++ b/node_modules/react-refresh/cjs/react-refresh-runtime.development.js
+@@ -10,7 +10,7 @@
+ 
+ 'use strict';
+ 
+-if (process.env.NODE_ENV !== "production") {
++if (true) {
+   (function() {
+ 'use strict';
+ 

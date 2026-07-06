@@ -25,7 +25,10 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
 3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Enable Email Service** -- The worker needs the `send_email` binding to send outbound emails. See [Email Service docs](https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/)
+4. **Set Resend API Key** -- This fork uses **Resend** for outbound emails instead of Cloudflare's `send_email` binding, so it works on the Workers Free plan. 
+   - Sign up at https://resend.com (free tier: 100 emails/day) and add your domain
+   - Get your API key from the Resend dashboard
+   - Set it via `wrangler secret put RESEND_API_KEY`, or enter it per-mailbox in Settings > Account after deploying
 5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
 
 ### Troubleshooting Access

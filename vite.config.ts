@@ -7,6 +7,10 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [
@@ -15,4 +19,11 @@ export default defineConfig({
     reactRouter(),
     tsconfigPaths(),
   ],
+  resolve: {
+    alias: {
+      // Workers SSR runner can't load react/jsx-dev-runtime (CJS dev build).
+      // jsxDEV in React 19 has the same signature as jsx, so re-export from jsx-runtime.
+      "react/jsx-dev-runtime": path.resolve(__dirname, "shim/jsx-dev-runtime.js"),
+    },
+  },
 });

@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import type { Context } from "hono";
-import { sendEmail } from "../email-sender";
+import { sendEmailFromMailbox } from "../email-sender";
 import { storeAttachments } from "../lib/attachments";
 import type { EmailFull } from "../lib/schemas";
 import {
@@ -88,7 +88,7 @@ export async function handleReplyEmail(c: AppContext) {
 	await stub.markThreadRead(thread_id);
 
 	c.executionCtx.waitUntil(
-		sendEmail(c.env.EMAIL, {
+		sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
 			to,
 			cc,
 			bcc,
@@ -174,7 +174,7 @@ export async function handleForwardEmail(c: AppContext) {
 	);
 
 	c.executionCtx.waitUntil(
-		sendEmail(c.env.EMAIL, {
+		sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
 			to,
 			cc,
 			bcc,

@@ -16,12 +16,7 @@
 		"DOMAINS": "example.com",
 		"EMAIL_ADDRESSES": []
 	},
-	"send_email": [
-		{
-			"name": "EMAIL",
-			"remote": true
-		}
-	],
+	// send_email binding removed — uses Resend API instead, which works on Workers Free plan.
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",

@@ -1,0 +1,13 @@
+diff --git a/node_modules/@react-router/dev/dist/vite.js b/node_modules/@react-router/dev/dist/vite.js
+index 67adb22..a97e173 100644
+--- a/node_modules/@react-router/dev/dist/vite.js
++++ b/node_modules/@react-router/dev/dist/vite.js
+@@ -4408,7 +4408,7 @@ var reactRouterVitePlugin = () => {
+       async load(id) {
+         if (id !== virtualInjectHmrRuntime.resolvedId) return;
+         return [
+-          `import RefreshRuntime from "${virtualHmrRuntime.id}"`,
++          `const RefreshRuntime = { injectIntoGlobalHook: () => {}, createOverlay: () => ({ show: () => {}, hide: () => {} }), performReactRefresh: () => Promise.resolve() }`,
+           "RefreshRuntime.injectIntoGlobalHook(window)",
+           "window.$RefreshReg$ = () => {}",
+           "window.$RefreshSig$ = () => (type) => type",

@@ -3,11 +3,15 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 /**
- * Email sending via Cloudflare Email Service binding.
+ * Email sending via Resend API.
  *
- * Uses the `send_email` Worker binding (`env.EMAIL.send()`) to send emails.
+ * Uses the Resend REST API (https://api.resend.com/emails) to send emails.
+ * Works on Workers Free plan — no need for Workers Paid's send_email binding.
  *
- * See: https://developers.cloudflare.com/email-service/api/send-emails/workers-api/
+ * The API key can be set per-mailbox in the Settings UI (stored in R2),
+ * or globally via the RESEND_API_KEY wrangler secret as a fallback.
+ *
+ * See: https://resend.com/docs/api-reference/emails/send-email
  */
 
 export interface SendEmailParams {
@@ -29,44 +33,107 @@ export interface SendEmailParams {
 	headers?: Record<string, string>;
 }
 
+const RESEND_API_URL = "https://api.resend.com/emails";
+
 /**
- * Send an email using the Cloudflare Email Service binding.
+ * Format a `from` / `replyTo` field value into the "Name <email>" string
+ * that the Resend API expects.
+ */
+function formatAddress(field: string | { email: string; name?: string }): string {
+	if (typeof field === "string") return field;
+	return field.name ? `${field.name} <${field.email}>` : field.email;
+}
+
+/**
+ * Send an email using the Resend API.
  *
- * @param binding  - The `EMAIL` SendEmail binding from env
- * @param params   - Email parameters (to, from, subject, body, etc.)
+ * @param apiKey - Resend API key
+ * @param params - Email parameters (to, from, subject, body, etc.)
  * @returns The send result with messageId
- * @throws On validation or delivery errors (error has `.code` property)
+ * @throws On API errors (HTTP non-2xx)
  */
 export async function sendEmail(
-	binding: SendEmail,
+	apiKey: string,
 	params: SendEmailParams,
 ): Promise<{ messageId: string }> {
-	const message: Record<string, unknown> = {
-		to: params.to,
-		from: params.from,
+	const body: Record<string, unknown> = {
+		from: formatAddress(params.from),
+		to: Array.isArray(params.to) ? params.to : [params.to],
 		subject: params.subject,
 	};
 
-	if (params.html) message.html = params.html;
-	if (params.text) message.text = params.text;
-	if (params.cc) message.cc = params.cc;
-	if (params.bcc) message.bcc = params.bcc;
-	if (params.replyTo) message.replyTo = params.replyTo;
-
+	if (params.html) body.html = params.html;
+	if (params.text) body.text = params.text;
+	if (params.cc) body.cc = Array.isArray(params.cc) ? params.cc : [params.cc];
+	if (params.bcc) body.bcc = Array.isArray(params.bcc) ? params.bcc : [params.bcc];
+	if (params.replyTo) body.reply_to = formatAddress(params.replyTo);
 	if (params.headers && Object.keys(params.headers).length > 0) {
-		message.headers = params.headers;
+		body.headers = params.headers;
 	}
 
 	if (params.attachments && params.attachments.length > 0) {
-		message.attachments = params.attachments.map((att) => ({
-			content: att.content,
+		body.attachments = params.attachments.map((att) => ({
 			filename: att.filename,
-			type: att.type,
+			content: att.content,
+			content_type: att.type,
 			disposition: att.disposition,
-			...(att.contentId ? { contentId: att.contentId } : {}),
+			...(att.contentId ? { content_id: att.contentId } : {}),
 		}));
 	}
 
-	const result = await binding.send(message as any);
-	return { messageId: result.messageId };
+	const response = await fetch(RESEND_API_URL, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(body),
+	});
+
+	if (!response.ok) {
+		const err = (await response.json().catch(() => null)) as {
+			message?: string;
+		} | null;
+		throw new Error(err?.message || `Resend API error: ${response.status}`);
+	}
+
+	const data = (await response.json()) as { id: string };
+	return { messageId: data.id };
+}
+
+/**
+ * Read the Resend API key from mailbox settings (stored in R2),
+ * then send the email via Resend.
+ *
+ * Falls back to `env.RESEND_API_KEY` if the mailbox settings don't have one.
+ *
+ * @param bucket      - R2 bucket (c.env.BUCKET)
+ * @param mailboxId   - Mailbox email address (used as the R2 key)
+ * @param params      - Email parameters
+ * @param fallbackKey - Optional fallback API key from env.RESEND_API_KEY
+ * @returns The send result with messageId
+ */
+export async function sendEmailFromMailbox(
+	bucket: R2Bucket,
+	mailboxId: string,
+	params: SendEmailParams,
+	fallbackKey?: string,
+): Promise<{ messageId: string }> {
+	// Try R2 settings first (UI-configured key)
+	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
+	if (obj) {
+		const settings = (await obj.json()) as { resendApiKey?: string };
+		if (settings.resendApiKey) {
+			return sendEmail(settings.resendApiKey, params);
+		}
+	}
+
+	// Fallback to env secret
+	if (fallbackKey) {
+		return sendEmail(fallbackKey, params);
+	}
+
+	throw new Error(
+		"Resend API key not configured. Set it in Settings > Account, or add RESEND_API_KEY via `wrangler secret put RESEND_API_KEY`.",
+	);
 }

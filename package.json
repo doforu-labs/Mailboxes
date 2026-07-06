@@ -5,7 +5,12 @@
 	"type": "module",
 	"cloudflare": {
 		"label": "Agentic Inbox",
-		"products": ["Workers", "Durable Objects", "R2", "Workers AI"],
+		"products": [
+			"Workers",
+			"Durable Objects",
+			"R2",
+			"Workers AI"
+		],
 		"bindings": {
 			"DOMAINS": {
 				"description": "Your domain with [Email Routing](https://developers.cloudflare.com/email-routing/) enabled (e.g. `example.com`). After deploying, create a catch-all Email Routing rule pointing to this Worker."
@@ -16,6 +21,7 @@
 		"build": "react-router build",
 		"cf-typegen": "wrangler types",
 		"deploy": "npm run build && wrangler deploy",
+		"postinstall": "patch-package",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
 		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
@@ -83,12 +89,14 @@
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.0.12",
 		"@cloudflare/workers-types": "^4.20251128.0",
-		"@react-router/dev": "^7.5.3",
+		"@react-router/dev": "^7.13.1",
 		"@tailwindcss/vite": "^4.1.4",
 		"@types/dompurify": "^3.0.5",
 		"@types/node": "^20.19.37",
 		"@types/react": "^19.1.2",
 		"@types/react-dom": "^19.1.2",
+		"patch-package": "^8.0.1",
+		"postinstall-postinstall": "^2.1.0",
 		"tailwindcss": "^4.1.4",
 		"typescript": "^5.8.3",
 		"vite": "^6.3.3",

@@ -79,6 +79,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	return (
 		<html lang="en">
 			<head>
+				<script dangerouslySetInnerHTML={{
+					__html: [
+						"window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {};",
+						"window.$RefreshReg$ = () => {};",
+						"window.$RefreshSig$ = () => (type) => type;",
+						"window.__vite_plugin_react_preamble_installed__ = true;",
+						"window.RefreshRuntime = {",
+						"  injectIntoGlobalHook: () => {},",
+						"  createOverlay: () => ({ show() {}, hide() {} }),",
+						"  performReactRefresh: () => Promise.resolve(),",
+						"};",
+						"console.log('[Polyfill] $RefreshSig$ set to:', typeof window.$RefreshSig$);",
+					].join("\n"),
+				}} />
 				<meta charSet="UTF-8" />
 				<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 				<link

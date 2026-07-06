@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Badge, Button, Input, Loader, useKumoToastManager } from "@cloudflare/kumo";
-import { RobotIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
+import { RobotIcon, ArrowCounterClockwiseIcon, EyeIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
@@ -19,12 +19,15 @@ export default function SettingsRoute() {
 	const updateMailboxMutation = useUpdateMailbox();
 
 	const [displayName, setDisplayName] = useState("");
+	const [resendApiKey, setResendApiKey] = useState("");
+	const [showResendKey, setShowResendKey] = useState(false);
 	const [agentPrompt, setAgentPrompt] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
 		if (mailbox) {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
+			setResendApiKey(mailbox.settings?.resendApiKey || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
 		}
 	}, [mailbox]);
@@ -35,6 +38,7 @@ export default function SettingsRoute() {
 		const settings = {
 			...mailbox.settings,
 			fromName: displayName,
+			resendApiKey: resendApiKey.trim() || undefined,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
 		};
 		try {
@@ -81,6 +85,28 @@ export default function SettingsRoute() {
 							onChange={(e) => setDisplayName(e.target.value)}
 						/>
 						<Input label="Email" type="email" value={mailbox.email} disabled />
+						<div className="relative">
+							<Input
+								label="Resend API Key"
+								type={showResendKey ? "text" : "password"}
+								placeholder="re_..."
+								value={resendApiKey}
+								onChange={(e) => setResendApiKey(e.target.value)}
+							/>
+							<button
+								type="button"
+								onClick={() => setShowResendKey(!showResendKey)}
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
+								title={showResendKey ? "Hide key" : "Show key"}
+							>
+								<EyeIcon size={16} weight={showResendKey ? "fill" : "regular"} />
+							</button>
+						</div>
+						{resendApiKey.trim() && (
+							<Badge variant={resendApiKey.startsWith("re_") ? "success" : "warning"}>
+								{resendApiKey.startsWith("re_") ? "Key set" : "Invalid format (should start with re_)"}
+							</Badge>
+						)}
 					</div>
 				</div>
 
