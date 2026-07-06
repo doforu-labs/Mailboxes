@@ -624,6 +624,16 @@ const TOOL_DEFINITIONS = [
 
 // ── Tool Execution Dispatch ────────────────────────────────────────
 
+/** Ensure default folders exist for a mailbox (safe to call repeatedly) */
+async function ensureFoldersExist(database: D1Database, mailboxId: string): Promise<void> {
+	const existing = await database
+		.prepare("SELECT COUNT(*) as cnt FROM folders WHERE mailbox_id = ?")
+		.bind(mailboxId)
+		.first<{ cnt: number }>();
+	if (existing && existing.cnt > 0) return;
+	await db.initMailboxFolders(database, mailboxId);
+}
+
 async function executeToolCall(
 	toolCall: AiToolCall,
 	db: D1Database,
@@ -633,6 +643,12 @@ async function executeToolCall(
 ): Promise<any> {
 	const { name, arguments: argsStr } = toolCall.function;
 	const args = JSON.parse(argsStr);
+
+	// Auto-seed folders for mailbox-dependent tools
+	const mailboxTools = new Set(["search_emails", "list_emails", "get_email", "get_thread", "draft_reply", "draft_email", "update_draft", "mark_email_read", "move_email", "delete_email", "discard_draft", "send_reply", "send_email"]);
+	if (mailboxTools.has(name)) {
+		await ensureFoldersExist(db, mailboxId);
+	}
 
 	try {
 		switch (name) {
