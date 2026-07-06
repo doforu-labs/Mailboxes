@@ -16,4 +16,5 @@ snapshot-*.txt
 opencode.jsonc
 skills-lock.json
 .DS_Store
+bun.lock
 worker-configuration.d.ts

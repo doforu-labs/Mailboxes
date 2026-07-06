@@ -16,16 +16,6 @@ import * as dbService from "../db";
 
 // ── D1 Database ────────────────────────────────────────────────────
 
-/**
- * Get the D1 database binding from the environment.
- * Replaces the DO-stub-based getMailboxStub pattern.
- */
-export function getDb(
-	env: Env,
-): D1Database {
-	return env.DB as unknown as D1Database;
-}
-
 // ── Mailbox Listing ────────────────────────────────────────────────
 
 /**
