@@ -22,7 +22,7 @@ interface ChatMessage {
 
 export default function AiPanel() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
-	const { isAiPanelOpen, toggleAiPanel } = useUIStore();
+	const { isAiPanelOpen, toggleAiPanel, selectedEmailId } = useUIStore();
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [input, setInput] = useState("");
 	const [loading, setLoading] = useState(false);
@@ -70,7 +70,7 @@ export default function AiPanel() {
 			const res = await fetch(`/api/v1/mailboxes/${mailboxId}/ai/chat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
-				body: JSON.stringify({ message: msg }),
+				body: JSON.stringify({ message: msg, ...(selectedEmailId ? { emailContext: { emailId: selectedEmailId } } : {}) }),
 			});
 
 			if (!res.ok) throw new Error("API error");
@@ -99,6 +99,16 @@ export default function AiPanel() {
 								prev.map((m) =>
 									m.id === streamId
 										? { ...m, content: m.content + data.token }
+										: m,
+								),
+							);
+						}
+						if (data.type === "tool_call") {
+							// AI is calling a tool, show non-intrusive indicator
+							setMessages((prev) =>
+								prev.map((m) =>
+									m.id === streamId
+										? { ...m, content: m.content + "🔍 " }
 										: m,
 								),
 							);
@@ -186,9 +196,9 @@ export default function AiPanel() {
 				) : messages.length === 0 ? (
 					<div className="flex flex-col items-center justify-center h-full text-kumo-subtle text-sm gap-2">
 						<SparkleIcon size={32} className="opacity-50" />
-						<p>Ask me anything about your emails</p>
+						<p>Search your inbox, draft replies, manage folders</p>
 						<p className="text-xs opacity-70">
-							e.g. "Find the quote email from Alex"
+							e.g. "Find the latest invoice from Stripe"
 						</p>
 					</div>
 				) : (
@@ -233,7 +243,7 @@ export default function AiPanel() {
 						onKeyDown={(e) =>
 							e.key === "Enter" && !loading && sendMessage()
 						}
-						placeholder="Ask about your emails..."
+						placeholder="Search, draft, manage your inbox..."
 						disabled={loading}
 						className="flex-1 px-3 py-2 text-sm rounded-lg border border-kumo-line bg-kumo-control focus:outline-none focus:ring-2 focus:ring-kumo-brand disabled:opacity-50"
 					/>

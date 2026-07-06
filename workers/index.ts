@@ -23,13 +23,53 @@ import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
 import { handleResendInbound } from "./inbound";
 import * as db from "./db";
 import type { SearchFilterOptions, EmailFull } from "./db";
+import {
+	toolListMailboxes,
+	toolListEmails,
+	toolGetEmail,
+	toolGetThread,
+	toolSearchEmails,
+	toolDraftReply,
+	toolDraftEmail,
+	toolUpdateDraft,
+	toolMarkEmailRead,
+	toolMoveEmail,
+	toolDiscardDraft,
+	toolDeleteEmail,
+	toolSendReply,
+	toolSendEmail,
+} from "./lib/tools";
 
 type AppContext = Context<D1MailboxContext>;
 
 // Local type for AI text generation output (available in CF Workers runtime)
+export interface AiToolCall {
+	id: string;
+	type: "function";
+	function: {
+		name: string;
+		arguments: string;
+	};
+}
+
 export interface AiTextGenerationOutput {
 	response?: string;
-	choices?: { message?: { content?: string } }[];
+	choices?: {
+		message?: {
+			content?: string | null;
+			tool_calls?: AiToolCall[];
+		};
+	}[];
+	tool_calls?: Array<{
+		name: string;
+		arguments: Record<string, unknown>;
+	}>;
+}
+
+export interface AiChatMessage {
+	role: string;
+	content: string | null;
+	tool_calls?: AiToolCall[];
 }
 
 // -- Request body schemas (kept for validation) ---------------------
@@ -368,13 +408,21 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 // -- AI Chat (SSE streaming) -----------------------------------------
 
 function buildAiMessages(history: any[], emailContext?: any, email?: any, thread?: any[]): { role: string; content: string }[] {
-	const systemPrompt = `You are an email assistant. You help users manage their inbox.
-You can:
-- Search and summarize emails
-- Draft replies
-- Organize folders
+	const systemPrompt = `You are an email assistant integrated with the user's mailbox.
 
-Keep responses concise and helpful. When referring to emails, be specific about content.`;
+## Capabilities
+You can search emails, read messages, manage folders, draft and send replies using the tools available to you. When the user asks about their emails, use the appropriate search_emails or list_emails tool to look up real data.
+
+## Tool Use Guidelines
+- Use search_emails when the user asks about specific content or keywords
+- Use list_emails to browse folders
+- Use get_email to read a specific email in full
+- Use draft_reply to compose a reply (saves to Drafts for user review)
+- Use send_reply / send_email only when the user explicitly says to send
+- If you don't know something, use tools to look it up before guessing
+- Always provide a helpful text response along with any tool actions
+
+Keep responses concise and helpful.`;
 
 	const msgs: { role: string; content: string }[] = [
 		{ role: "system", content: systemPrompt },
@@ -398,6 +446,227 @@ Keep responses concise and helpful. When referring to emails, be specific about 
 	}
 
 	return msgs;
+}
+
+// ── Tool Definitions (OpenAI-compatible format) ──────────────────────
+
+const TOOL_DEFINITIONS = [
+	{
+		name: "list_mailboxes",
+		description: "List all available mailboxes/email accounts",
+		parameters: { type: "object", properties: {}, required: [] },
+	},
+	{
+		name: "list_emails",
+		description: "List emails in a folder. Use this to browse the user's inbox, sent, drafts, archive, or trash.",
+		parameters: {
+			type: "object",
+			properties: {
+				folder: { type: "string", description: "Folder to list: inbox, sent, draft, archive, trash" },
+				limit: { type: "number", description: "Max emails to return (default 20)" },
+				page: { type: "number", description: "Page number (default 1)" },
+			},
+			required: ["folder"],
+		},
+	},
+	{
+		name: "search_emails",
+		description: "Search emails across all folders by keyword, sender, subject, etc.",
+		parameters: {
+			type: "object",
+			properties: {
+				query: { type: "string", description: "Search query keywords" },
+				folder: { type: "string", description: "Optional folder to narrow search" },
+			},
+			required: ["query"],
+		},
+	},
+	{
+		name: "get_email",
+		description: "Get the full details and body of a single email by its ID",
+		parameters: {
+			type: "object",
+			properties: {
+				emailId: { type: "string", description: "The email ID" },
+			},
+			required: ["emailId"],
+		},
+	},
+	{
+		name: "get_thread",
+		description: "Get all emails in a conversation thread by thread ID",
+		parameters: {
+			type: "object",
+			properties: {
+				threadId: { type: "string", description: "The thread ID" },
+			},
+			required: ["threadId"],
+		},
+	},
+	{
+		name: "draft_reply",
+		description: "Draft a reply to an email (saves to Drafts folder without sending). The user must review and confirm before sending.",
+		parameters: {
+			type: "object",
+			properties: {
+				originalEmailId: { type: "string", description: "ID of the email being replied to" },
+				to: { type: "string", description: "Recipient email address" },
+				subject: { type: "string", description: "Reply subject line" },
+				body: { type: "string", description: "Reply body text (plain text, will be converted to HTML)" },
+			},
+			required: ["originalEmailId", "to", "subject", "body"],
+		},
+	},
+	{
+		name: "draft_email",
+		description: "Draft a new email (saves to Drafts folder without sending). The user must review and confirm before sending.",
+		parameters: {
+			type: "object",
+			properties: {
+				to: { type: "string", description: "Recipient email address" },
+				subject: { type: "string", description: "Email subject" },
+				body: { type: "string", description: "Email body text (plain text, will be converted to HTML)" },
+			},
+			required: ["to", "subject", "body"],
+		},
+	},
+	{
+		name: "update_draft",
+		description: "Update an existing draft in the Drafts folder with new content",
+		parameters: {
+			type: "object",
+			properties: {
+				draftId: { type: "string", description: "ID of the draft to update" },
+				to: { type: "string", description: "Updated recipient email address" },
+				subject: { type: "string", description: "Updated subject" },
+				bodyHtml: { type: "string", description: "Updated body as HTML" },
+			},
+			required: ["draftId"],
+		},
+	},
+	{
+		name: "mark_email_read",
+		description: "Mark an email as read or unread",
+		parameters: {
+			type: "object",
+			properties: {
+				emailId: { type: "string", description: "The email ID" },
+				read: { type: "boolean", description: "true = mark as read, false = mark as unread" },
+			},
+			required: ["emailId", "read"],
+		},
+	},
+	{
+		name: "move_email",
+		description: "Move an email to a different folder (e.g., archive, trash)",
+		parameters: {
+			type: "object",
+			properties: {
+				emailId: { type: "string", description: "The email ID" },
+				folderId: { type: "string", description: "Target folder: inbox, sent, draft, archive, trash" },
+			},
+			required: ["emailId", "folderId"],
+		},
+	},
+	{
+		name: "delete_email",
+		description: "Permanently delete an email",
+		parameters: {
+			type: "object",
+			properties: {
+				emailId: { type: "string", description: "The email ID to delete" },
+			},
+			required: ["emailId"],
+		},
+	},
+	{
+		name: "discard_draft",
+		description: "Discard (delete) a draft from the Drafts folder",
+		parameters: {
+			type: "object",
+			properties: {
+				draftId: { type: "string", description: "The draft ID to discard" },
+			},
+			required: ["draftId"],
+		},
+	},
+	{
+		name: "send_reply",
+		description: "Send a reply to an email immediately. This will deliver the email to the recipient. Use this only when the user explicitly asks to send.",
+		parameters: {
+			type: "object",
+			properties: {
+				originalEmailId: { type: "string", description: "ID of the email being replied to" },
+				to: { type: "string", description: "Recipient email address" },
+				subject: { type: "string", description: "Reply subject line" },
+				bodyHtml: { type: "string", description: "Reply body as HTML" },
+			},
+			required: ["originalEmailId", "to", "subject", "bodyHtml"],
+		},
+	},
+	{
+		name: "send_email",
+		description: "Send a new email immediately. This will deliver the email to the recipient. Use only when the user explicitly asks to send.",
+		parameters: {
+			type: "object",
+			properties: {
+				to: { type: "string", description: "Recipient email address" },
+				subject: { type: "string", description: "Email subject" },
+				bodyHtml: { type: "string", description: "Email body as HTML" },
+			},
+			required: ["to", "subject", "bodyHtml"],
+		},
+	},
+] as const;
+
+// ── Tool Execution Dispatch ────────────────────────────────────────
+
+async function executeToolCall(
+	toolCall: AiToolCall,
+	db: D1Database,
+	mailboxId: string,
+	ai: Ai,
+	bucket: R2Bucket,
+): Promise<any> {
+	const { name, arguments: argsStr } = toolCall.function;
+	const args = JSON.parse(argsStr);
+
+	try {
+		switch (name) {
+			case "search_emails":
+				return await toolSearchEmails(db, mailboxId, args);
+			case "list_emails":
+				return await toolListEmails(db, mailboxId, args);
+			case "get_email":
+				return await toolGetEmail(db, mailboxId, args.emailId);
+			case "get_thread":
+				return await toolGetThread(db, mailboxId, args.threadId);
+			case "draft_reply":
+				return await toolDraftReply(db, mailboxId, ai, args);
+			case "draft_email":
+				return await toolDraftEmail(db, mailboxId, ai, args);
+			case "update_draft":
+				return await toolUpdateDraft(db, mailboxId, ai, args);
+			case "mark_email_read":
+				return await toolMarkEmailRead(db, mailboxId, args.emailId, args.read);
+			case "move_email":
+				return await toolMoveEmail(db, mailboxId, args.emailId, args.folderId);
+			case "delete_email":
+				return await toolDeleteEmail(db, mailboxId, args.emailId);
+			case "discard_draft":
+				return await toolDiscardDraft(db, mailboxId, args.draftId);
+			case "send_reply":
+				return await toolSendReply(db, mailboxId, ai, bucket, args);
+			case "send_email":
+				return await toolSendEmail(db, mailboxId, ai, bucket, args);
+			case "list_mailboxes":
+				return await toolListMailboxes({ BUCKET: bucket, DB: db, RESEND_API_KEY: "", DOMAINS: "", EMAIL_ADDRESSES: [] } as any);
+			default:
+				return { error: `Unknown tool: ${name}` };
+		}
+	} catch (e: any) {
+		return { error: `Tool ${name} failed: ${e.message}` };
+	}
 }
 
 app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
@@ -436,45 +705,114 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 	const isStream = accept.includes("text/event-stream") || c.req.query("stream") === "true";
 
 	if (isStream) {
-		// SSE via simulated streaming (chunking non-streaming response)
+		// SSE via multi-round tool calling loop
 		const encoder = new TextEncoder();
 		const sseStream = new ReadableStream({
 			async start(controller) {
+				let currentMessages: AiChatMessage[] = [...msgs];
 				let fullReply = "";
+				const MODEL = "@cf/moonshotai/kimi-k2.5" as string;
+				const FALLBACK = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string;
+				const MAX_ROUNDS = 3;
 
-				try {
-					const result = await ai.run("@cf/moonshotai/kimi-k2.5" as string, { messages: msgs });
-					const output = result as unknown as AiTextGenerationOutput;
-					fullReply = output.response || output.choices?.[0]?.message?.content || "";
-				} catch {
+				async function tryRun(messages: any[], model: string) {
+					const result = await ai.run(model, { messages, tools: TOOL_DEFINITIONS as any, tool_choice: "auto" });
+					return result as unknown as AiTextGenerationOutput;
+				}
+
+				for (let round = 0; round < MAX_ROUNDS; round++) {
+					let output: AiTextGenerationOutput;
 					try {
-						const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string, { messages: msgs });
-						fullReply = (result as unknown as AiTextGenerationOutput).response || "";
+						output = await tryRun(currentMessages, MODEL);
 					} catch {
-						controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
-						controller.close();
-						return;
+						try {
+							output = await tryRun(currentMessages, FALLBACK);
+						} catch {
+							controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
+							controller.close();
+							return;
+						}
 					}
+
+					// Extract content and tool_calls (supports both Kimi/OpenAI and Llama formats)
+					const msg = output.choices?.[0]?.message;
+					let content = msg?.content || output.response || "";
+					let toolCalls: AiToolCall[] = msg?.tool_calls || [];
+
+					// Handle Llama native format: output.tool_calls
+					if (toolCalls.length === 0 && (output as any).tool_calls?.length) {
+						toolCalls = (output as any).tool_calls.map((tc: any) => ({
+							id: tc.name || `call_${round}_${Math.random().toString(36).slice(2)}`,
+							type: "function" as const,
+							function: {
+								name: tc.name,
+								arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
+							},
+						}));
+					}
+
+					// Accumulate text content
+					if (content) {
+						fullReply = content;
+						// Stream the text content in chunks
+						const words = content.split(/(?<=\s)/);
+						const chunkSize = Math.max(1, Math.floor(words.length / 20));
+						for (let i = 0; i < words.length; i += chunkSize) {
+							const chunk = words.slice(i, i + chunkSize).join("");
+							controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: chunk })}\n\n`));
+							await new Promise(r => setTimeout(r, 15));
+						}
+					}
+
+					if (toolCalls.length === 0) {
+						// No more tool calls - final response
+						break;
+					}
+
+					// Notify frontend about tool calls
+					const toolNames = toolCalls.map((tc) => tc.function.name).join(", ");
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: `[Using tool: ${toolNames}]`, type: "tool_call" })}\n\n`));
+
+					// Execute all tool calls in parallel
+					const toolResults = await Promise.allSettled(
+						toolCalls.map((tc) =>
+							executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET).then((result) => ({
+								role: "tool" as const,
+								tool_call_id: tc.id,
+								name: tc.function.name,
+								content: JSON.stringify(result),
+							})),
+						),
+					);
+
+					// Handle any failures gracefully
+					const toolResultsSafe = toolResults.map((r) => {
+						if (r.status === "rejected") {
+							return {
+								role: "tool" as const,
+								tool_call_id: "error",
+								name: "error",
+								content: JSON.stringify({ error: r.reason?.message || "Tool execution failed" }),
+							};
+						}
+						return r.value;
+					});
+
+					// Add assistant message with tool_calls + results to context
+					currentMessages.push({
+						role: "assistant",
+						content,
+						tool_calls: toolCalls,
+					} as AiChatMessage);
+					currentMessages.push(...toolResultsSafe);
 				}
 
 				if (!fullReply) {
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Empty response" })}\n\n`));
-					controller.close();
-					return;
+					fullReply = "I looked into your inbox but couldn't find relevant results. Try asking a more specific question about your emails.";
 				}
 
 				// Save to D1
 				const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply);
-
-				// Stream chunks word-by-word for typewriter effect
-				const words = fullReply.split(/(?<=\s)/);
-				const chunkSize = Math.max(1, Math.floor(words.length / 20));
-				for (let i = 0; i < words.length; i += chunkSize) {
-					const chunk = words.slice(i, i + chunkSize).join("");
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: chunk })}\n\n`));
-					// Small delay between chunks for typewriter feel
-					await new Promise(r => setTimeout(r, 15));
-				}
 
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, id: saved.id })}\n\n`));
 				controller.close();
@@ -489,22 +827,86 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 			},
 		});
 	} else {
-		// Non-streaming JSON (backward compat)
-		let reply = "";
-		try {
-			const result = await ai.run("@cf/moonshotai/kimi-k2.5" as string, { messages: msgs });
-			const output = result as unknown as AiTextGenerationOutput;
-			reply = output.response || output.choices?.[0]?.message?.content || "";
-		} catch {
-			try {
-				const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string, { messages: msgs });
-				reply = (result as unknown as AiTextGenerationOutput).response || "";
-			} catch {
-				return c.json({ error: "AI temporarily unavailable" }, 503);
-			}
+		// Non-streaming JSON with tool calling
+		let currentMessages: AiChatMessage[] = [...msgs];
+		let fullReply = "";
+		const MODEL = "@cf/moonshotai/kimi-k2.5" as string;
+		const FALLBACK = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string;
+		const MAX_ROUNDS = 3;
+
+		async function tryRun(messages: any[], model: string) {
+			const result = await ai.run(model, { messages, tools: TOOL_DEFINITIONS as any, tool_choice: "auto" });
+			return result as unknown as AiTextGenerationOutput;
 		}
-		const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', reply);
-		return c.json({ reply, id: saved.id });
+
+		for (let round = 0; round < MAX_ROUNDS; round++) {
+			let output: AiTextGenerationOutput;
+			try {
+				output = await tryRun(currentMessages, MODEL);
+			} catch {
+				try {
+					output = await tryRun(currentMessages, FALLBACK);
+				} catch {
+					return c.json({ error: "AI temporarily unavailable" }, 503);
+				}
+			}
+
+			const msg = output.choices?.[0]?.message;
+			let content = msg?.content || output.response || "";
+			let toolCalls: AiToolCall[] = msg?.tool_calls || [];
+
+			if (toolCalls.length === 0 && (output as any).tool_calls?.length) {
+				toolCalls = (output as any).tool_calls.map((tc: any) => ({
+					id: tc.name || `call_${round}_${Math.random().toString(36).slice(2)}`,
+					type: "function" as const,
+					function: {
+						name: tc.name,
+						arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
+					},
+				}));
+			}
+
+			if (content) {
+				fullReply = content;
+			}
+
+			if (toolCalls.length === 0) {
+				break;
+			}
+
+			const toolResults = await Promise.allSettled(
+				toolCalls.map((tc) =>
+					executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET).then((result) => ({
+						role: "tool" as const,
+						tool_call_id: tc.id,
+						name: tc.function.name,
+						content: JSON.stringify(result),
+					})),
+				),
+			);
+
+			const toolResultsSafe = toolResults.map((r) => {
+				if (r.status === "rejected") {
+					return {
+						role: "tool" as const,
+						tool_call_id: "error",
+						name: "error",
+						content: JSON.stringify({ error: r.reason?.message || "Tool execution failed" }),
+					};
+				}
+				return r.value;
+			});
+
+			currentMessages.push({
+				role: "assistant",
+				content,
+				tool_calls: toolCalls,
+			} as AiChatMessage);
+			currentMessages.push(...toolResultsSafe);
+		}
+
+		const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply || "(no response)");
+		return c.json({ reply: fullReply, id: saved.id });
 	}
 });
 
