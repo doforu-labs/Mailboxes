@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Badge, Button, Input, Loader, useKumoToastManager } from "@cloudflare/kumo";
+import { Badge, Button, Input, Loader, Switch, useKumoToastManager } from "@cloudflare/kumo";
 import { RobotIcon, ArrowCounterClockwiseIcon, EyeIcon, GearSixIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
@@ -25,7 +25,7 @@ export default function SettingsRoute() {
 	const [agentPrompt, setAgentPrompt] = useState("");
 
 	// AI Provider state
-	const [aiProvider, setAiProvider] = useState<"cloudflare" | "openai-compatible">("cloudflare");
+	const [useCustomAi, setUseCustomAi] = useState(false);
 	const [aiBaseUrl, setAiBaseUrl] = useState("");
 	const [aiModelName, setAiModelName] = useState("");
 	const [aiApiKey, setAiApiKey] = useState("");
@@ -39,7 +39,7 @@ export default function SettingsRoute() {
 			setResendApiKey(mailbox.settings?.resendApiKey || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
 			const ap = mailbox.settings?.aiProvider;
-			setAiProvider(ap?.provider || "cloudflare");
+			setUseCustomAi(ap?.provider === "openai-compatible" && !!ap?.baseUrl);
 			setAiBaseUrl(ap?.baseUrl || "");
 			setAiModelName(ap?.modelName || "");
 			setAiApiKey(ap?.apiKey || "");
@@ -51,9 +51,9 @@ export default function SettingsRoute() {
 		setIsSaving(true);
 
 		const aiProviderSettings: AiProviderSettings | undefined =
-			aiProvider === "openai-compatible" && aiBaseUrl.trim()
+			useCustomAi && aiBaseUrl.trim()
 				? {
-						provider: aiProvider,
+						provider: "openai-compatible",
 						baseUrl: aiBaseUrl.trim().replace(/\/+$/, ""),
 						modelName: aiModelName.trim() || undefined,
 						apiKey: aiApiKey.trim() || undefined,
@@ -93,7 +93,7 @@ export default function SettingsRoute() {
 	}
 
 	const isCustomPrompt = agentPrompt.trim().length > 0;
-	const isCustomAi = aiProvider === "openai-compatible";
+	const isCustomAi = useCustomAi && aiBaseUrl.trim().length > 0;
 
 	return (
 		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
@@ -139,68 +139,67 @@ export default function SettingsRoute() {
 
 				{/* AI Model */}
 				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="flex items-center gap-2 mb-4">
-						<GearSixIcon size={16} weight="duotone" className="text-kumo-subtle" />
-						<span className="text-sm font-medium text-kumo-default">
-							AI Model
-						</span>
-						{isCustomAi ? (
-							<Badge variant="primary">Custom</Badge>
-						) : (
-							<Badge variant="secondary">Cloudflare</Badge>
-						)}
-					</div>
-					<p className="text-xs text-kumo-subtle mb-3">
-						Use a custom OpenAI-compatible API provider instead of the default Cloudflare Workers AI.
-					</p>
-					<div className="space-y-3">
-						<div>
-							<label className="text-xs font-medium text-kumo-default mb-1.5 block">Provider</label>
-							<select
-								value={aiProvider}
-								onChange={(e) => setAiProvider(e.target.value as "cloudflare" | "openai-compatible")}
-								className="w-full rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 text-sm text-kumo-default focus:outline-none focus:ring-1 focus:ring-kumo-ring"
-							>
-								<option value="cloudflare">Cloudflare Workers AI (default)</option>
-								<option value="openai-compatible">OpenAI Compatible</option>
-							</select>
+					<div className="flex items-center justify-between mb-4">
+						<div className="flex items-center gap-2">
+							<GearSixIcon size={16} weight="duotone" className="text-kumo-subtle" />
+							<span className="text-sm font-medium text-kumo-default">
+								AI Model
+							</span>
+							{isCustomAi ? (
+								<Badge variant="primary">Custom</Badge>
+							) : (
+								<Badge variant="secondary">Cloudflare</Badge>
+							)}
 						</div>
-
-						{isCustomAi && (
-							<>
-								<Input
-									label="Base URL"
-									type="url"
-									placeholder="https://api.deepseek.com/v1"
-									value={aiBaseUrl}
-									onChange={(e) => setAiBaseUrl(e.target.value)}
-								/>
-								<Input
-									label="Model Name"
-									placeholder="deepseek-v4-flash"
-									value={aiModelName}
-									onChange={(e) => setAiModelName(e.target.value)}
-								/>
-								<div className="relative">
-									<Input
-										label="API Key"
-										type={showAiApiKey ? "text" : "password"}
-										placeholder="sk-..."
-										value={aiApiKey}
-										onChange={(e) => setAiApiKey(e.target.value)}
-									/>
-									<button
-										type="button"
-										onClick={() => setShowAiApiKey(!showAiApiKey)}
-										className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
-										title={showAiApiKey ? "Hide key" : "Show key"}
-									>
-										<EyeIcon size={16} weight={showAiApiKey ? "fill" : "regular"} />
-									</button>
-								</div>
-							</>
-						)}
+						<Switch
+							checked={useCustomAi}
+							onChange={(e) => setUseCustomAi(e.target.checked)}
+							label={useCustomAi ? "Custom Provider" : "Cloudflare Default"}
+						/>
 					</div>
+
+					{useCustomAi ? (
+						<div className="space-y-3">
+							<Input
+								label="Base URL"
+								type="url"
+								placeholder="https://api.deepseek.com/v1"
+								value={aiBaseUrl}
+								onChange={(e) => setAiBaseUrl(e.target.value)}
+							/>
+							<Input
+								label="Model Name"
+								placeholder="deepseek-v4-flash"
+								value={aiModelName}
+								onChange={(e) => setAiModelName(e.target.value)}
+							/>
+							<div className="relative">
+								<Input
+									label="API Key"
+									type={showAiApiKey ? "text" : "password"}
+									placeholder="sk-..."
+									value={aiApiKey}
+									onChange={(e) => setAiApiKey(e.target.value)}
+								/>
+								<button
+									type="button"
+									onClick={() => setShowAiApiKey(!showAiApiKey)}
+									className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
+									title={showAiApiKey ? "Hide key" : "Show key"}
+								>
+									<EyeIcon size={16} weight={showAiApiKey ? "fill" : "regular"} />
+								</button>
+							</div>
+							<p className="text-xs text-kumo-subtle">
+								Falls back to Cloudflare Workers AI if the custom provider is unreachable.
+							</p>
+						</div>
+					) : (
+						<p className="text-xs text-kumo-subtle">
+							Using <strong>Cloudflare Workers AI</strong> — {aiModelName || "@cf/moonshotai/kimi-k2.6"}.
+							Toggle the switch above to connect a custom OpenAI-compatible provider.
+						</p>
+					)}
 				</div>
 
 				{/* Agent System Prompt */}
