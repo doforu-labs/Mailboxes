@@ -411,9 +411,12 @@ function buildAiMessages(history: any[], emailContext?: any, email?: any, thread
 	const systemPrompt = `You are an email assistant integrated with the user's mailbox.
 
 ## Capabilities
-You can search emails, read messages, manage folders, draft and send replies using the tools available to you. When the user asks about their emails, use the appropriate search_emails or list_emails tool to look up real data.
+You can search emails, read messages, manage folders, draft and send replies using the tools available to you. When the user asks about their emails, use the appropriate tools to look up real data.
 
 ## Tool Use Guidelines
+- ONLY call tools when the user asks about their specific emails or wants to perform an action
+- For general questions like "what can you do" or "hello", answer directly WITHOUT calling any tools
+- When you get empty results from a tool (no emails found), tell the user what happened and suggest next steps - do NOT call the same tool again
 - Use search_emails when the user asks about specific content or keywords
 - Use list_emails to browse folders
 - Use get_email to read a specific email in full
@@ -705,75 +708,71 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 	const isStream = accept.includes("text/event-stream") || c.req.query("stream") === "true";
 
 	if (isStream) {
-		// SSE via multi-round tool calling loop
+		// SSE streaming with tool calling support
 		const encoder = new TextEncoder();
 		const sseStream = new ReadableStream({
 			async start(controller) {
-				let currentMessages: AiChatMessage[] = [...msgs];
 				let fullReply = "";
-				const MODEL = "@cf/moonshotai/kimi-k2.5" as string;
+				const MODEL = "@cf/moonshotai/kimi-k2.6" as string;
 				const FALLBACK = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string;
-				const MAX_ROUNDS = 3;
 
-				async function tryRun(messages: any[], model: string) {
-					const result = await ai.run(model, { messages, tools: TOOL_DEFINITIONS as any, tool_choice: "auto" });
+				async function streamTokens(text: string) {
+					const words = text.split(/(?<=\s)/);
+					const chunkSize = Math.max(1, Math.floor(words.length / 20));
+					for (let i = 0; i < words.length; i += chunkSize) {
+						const chunk = words.slice(i, i + chunkSize).join("");
+						controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: chunk })}\n\n`));
+						await new Promise(r => setTimeout(r, 15));
+					}
+				}
+
+				async function runAI(messages: any[], model: string, withTools = true) {
+					const params: any = { messages };
+					if (withTools) {
+						params.tools = TOOL_DEFINITIONS;
+					}
+					const result = await ai.run(model, params);
 					return result as unknown as AiTextGenerationOutput;
 				}
 
-				for (let round = 0; round < MAX_ROUNDS; round++) {
-					let output: AiTextGenerationOutput;
+				async function tryRunAI(messages: any[], callTools: boolean) {
 					try {
-						output = await tryRun(currentMessages, MODEL);
+						return await runAI(messages, MODEL, callTools);
 					} catch {
-						try {
-							output = await tryRun(currentMessages, FALLBACK);
-						} catch {
-							controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
-							controller.close();
-							return;
-						}
+						return await runAI(messages, FALLBACK, callTools);
 					}
+				}
 
-					// Extract content and tool_calls (supports both Kimi/OpenAI and Llama formats)
-					const msg = output.choices?.[0]?.message;
-					let content = msg?.content || output.response || "";
-					let toolCalls: AiToolCall[] = msg?.tool_calls || [];
+				// Step 1: First AI call with tools enabled
+				let output = await tryRunAI(msgs, true).catch(() => null);
+				if (!output) {
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
+					controller.close();
+					return;
+				}
 
-					// Handle Llama native format: output.tool_calls
-					if (toolCalls.length === 0 && (output as any).tool_calls?.length) {
-						toolCalls = (output as any).tool_calls.map((tc: any) => ({
-							id: tc.name || `call_${round}_${Math.random().toString(36).slice(2)}`,
-							type: "function" as const,
-							function: {
-								name: tc.name,
-								arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
-							},
-						}));
-					}
+				// Parse tool_calls from response
+				const msg = output.choices?.[0]?.message;
+				let content = msg?.content || output.response || "";
+				let toolCalls: AiToolCall[] = msg?.tool_calls || [];
 
-					// Accumulate text content
-					if (content) {
-						fullReply = content;
-						// Stream the text content in chunks
-						const words = content.split(/(?<=\s)/);
-						const chunkSize = Math.max(1, Math.floor(words.length / 20));
-						for (let i = 0; i < words.length; i += chunkSize) {
-							const chunk = words.slice(i, i + chunkSize).join("");
-							controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: chunk })}\n\n`));
-							await new Promise(r => setTimeout(r, 15));
-						}
-					}
+				// Handle Llama native format
+				if (toolCalls.length === 0 && (output as any).tool_calls?.length) {
+					toolCalls = (output as any).tool_calls.map((tc: any) => ({
+						id: tc.name || `call_${Math.random().toString(36).slice(2)}`,
+						type: "function" as const,
+						function: {
+							name: tc.name,
+							arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
+						},
+					}));
+				}
 
-					if (toolCalls.length === 0) {
-						// No more tool calls - final response
-						break;
-					}
-
-					// Notify frontend about tool calls
+				if (toolCalls.length > 0) {
+					// Execute tools and notify frontend
 					const toolNames = toolCalls.map((tc) => tc.function.name).join(", ");
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: `[Using tool: ${toolNames}]`, type: "tool_call" })}\n\n`));
 
-					// Execute all tool calls in parallel
 					const toolResults = await Promise.allSettled(
 						toolCalls.map((tc) =>
 							executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET).then((result) => ({
@@ -785,35 +784,41 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 						),
 					);
 
-					// Handle any failures gracefully
 					const toolResultsSafe = toolResults.map((r) => {
 						if (r.status === "rejected") {
-							return {
-								role: "tool" as const,
-								tool_call_id: "error",
-								name: "error",
-								content: JSON.stringify({ error: r.reason?.message || "Tool execution failed" }),
-							};
+							return { role: "tool" as const, tool_call_id: "error", name: "error", content: JSON.stringify({ error: r.reason?.message || "Tool failed" }) };
 						}
 						return r.value;
 					});
 
-					// Add assistant message with tool_calls + results to context
-					currentMessages.push({
-						role: "assistant",
-						content,
-						tool_calls: toolCalls,
-					} as AiChatMessage);
-					currentMessages.push(...toolResultsSafe);
+					// Step 2: Second AI call with tool results, force text-only
+					const messagesWithResults = [
+						...msgs,
+						{ role: "assistant", content, tool_calls: toolCalls } as AiChatMessage,
+						...toolResultsSafe,
+						{ role: "user", content: "Based on the tool results above, please provide a helpful response to the user." },
+					];
+
+					const finalOutput = await tryRunAI(messagesWithResults, false).catch(() => null);
+					if (finalOutput) {
+						const finalText = (finalOutput as any).choices?.[0]?.message?.content || (finalOutput as any).response || "";
+						if (finalText) {
+							fullReply = finalText;
+							await streamTokens(finalText);
+						}
+					}
+				} else if (content) {
+					// AI responded directly without tools - stream it
+					fullReply = content;
+					await streamTokens(content);
 				}
 
 				if (!fullReply) {
-					fullReply = "I looked into your inbox but couldn't find relevant results. Try asking a more specific question about your emails.";
+					fullReply = "I checked your mailbox but couldn't find relevant information. Feel free to ask me to search for something specific!";
+					await streamTokens(fullReply);
 				}
 
-				// Save to D1
 				const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply);
-
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, id: saved.id })}\n\n`));
 				controller.close();
 			},
@@ -828,84 +833,70 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 		});
 	} else {
 		// Non-streaming JSON with tool calling
-		let currentMessages: AiChatMessage[] = [...msgs];
 		let fullReply = "";
-		const MODEL = "@cf/moonshotai/kimi-k2.5" as string;
+		const MODEL = "@cf/moonshotai/kimi-k2.6" as string;
 		const FALLBACK = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string;
-		const MAX_ROUNDS = 3;
 
-		async function tryRun(messages: any[], model: string) {
-			const result = await ai.run(model, { messages, tools: TOOL_DEFINITIONS as any, tool_choice: "auto" });
-			return result as unknown as AiTextGenerationOutput;
+		async function tryRun(msg: any[], m: string, t: boolean) {
+			const p: any = { messages: msg };
+			if (t) p.tools = TOOL_DEFINITIONS;
+			return (await ai.run(m, p)) as unknown as AiTextGenerationOutput;
 		}
 
-		for (let round = 0; round < MAX_ROUNDS; round++) {
-			let output: AiTextGenerationOutput;
-			try {
-				output = await tryRun(currentMessages, MODEL);
-			} catch {
-				try {
-					output = await tryRun(currentMessages, FALLBACK);
-				} catch {
-					return c.json({ error: "AI temporarily unavailable" }, 503);
-				}
-			}
+		async function runFB(msg: any[], t: boolean) {
+			try { return await tryRun(msg, MODEL, t); }
+			catch { return await tryRun(msg, FALLBACK, t); }
+		}
 
-			const msg = output.choices?.[0]?.message;
-			let content = msg?.content || output.response || "";
-			let toolCalls: AiToolCall[] = msg?.tool_calls || [];
+		// Step 1: first call with tools
+		const output = await runFB(msgs, true).catch(() => null);
+		if (!output) return c.json({ error: "AI temporarily unavailable" }, 503);
 
-			if (toolCalls.length === 0 && (output as any).tool_calls?.length) {
-				toolCalls = (output as any).tool_calls.map((tc: any) => ({
-					id: tc.name || `call_${round}_${Math.random().toString(36).slice(2)}`,
-					type: "function" as const,
-					function: {
-						name: tc.name,
-						arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
-					},
-				}));
-			}
+		const msg0 = output.choices?.[0]?.message;
+		let content = msg0?.content || output.response || "";
+		let toolCalls: AiToolCall[] = msg0?.tool_calls || [];
 
-			if (content) {
-				fullReply = content;
-			}
+		if (toolCalls.length === 0 && (output as any).tool_calls?.length) {
+			toolCalls = (output as any).tool_calls.map((tc: any) => ({
+				id: tc.name || `call_${Math.random().toString(36).slice(2)}`,
+				type: "function" as const,
+				function: { name: tc.name, arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments) },
+			}));
+		}
 
-			if (toolCalls.length === 0) {
-				break;
-			}
+		if (toolCalls.length > 0) {
+			// Execute tools
+			const toolResults = await Promise.allSettled(toolCalls.map((tc) =>
+				executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET).then((r) => ({
+					role: "tool" as const, tool_call_id: tc.id, name: tc.function.name, content: JSON.stringify(r),
+				}))
+			));
 
-			const toolResults = await Promise.allSettled(
-				toolCalls.map((tc) =>
-					executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET).then((result) => ({
-						role: "tool" as const,
-						tool_call_id: tc.id,
-						name: tc.function.name,
-						content: JSON.stringify(result),
-					})),
-				),
+			const toolResultsSafe = toolResults.map((r) =>
+				r.status === "rejected"
+					? { role: "tool" as const, tool_call_id: "error", name: "error", content: JSON.stringify({ error: r.reason?.message || "Tool failed" }) }
+					: r.value
 			);
 
-			const toolResultsSafe = toolResults.map((r) => {
-				if (r.status === "rejected") {
-					return {
-						role: "tool" as const,
-						tool_call_id: "error",
-						name: "error",
-						content: JSON.stringify({ error: r.reason?.message || "Tool execution failed" }),
-					};
-				}
-				return r.value;
-			});
-
-			currentMessages.push({
-				role: "assistant",
-				content,
-				tool_calls: toolCalls,
-			} as AiChatMessage);
-			currentMessages.push(...toolResultsSafe);
+			// Step 2: call without tools
+			const msgs2 = [
+				...msgs,
+				{ role: "assistant", content, tool_calls: toolCalls } as AiChatMessage,
+				...toolResultsSafe,
+				{ role: "user", content: "Based on the tool results above, please provide a helpful response to the user." },
+			];
+			const o2 = await runFB(msgs2, false).catch(() => null);
+			if (o2) {
+				fullReply = (o2 as any).choices?.[0]?.message?.content || (o2 as any).response || "";
+			}
+		} else if (content) {
+			fullReply = content;
+		}
+		if (!fullReply) {
+			fullReply = "I checked your mailbox but couldn't find relevant information. Feel free to ask me to search for something specific!";
 		}
 
-		const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply || "(no response)");
+		const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply);
 		return c.json({ reply: fullReply, id: saved.id });
 	}
 });
