@@ -5,28 +5,25 @@
 /**
  * Shared email helpers to eliminate duplication across API routes, MCP, and agent.
  *
- * Includes: DO stub helpers, sender validation, message-ID generation,
+ * Includes: D1 helpers, sender validation, message-ID generation,
  * threading, HTML utilities, and tool-logic (getFullEmail / getFullThread).
  */
-import type { MailboxDO } from "../durableObject";
 import type { EmailFull } from "./schemas";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { formatQuotedDate } from "../../shared/dates";
+import * as dbService from "../db";
 
-// ── DO Stub ────────────────────────────────────────────────────────
+// ── D1 Database ────────────────────────────────────────────────────
 
 /**
- * Resolve a MailboxDO stub from a mailbox email address.
- * Replaces the repeated 3-line ns.idFromName / ns.get pattern.
+ * Get the D1 database binding from the environment.
+ * Replaces the DO-stub-based getMailboxStub pattern.
  */
-export function getMailboxStub(
+export function getDb(
 	env: Env,
-	mailboxId: string,
-): DurableObjectStub<MailboxDO> {
-	const ns = env.MAILBOX;
-	const id = ns.idFromName(mailboxId);
-	return ns.get(id);
+): D1Database {
+	return env.DB as unknown as D1Database;
 }
 
 // ── Mailbox Listing ────────────────────────────────────────────────
@@ -132,21 +129,6 @@ export function buildThreadingHeaders(
 
 // ── Draft-follows-in_reply_to ──────────────────────────────────────
 
-/**
- * If the given email is a draft with an in_reply_to, resolve the real original.
- * Used by reply/forward routes to avoid threading against the draft itself.
- */
-export async function resolveOriginalEmail(
-	stub: DurableObjectStub<MailboxDO>,
-	email: EmailFull,
-): Promise<EmailFull> {
-	if (email.folder_id === Folders.DRAFT && email.in_reply_to) {
-		const realOriginal = (await stub.getEmail(email.in_reply_to)) as EmailFull | null;
-		if (realOriginal) return realOriginal;
-	}
-	return email;
-}
-
 // ── HTML Utilities ─────────────────────────────────────────────────
 
 /**
@@ -221,19 +203,16 @@ export function buildQuotedReplyBlock(original: {
 
 // ── Tool Logic (getFullEmail / getFullThread) ──────────────────────
 
-type MailboxThreadReaderStub = {
-	getThreadEmails: (threadId: string) => Promise<EmailFull[]>;
-};
-
 /**
  * Fetch a single email and return it with both HTML and plain-text body.
  * Returns null if the email is not found.
  */
 export async function getFullEmail(
-	stub: DurableObjectStub<MailboxDO>,
+	db: D1Database,
+	mailboxId: string,
 	emailId: string,
 ) {
-	const email = (await stub.getEmail(emailId)) as EmailFull | null;
+	const email = await dbService.getEmail(db, mailboxId, emailId);
 	if (!email) return null;
 
 	const textBody = email.body ? stripHtmlToText(email.body) : "";
@@ -241,23 +220,22 @@ export async function getFullEmail(
 }
 
 /**
- * Fetch all emails in a thread with full bodies in a single DO call.
- * Uses `getThreadEmails` which runs 2 SQL queries (emails + attachments)
- * instead of the previous N+1 pattern (1 list query + N getEmail calls).
+ * Fetch all emails in a thread with full bodies in a single D1 call.
+ * Uses `getThreadEmails` which runs 2 SQL queries (emails + attachments).
  */
 export async function getFullThread(
-	stub: DurableObjectStub<MailboxDO>,
+	db: D1Database,
+	mailboxId: string,
 	threadId: string,
 ) {
-	const threadStub = stub as unknown as MailboxThreadReaderStub;
-	const emails = await threadStub.getThreadEmails(threadId);
+	const emails = await dbService.getThreadEmails(db, mailboxId, threadId);
 
 	const enriched = emails.map((email) => {
 		const textBody = email.body ? stripHtmlToText(email.body) : "";
 		return { ...email, body_text: textBody };
 	});
 
-	// Already sorted ASC by the DO query, but ensure consistency
+	// Already sorted ASC by the D1 query, but ensure consistency
 	enriched.sort(
 		(a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
 	);

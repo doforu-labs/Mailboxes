@@ -13,11 +13,10 @@
  *   4. We store everything (metadata + attachments) exactly like receiveEmail()
  */
 
-import PostalMime from "postal-mime";
 import type { Env } from "./types";
-import { getMailboxStub } from "./lib/email-helpers";
 import { Folders } from "../shared/folders";
 import type { StoredAttachment } from "./lib/attachments";
+import * as dbService from "./db";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -293,13 +292,15 @@ export async function handleResendInbound(
 
 	// ── 8. Determine threadId ──
 
-	const stub = getMailboxStub(env, mailboxId);
+	const db = env.DB as unknown as D1Database;
 	let threadId = emailReferences[0] || inReplyTo || messageId;
 
 	if (!inReplyTo && emailReferences.length === 0) {
 		// Fallback: try matching by subject
 		try {
-			const subjectThread = await (stub as any).findThreadBySubject(
+			const subjectThread = await dbService.findThreadBySubject(
+				db,
+				mailboxId,
 				fullEmail.subject || "",
 				sender || undefined,
 			);
@@ -326,51 +327,29 @@ export async function handleResendInbound(
 				],
 	);
 
-	// ── 10. Create email in MailboxDO ──
+	// ── 10. Create email in D1 ──
 
-	await stub.createEmail(Folders.INBOX, {
-		id: messageId,
-		subject: fullEmail.subject || "",
-		sender,
-		recipient: allRecipients.join(", "),
-		cc: ccRecipients.join(", ") || null,
-		bcc: bccRecipients.join(", ") || null,
-		date: new Date().toISOString(),
-		body: fullEmail.html || fullEmail.text || "",
-		in_reply_to: inReplyTo,
-		email_references:
-			emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
-		thread_id: threadId,
-		message_id: originalMessageId,
-		raw_headers: rawHeaders,
-	}, attachmentData);
-
-	// ── 11. Trigger EmailAgent for AI auto-reply ──
-
-	const agentStub = env.EMAIL_AGENT.get(
-		env.EMAIL_AGENT.idFromName(mailboxId),
-	);
-	ctx.waitUntil(
-		agentStub
-			.fetch(
-				new Request("https://agents/onNewEmail", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						mailboxId,
-						emailId: messageId,
-						sender,
-						subject: fullEmail.subject || "",
-						threadId,
-					}),
-				}),
-			)
-			.catch((e) =>
-				console.error(
-					"Auto-draft trigger failed:",
-					(e as Error).message,
-				),
-			),
+	await dbService.createEmail(
+		db,
+		mailboxId,
+		Folders.INBOX,
+		{
+			id: messageId,
+			subject: fullEmail.subject || "",
+			sender,
+			recipient: allRecipients.join(", "),
+			cc: ccRecipients.join(", ") || null,
+			bcc: bccRecipients.join(", ") || null,
+			date: new Date().toISOString(),
+			body: fullEmail.html || fullEmail.text || "",
+			in_reply_to: inReplyTo,
+			email_references:
+				emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
+			thread_id: threadId,
+			message_id: originalMessageId,
+			raw_headers: rawHeaders,
+		},
+		attachmentData,
 	);
 
 	return { ok: true };

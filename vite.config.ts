@@ -26,4 +26,5 @@ export default defineConfig({
       "react/jsx-dev-runtime": path.resolve(__dirname, "shim/jsx-dev-runtime.js"),
     },
   },
+
 });

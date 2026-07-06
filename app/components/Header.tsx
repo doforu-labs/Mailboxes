@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Button, Input, Tooltip } from "@cloudflare/kumo";
-import { GearSixIcon, ListIcon, MagnifyingGlassIcon, RobotIcon, XIcon } from "@phosphor-icons/react";
+import { GearSixIcon, ListIcon, MagnifyingGlassIcon, SparkleIcon, XIcon } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -15,7 +15,7 @@ export default function Header() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [searchParams] = useSearchParams();
-	const { toggleSidebar, toggleAgentPanel, isAgentPanelOpen } = useUIStore();
+	const { toggleSidebar, toggleAiPanel } = useUIStore();
 
 	// Sync search input with URL query param so it stays populated
 	const urlQuery = searchParams.get("q") || "";
@@ -119,14 +119,13 @@ export default function Header() {
 			)}
 
 			<div className="flex items-center gap-1 ml-auto shrink-0">
-				<Tooltip content={isAgentPanelOpen ? "Hide agent panel" : "Show agent panel"} side="bottom" asChild>
+				<Tooltip content="AI Assistant" side="bottom" asChild>
 					<Button
-						variant={isAgentPanelOpen ? "secondary" : "ghost"}
+						variant="ghost"
 						shape="square"
-						icon={<RobotIcon size={20} />}
-						onClick={toggleAgentPanel}
-						aria-label="Toggle agent panel"
-						className="hidden lg:inline-flex"
+						icon={<SparkleIcon size={20} />}
+						onClick={toggleAiPanel}
+						aria-label="AI Assistant"
 					/>
 				</Tooltip>
 				<Tooltip content="Settings" side="bottom" asChild>

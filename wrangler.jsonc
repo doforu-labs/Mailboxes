@@ -27,40 +27,11 @@
 	"ai": {
 		"binding": "AI"
 	},
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "MAILBOX",
-				"class_name": "MailboxDO"
-			},
-			{
-				"name": "EMAIL_AGENT",
-				"class_name": "EmailAgent"
-			},
-			{
-				"name": "EMAIL_MCP",
-				"class_name": "EmailMCP"
-			}
-		]
-	},
-	"migrations": [
+	"d1_databases": [
 		{
-			"tag": "v1",
-			"new_sqlite_classes": [
-				"MailboxDO"
-			]
-		},
-		{
-			"tag": "v2",
-			"new_sqlite_classes": [
-				"EmailAgent"
-			]
-		},
-		{
-			"tag": "v3",
-			"new_sqlite_classes": [
-				"EmailMCP"
-			]
+			"binding": "DB",
+			"database_name": "agentic-inbox-db",
+			"database_id": "d673eaba-6670-4a2f-adeb-78fcd6f1fd00"
 		}
 	]
 }

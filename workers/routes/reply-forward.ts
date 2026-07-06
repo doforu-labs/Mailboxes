@@ -12,14 +12,13 @@ import {
 	generateMessageId,
 	buildReferencesChain,
 	buildThreadingHeaders,
-	resolveOriginalEmail,
 } from "../lib/email-helpers";
 import { SendEmailRequestSchema } from "../lib/schemas";
 import { Folders } from "../../shared/folders";
-import type { MailboxContext } from "../lib/mailbox";
+import type { Env } from "../types";
+import * as dbService from "../db";
 
-type AppContext = Context<MailboxContext>;
-type RateLimitStub = { checkSendRateLimit: () => Promise<string | null> };
+type AppContext = Context<{ Bindings: Env }>;
 
 export async function handleReplyEmail(c: AppContext) {
 	const mailboxId = c.req.param("mailboxId") ?? "";
@@ -27,14 +26,19 @@ export async function handleReplyEmail(c: AppContext) {
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
 
-	const stub = c.var.mailboxStub;
-	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
+	const rawOriginal = await dbService.getEmail(c.env.DB as unknown as D1Database, mailboxId, id);
 
 	if (!rawOriginal) {
 		return c.json({ error: "Original email not found" }, 404);
 	}
 
-	const originalEmail = await resolveOriginalEmail(stub, rawOriginal);
+	// Resolve original email (follow draft -> in_reply_to chain)
+	let originalEmail: EmailFull = rawOriginal;
+	if (rawOriginal.folder_id === Folders.DRAFT && rawOriginal.in_reply_to) {
+		const realOriginal = await dbService.getEmail(c.env.DB as unknown as D1Database, mailboxId, rawOriginal.in_reply_to);
+		if (realOriginal) originalEmail = realOriginal;
+	}
+
 	const { originalMsgId, references, threadId: thread_id } = buildReferencesChain(originalEmail);
 
 	let toStr: string, fromEmail: string, fromDomain: string;
@@ -47,15 +51,19 @@ export async function handleReplyEmail(c: AppContext) {
 
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const rateLimitError = await (stub as unknown as RateLimitStub)
-		.checkSendRateLimit();
-	if (rateLimitError) {
-		return c.json({ error: rateLimitError }, 429);
+	const rateLimit = await dbService.checkSendRateLimit(c.env.DB as unknown as D1Database, mailboxId);
+	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
+		return c.json({ error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` }, 429);
+	}
+	if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
+		return c.json({ error: `Daily send limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit}). Please try again later.` }, 429);
 	}
 
 	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
-	await stub.createEmail(
+	await dbService.createEmail(
+		c.env.DB as unknown as D1Database,
+		mailboxId,
 		Folders.SENT,
 		{
 			id: messageId,
@@ -85,7 +93,7 @@ export async function handleReplyEmail(c: AppContext) {
 		attachmentData,
 	);
 
-	await stub.markThreadRead(thread_id);
+	await dbService.markThreadRead(c.env.DB as unknown as D1Database, mailboxId, thread_id);
 
 	c.executionCtx.waitUntil(
 		sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
@@ -118,14 +126,11 @@ export async function handleForwardEmail(c: AppContext) {
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
 
-	const stub = c.var.mailboxStub;
-	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
+	const rawOriginal = await dbService.getEmail(c.env.DB as unknown as D1Database, mailboxId, id);
 
 	if (!rawOriginal) {
 		return c.json({ error: "Original email not found" }, 404);
 	}
-
-	await resolveOriginalEmail(stub, rawOriginal);
 
 	let toStr: string, fromEmail: string, fromDomain: string;
 	try {
@@ -137,15 +142,19 @@ export async function handleForwardEmail(c: AppContext) {
 
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const rateLimitError = await (stub as unknown as RateLimitStub)
-		.checkSendRateLimit();
-	if (rateLimitError) {
-		return c.json({ error: rateLimitError }, 429);
+	const rateLimit = await dbService.checkSendRateLimit(c.env.DB as unknown as D1Database, mailboxId);
+	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
+		return c.json({ error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` }, 429);
+	}
+	if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
+		return c.json({ error: `Daily send limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit}). Please try again later.` }, 429);
 	}
 
 	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
-	await stub.createEmail(
+	await dbService.createEmail(
+		c.env.DB as unknown as D1Database,
+		mailboxId,
 		Folders.SENT,
 		{
 			id: messageId,

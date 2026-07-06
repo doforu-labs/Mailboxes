@@ -19,10 +19,11 @@ import { SendEmailRequestSchema } from "./lib/schemas";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
-import { requireMailbox, type MailboxContext } from "./lib/mailbox";
+import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
 import { handleResendInbound } from "./inbound";
+import * as db from "./db";
 
-type AppContext = Context<MailboxContext>;
+type AppContext = Context<D1MailboxContext>;
 
 // -- Request body schemas (kept for validation) ---------------------
 
@@ -66,7 +67,7 @@ function boolQuery(c: AppContext, key: string): boolean | undefined {
 
 // -- App & middleware -----------------------------------------------
 
-const app = new Hono<MailboxContext>();
+const app = new Hono<D1MailboxContext>();
 app.use("/api/*", cors({
 	origin: (origin) => {
 		// Same-origin requests have no Origin header — allow them.
@@ -112,8 +113,7 @@ app.post("/api/v1/mailboxes", async (c) => {
 	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
 	const finalSettings = { ...defaultSettings, ...settings };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
-	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
-	await stub.getFolders();
+	await db.initMailboxFolders(c.env.DB, email);
 	return c.json({ id: email, email, name, settings: finalSettings }, 201);
 });
 
@@ -137,7 +137,7 @@ app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
-	await c.env.BUCKET.delete(key); // TODO: also delete DO data and R2 attachment blobs
+	await c.env.BUCKET.delete(key); // TODO: also delete D1 data and R2 attachment blobs
 	return c.body(null, 204);
 });
 
@@ -151,16 +151,17 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const limit = intQuery(c, "limit");
 	const sortColumn = c.req.query("sortColumn") as any;
 	const sortDirection = c.req.query("sortDirection") as "ASC" | "DESC" | undefined;
-	const stub = c.var.mailboxStub;
+	const dbClient = c.var.db;
+	const mailboxId = c.var.mailboxId;
 
 	if (threaded && folder) {
-		const emails = await (stub as any).getThreadedEmails({ folder, page, limit });
-		const totalCount = await (stub as any).countThreadedEmails(folder);
+		const emails = await db.getThreadedEmails(dbClient, mailboxId, { folder, page, limit });
+		const totalCount = await db.countThreadedEmails(dbClient, mailboxId, folder);
 		return c.json({ emails, totalCount });
 	}
-	const emails = await stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection });
+	const emails = await db.getEmails(dbClient, mailboxId, { folder, threadId: thread_id, page, limit, sortColumn, sortDirection });
 	if (folder) {
-		const totalCount = await stub.countEmails({ folder, thread_id });
+		const totalCount = await db.countEmails(dbClient, mailboxId, folder, thread_id);
 		return c.json({ emails, totalCount });
 	}
 	return c.json(emails);
@@ -180,12 +181,19 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	}
 
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
-	const stub = c.var.mailboxStub;
-	const rateLimitError = await (stub as any).checkSendRateLimit();
-	if (rateLimitError) return c.json({ error: rateLimitError }, 429);
+	const dbClient = c.var.db;
+
+	const rateLimit = await db.checkSendRateLimit(dbClient, mailboxId);
+	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
+		return c.json({ error: `Hourly rate limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit})` }, 429);
+	}
+	if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
+		return c.json({ error: `Daily rate limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit})` }, 429);
+	}
+
 	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
-	await stub.createEmail(Folders.SENT, {
+	await db.createEmail(dbClient, mailboxId, Folders.SENT, {
 		id: messageId, subject, sender: fromEmail, recipient: toStr,
 		cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
 		bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
@@ -215,11 +223,11 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
-	const stub = c.var.mailboxStub;
-	if (draft_id) await stub.deleteEmail(draft_id); // not atomic — create-then-delete would be safer
+	const dbClient = c.var.db;
+	if (draft_id) await db.deleteEmail(dbClient, mailboxId, draft_id);
 	const messageId = crypto.randomUUID();
 	const now = new Date().toISOString();
-	await stub.createEmail(Folders.DRAFT, {
+	await db.createEmail(dbClient, mailboxId, Folders.DRAFT, {
 		id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
 		recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
 		date: now, body, in_reply_to: in_reply_to || null, email_references: null,
@@ -228,8 +236,18 @@ app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);
 });
 
+app.delete("/api/v1/mailboxes/:mailboxId/drafts/:emailId", async (c: AppContext) => {
+	const emailId = c.req.param("emailId")!;
+	const attachments = await db.deleteEmail(c.var.db, c.var.mailboxId, emailId);
+	if (attachments === null) return c.json({ error: "Not found" }, 404);
+	if (attachments.length > 0) {
+		await c.env.BUCKET.delete(attachments.map((att: { id: string; filename: string }) => `attachments/${emailId}/${att.id}/${att.filename}`));
+	}
+	return c.body(null, 204);
+});
+
 app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
-	const email = await c.var.mailboxStub.getEmail(c.req.param("id")!);
+	const email = await db.getEmail(c.var.db, c.var.mailboxId, c.req.param("id")!);
 	if (!email) return c.json({ error: "Email not found" }, 404);
 	return new Response(JSON.stringify(email), {
 		headers: { "Content-Type": "application/json" },
@@ -238,32 +256,34 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 
 app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	const { read, starred } = (await c.req.json()) as { read?: boolean; starred?: boolean };
-	const email = await c.var.mailboxStub.updateEmail(c.req.param("id")!, { read, starred });
+	const email = await db.updateEmail(c.var.db, c.var.mailboxId, c.req.param("id")!, { read, starred });
 	return email ? c.json(email) : c.json({ error: "Email not found" }, 404);
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	const id = c.req.param("id")!;
-	const attachments = await c.var.mailboxStub.deleteEmail(id);
+	const attachments = await db.deleteEmail(c.var.db, c.var.mailboxId, id);
 	if (attachments === null) return c.json({ error: "Not found" }, 404);
-	if (attachments.length > 0) await c.env.BUCKET.delete(attachments.map((att: any) => `attachments/${id}/${att.id}/${att.filename}`));
+	if (attachments.length > 0) {
+		await c.env.BUCKET.delete(attachments.map((att: { id: string; filename: string }) => `attachments/${id}/${att.id}/${att.filename}`));
+	}
 	return c.body(null, 204);
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/move", async (c: AppContext) => {
 	const { folderId } = (await c.req.json()) as { folderId: string };
-	const success = await c.var.mailboxStub.moveEmail(c.req.param("id")!, folderId);
+	const success = await db.moveEmail(c.var.db, c.var.mailboxId, c.req.param("id")!, folderId);
 	return success ? c.json({ status: "moved" }) : c.json({ error: "Folder not found" }, 400);
 });
 
 // -- Threads --------------------------------------------------------
 
 app.get("/api/v1/mailboxes/:mailboxId/threads/:threadId", async (c: AppContext) => {
-	return c.json(await (c.var.mailboxStub as any).getThreadEmails(c.req.param("threadId")!));
+	return c.json(await db.getThreadEmails(c.var.db, c.var.mailboxId, c.req.param("threadId")!));
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c: AppContext) => {
-	await c.var.mailboxStub.markThreadRead(c.req.param("threadId")!);
+	await db.markThreadRead(c.var.db, c.var.mailboxId, c.req.param("threadId")!);
 	return c.json({ status: "marked_read" });
 });
 
@@ -282,24 +302,24 @@ app.post("/api/v1/inbound/resend", async (c) => {
 
 // -- Folders --------------------------------------------------------
 
-app.get("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => c.json(await c.var.mailboxStub.getFolders()));
+app.get("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => c.json(await db.getFolders(c.var.db, c.var.mailboxId)));
 
 app.post("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => {
 	const { name } = (await c.req.json()) as { name: string };
 	const slug = slugify(name);
 	if (!slug) return c.json({ error: "Folder name must contain alphanumeric characters" }, 400);
-	const f = await c.var.mailboxStub.createFolder(slug, name);
+	const f = await db.createFolder(c.var.db, c.var.mailboxId, slug, name);
 	return f ? c.json(f, 201) : c.json({ error: "Folder with this name already exists" }, 409);
 });
 
 app.put("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => {
 	const { name } = (await c.req.json()) as { name: string };
-	const f = await c.var.mailboxStub.updateFolder(c.req.param("id")!, name);
+	const f = await db.updateFolder(c.var.db, c.var.mailboxId, c.req.param("id")!, name);
 	return f ? c.json(f) : c.json({ error: "Folder not found" }, 404);
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => {
-	const ok = await c.var.mailboxStub.deleteFolder(c.req.param("id")!);
+	const ok = await db.deleteFolder(c.var.db, c.var.mailboxId, c.req.param("id")!);
 	return ok ? c.body(null, 204) : c.json({ error: "Folder not found or cannot be deleted" }, 400);
 });
 
@@ -312,9 +332,10 @@ app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
 		date_end: c.req.query("date_end"), is_read: boolQuery(c, "is_read"),
 		is_starred: boolQuery(c, "is_starred"), has_attachment: boolQuery(c, "has_attachment"),
 	};
-	const stub = c.var.mailboxStub as any;
-	const emails = await stub.searchEmails({ ...searchOpts, page: intQuery(c, "page"), limit: intQuery(c, "limit") });
-	const totalCount = await stub.countSearchResults(searchOpts);
+	const dbClient = c.var.db;
+	const mailboxId = c.var.mailboxId;
+	const emails = await db.searchEmails(dbClient, mailboxId, { ...searchOpts, page: intQuery(c, "page"), limit: intQuery(c, "limit") } as any);
+	const totalCount = await db.countSearchResults(dbClient, mailboxId, searchOpts as any);
 	return c.json({ emails, totalCount });
 });
 
@@ -323,7 +344,7 @@ app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
 app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId", async (c: AppContext) => {
 	const emailId = c.req.param("emailId")!;
 	const attachmentId = c.req.param("attachmentId")!;
-	const attachment = await c.var.mailboxStub.getAttachment(attachmentId);
+	const attachment = await db.getAttachment(c.var.db, c.var.mailboxId, attachmentId);
 	if (!attachment) return c.json({ error: "Attachment not found" }, 404);
 	const obj = await c.env.BUCKET.get(`attachments/${emailId}/${attachmentId}/${attachment.filename}`);
 	if (!obj) return c.json({ error: "Attachment file not found" }, 404);
@@ -332,6 +353,159 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 	const sanitized = attachment.filename.replace(/[\x00-\x1f"\\]/g, "_");
 	headers.set("Content-Disposition", `attachment; filename="${sanitized}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`);
 	return new Response(obj.body, { headers });
+});
+
+// -- AI Chat (SSE streaming) -----------------------------------------
+
+function buildAiMessages(history: any[], emailContext?: any, email?: any, thread?: any[]): { role: string; content: string }[] {
+	const systemPrompt = `You are an email assistant. You help users manage their inbox.
+You can:
+- Search and summarize emails
+- Draft replies
+- Organize folders
+
+Keep responses concise and helpful. When referring to emails, be specific about content.`;
+
+	const msgs: { role: string; content: string }[] = [
+		{ role: "system", content: systemPrompt },
+		...history.map((m: any) => ({ role: m.role, content: m.content })),
+	];
+
+	if (email) {
+		msgs.push({
+			role: "system",
+			content: `The user is currently viewing this email:\nFrom: ${email.sender}\nSubject: ${email.subject}\nDate: ${email.date}\nBody: ${email.body?.substring(0, 2000)}`,
+		});
+	}
+	if (thread && thread.length > 0) {
+		const threadSummary = thread
+			.map((e: any) => `[${e.sender}] ${e.subject}: ${e.body?.substring(0, 200)}`)
+			.join("\n---\n");
+		msgs.push({
+			role: "system",
+			content: `Full thread context:\n${threadSummary.substring(0, 3000)}`,
+		});
+	}
+
+	return msgs;
+}
+
+app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
+	const { message, emailContext } = await c.req.json<{ message: string; emailContext?: { emailId?: string; threadId?: string } }>();
+	const mailboxId = c.var.mailboxId;
+	const d1 = c.var.db;
+	const ai = c.env.AI;
+
+	if (!message || typeof message !== "string") {
+		return c.json({ error: "message is required" }, 400);
+	}
+
+	// Save user message
+	await db.saveAiMessage(d1, mailboxId, 'user', message);
+
+	// Get chat history
+	const history = await db.getAiChatHistory(d1, mailboxId, 30);
+
+	// Build messages
+	let email: any = undefined;
+	let thread: any[] | undefined = undefined;
+	if (emailContext?.emailId) {
+		const result = await db.getEmail(d1, mailboxId, emailContext.emailId);
+		email = result?.email ?? result;
+	}
+	if (emailContext?.threadId) {
+		thread = await db.getThreadEmails(d1, mailboxId, emailContext.threadId);
+	}
+	const msgs = buildAiMessages(history, emailContext, email, thread);
+
+	// Check if client wants SSE
+	const accept = c.req.header("Accept") || "";
+	const isStream = accept.includes("text/event-stream") || c.req.query("stream") === "true";
+
+	if (isStream) {
+		// SSE via simulated streaming (chunking non-streaming response)
+		const encoder = new TextEncoder();
+		const sseStream = new ReadableStream({
+			async start(controller) {
+				let fullReply = "";
+
+				try {
+					const result = await ai.run("@cf/moonshotai/kimi-k2.5", { messages: msgs } as any) as any;
+					fullReply = result.response || result.choices?.[0]?.message?.content || "";
+				} catch {
+					try {
+						const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages: msgs } as any) as any;
+						fullReply = result.response || "";
+					} catch {
+						controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
+						controller.close();
+						return;
+					}
+				}
+
+				if (!fullReply) {
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Empty response" })}\n\n`));
+					controller.close();
+					return;
+				}
+
+				// Save to D1
+				const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply);
+
+				// Stream chunks word-by-word for typewriter effect
+				const words = fullReply.split(/(?<=\s)/);
+				const chunkSize = Math.max(1, Math.floor(words.length / 20));
+				for (let i = 0; i < words.length; i += chunkSize) {
+					const chunk = words.slice(i, i + chunkSize).join("");
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: chunk })}\n\n`));
+					// Small delay between chunks for typewriter feel
+					await new Promise(r => setTimeout(r, 15));
+				}
+
+				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, id: saved.id })}\n\n`));
+				controller.close();
+			},
+		});
+
+		return new Response(sseStream, {
+			headers: {
+				"Content-Type": "text/event-stream",
+				"Cache-Control": "no-cache",
+				"Connection": "keep-alive",
+			},
+		});
+	} else {
+		// Non-streaming JSON (backward compat)
+		let reply = "";
+		try {
+			const result = await ai.run("@cf/moonshotai/kimi-k2.5", { messages: msgs } as any) as any;
+			reply = result.response || result.choices?.[0]?.message?.content || "";
+		} catch {
+			try {
+				const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages: msgs } as any) as any;
+				reply = result.response || "";
+			} catch {
+				return c.json({ error: "AI temporarily unavailable" }, 503);
+			}
+		}
+		const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', reply);
+		return c.json({ reply, id: saved.id });
+	}
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
+	const d1 = c.var.db;
+	const mailboxId = c.var.mailboxId;
+	const limit = Math.min(Math.max(Number(c.req.query("limit")) || 20, 1), 100);
+	const messages = await db.getAiChatHistory(d1, mailboxId, limit);
+	return c.json({ messages });
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
+	const d1 = c.var.db;
+	const mailboxId = c.var.mailboxId;
+	await db.clearAiChatHistory(d1, mailboxId);
+	return c.body(null, 204);
 });
 
 // -- Receive inbound email ------------------------------------------
@@ -375,8 +549,6 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	const messageId = crypto.randomUUID();
 	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) { console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`); return; }
 
-	const stub = env.MAILBOX.get(env.MAILBOX.idFromName(mailboxId));
-
 	const attachmentData: StoredAttachment[] = [];
 	if (parsedEmail.attachments) {
 		for (const att of parsedEmail.attachments) {
@@ -395,13 +567,13 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	let threadId = emailReferences[0] || inReplyTo || messageId;
 
 	if (!inReplyTo && emailReferences.length === 0) {
-		const subjectThread = await (stub as any).findThreadBySubject(parsedEmail.subject || "", parsedEmail.from?.address || undefined);
+		const subjectThread = await db.findThreadBySubject(env.DB, mailboxId, parsedEmail.subject || "", parsedEmail.from?.address || undefined);
 		if (subjectThread) threadId = subjectThread;
 	}
 
 	const originalMessageId = parsedEmail.messageId ? extractMsgId(parsedEmail.messageId) : null;
 
-	await stub.createEmail(Folders.INBOX, {
+	await db.createEmail(env.DB, mailboxId, Folders.INBOX, {
 		id: messageId, subject: parsedEmail.subject || "",
 		sender: (parsedEmail.from?.address || "").toLowerCase(), recipient: allRecipients.join(", "),
 		cc: ccRecipients.join(", ") || null, bcc: bccRecipients.join(", ") || null,
@@ -411,11 +583,7 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
 
-	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
-	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
-		method: "POST", headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
-	})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)));
+	// NOTE: EMAIL_AGENT auto-draft trigger removed — agent will be invoked via D1 change detection instead
 }
 
 export { app, receiveEmail };

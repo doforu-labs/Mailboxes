@@ -33,9 +33,11 @@ interface UIState {
 	closeSidebar: () => void;
 	toggleSidebar: () => void;
 
-	// Agent panel
-	isAgentPanelOpen: boolean;
-	toggleAgentPanel: () => void;
+	// AI panel
+	isAiPanelOpen: boolean;
+	openAiPanel: () => void;
+	closeAiPanel: () => void;
+	toggleAiPanel: () => void;
 
 	// Legacy dialog support (kept for non-split views)
 	isComposeModalOpen: boolean;
@@ -50,7 +52,7 @@ export const useUIStore = create<UIState>((set, get) => ({
 	composeOptions: { mode: "new", originalEmail: null },
 	isComposeModalOpen: false,
 	isSidebarOpen: false,
-	isAgentPanelOpen: true,
+	isAiPanelOpen: false,
 
 	selectEmail: (id) => set({ selectedEmailId: id, isComposing: false }),
 
@@ -82,8 +84,6 @@ export const useUIStore = create<UIState>((set, get) => ({
 	closeSidebar: () => set({ isSidebarOpen: false }),
 	toggleSidebar: () => set({ isSidebarOpen: !get().isSidebarOpen }),
 
-	toggleAgentPanel: () => set({ isAgentPanelOpen: !get().isAgentPanelOpen }),
-
 	openComposeModal: (options) =>
 		set({
 			composeOptions: options || { mode: "new", originalEmail: null },
@@ -95,4 +95,8 @@ export const useUIStore = create<UIState>((set, get) => ({
 			isComposeModalOpen: false,
 			composeOptions: { mode: "new", originalEmail: null },
 		}),
+
+	openAiPanel: () => set({ isAiPanelOpen: true }),
+	closeAiPanel: () => set({ isAiPanelOpen: false }),
+	toggleAiPanel: () => set((state) => ({ isAiPanelOpen: !state.isAiPanelOpen })),
 }));

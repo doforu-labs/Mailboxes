@@ -8,4 +8,6 @@ export interface Env extends Cloudflare.Env {
 	RESEND_API_KEY?: string;
 	DOMAINS?: string;
 	EMAIL_ADDRESSES?: string[];
+	DB: D1Database;
+	AI: Ai;
 }

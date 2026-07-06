@@ -5,10 +5,10 @@
 /**
  * Shared tool business logic for the Agent and MCP server.
  *
- * Each function takes an `env: Env` (or a DO stub) and tool-specific params,
- * performs the business logic (DO calls, data fetching, formatting), and
- * returns a plain object. The Agent and MCP server wrap these results in
- * their own response formats.
+ * Each function takes a `db: D1Database`, `mailboxId: string`, and optional
+ * binding parameters (ai, bucket), performs the business logic (D1 calls,
+ * data fetching, formatting), and returns a plain object. The Agent and MCP
+ * server wrap these results in their own response formats.
  *
  * Functions that already exist in email-helpers.ts (getFullEmail, getFullThread)
  * are reused directly — this module covers the remaining shared operations.
@@ -16,7 +16,6 @@
 
 import type { EmailFull } from "./schemas";
 import {
-	getMailboxStub,
 	getFullEmail,
 	getFullThread,
 	buildQuotedReplyBlock,
@@ -27,21 +26,10 @@ import {
 	buildThreadingHeaders,
 } from "./email-helpers";
 import { verifyDraft } from "./ai";
-import { sendEmail, sendEmailFromMailbox } from "../email-sender";
+import { sendEmailFromMailbox } from "../email-sender";
 import { Folders } from "../../shared/folders";
+import * as dbService from "../db";
 import type { Env } from "../types";
-
-// ── Type casts for DO methods not on the base stub type ────────────
-type MailboxSearchStub = {
-	searchEmails: (options: {
-		query: string;
-		folder?: string;
-	}) => Promise<unknown>;
-};
-
-type RateLimitStub = {
-	checkSendRateLimit: () => Promise<string | null>;
-};
 
 // ── list_mailboxes ─────────────────────────────────────────────────
 
@@ -52,12 +40,11 @@ export async function toolListMailboxes(env: Env) {
 // ── list_emails ────────────────────────────────────────────────────
 
 export async function toolListEmails(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	params: { folder: string; limit: number; page: number },
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	return stub.getEmails({
+	return dbService.getEmails(db, mailboxId, {
 		folder: params.folder,
 		limit: params.limit,
 		page: params.page,
@@ -69,12 +56,11 @@ export async function toolListEmails(
 // ── get_email ──────────────────────────────────────────────────────
 
 export async function toolGetEmail(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	emailId: string,
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	const email = await getFullEmail(stub, emailId);
+	const email = await getFullEmail(db, mailboxId, emailId);
 	if (!email) return { error: "Email not found" };
 	return email;
 }
@@ -82,23 +68,21 @@ export async function toolGetEmail(
 // ── get_thread ─────────────────────────────────────────────────────
 
 export async function toolGetThread(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	threadId: string,
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	return getFullThread(stub, threadId);
+	return getFullThread(db, mailboxId, threadId);
 }
 
 // ── search_emails ──────────────────────────────────────────────────
 
 export async function toolSearchEmails(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	params: { query: string; folder?: string },
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	return (stub as unknown as MailboxSearchStub).searchEmails({
+	return dbService.searchEmails(db, mailboxId, {
 		query: params.query,
 		folder: params.folder,
 	});
@@ -117,8 +101,9 @@ export async function toolSearchEmails(
  *   while MCP does it on HTML.
  */
 export async function toolDraftReply(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
+	ai: Ai,
 	params: {
 		originalEmailId: string;
 		to: string;
@@ -131,12 +116,10 @@ export async function toolDraftReply(
 	| { status: "draft_saved"; draftId: string; message: string; draft: Record<string, string> }
 	| { error: string }
 > {
-	const stub = getMailboxStub(env, mailboxId);
-
 	// Verify/sanitize if requested
 	let processedBody = params.body.trim();
 	if (params.runVerifyDraft) {
-		const sanitized = await verifyDraft(env.AI, processedBody);
+		const sanitized = await verifyDraft(ai, processedBody);
 		if (!sanitized) {
 			return { error: "Draft verification failed — body could not be verified. Please try again." };
 		}
@@ -151,7 +134,7 @@ export async function toolDraftReply(
 	const draftId = crypto.randomUUID();
 
 	// Get the original email for thread_id and quoted text
-	const original = (await stub.getEmail(params.originalEmailId)) as EmailFull | null;
+	const original = await dbService.getEmail(db, mailboxId, params.originalEmailId);
 	const threadId = original?.thread_id || params.originalEmailId;
 
 	// Append quoted original message
@@ -164,7 +147,9 @@ export async function toolDraftReply(
 		: "";
 	const bodyHtml = processedBody + quotedBlock;
 
-	await stub.createEmail(
+	await dbService.createEmail(
+		db,
+		mailboxId,
 		Folders.DRAFT,
 		{
 			id: draftId,
@@ -196,8 +181,9 @@ export async function toolDraftReply(
 // ── draft_email (new email, not a reply) ───────────────────────────
 
 export async function toolDraftEmail(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
+	ai: Ai,
 	params: {
 		to: string;
 		subject: string;
@@ -213,11 +199,9 @@ export async function toolDraftEmail(
 	| { status: string; draftId: string; threadId?: string; message: string; draft?: Record<string, string> }
 	| { error: string }
 > {
-	const stub = getMailboxStub(env, mailboxId);
-
 	let processedBody = params.body.trim();
 	if (params.runVerifyDraft) {
-		const sanitized = await verifyDraft(env.AI, processedBody);
+		const sanitized = await verifyDraft(ai, processedBody);
 		if (!sanitized) {
 			return { error: "Draft verification failed — body could not be verified. Please try again." };
 		}
@@ -233,14 +217,16 @@ export async function toolDraftEmail(
 	// Resolve thread ID
 	let resolvedThreadId = params.thread_id;
 	if (!resolvedThreadId && params.in_reply_to) {
-		const original = (await stub.getEmail(params.in_reply_to)) as EmailFull | null;
+		const original = await dbService.getEmail(db, mailboxId, params.in_reply_to);
 		resolvedThreadId = original?.thread_id || params.in_reply_to;
 	}
 	if (!resolvedThreadId) {
 		resolvedThreadId = draftId;
 	}
 
-	await stub.createEmail(
+	await dbService.createEmail(
+		db,
+		mailboxId,
 		Folders.DRAFT,
 		{
 			id: draftId,
@@ -272,8 +258,9 @@ export async function toolDraftEmail(
 // ── update_draft ───────────────────────────────────────────────────
 
 export async function toolUpdateDraft(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
+	ai: Ai,
 	params: {
 		draftId: string;
 		to?: string;
@@ -284,9 +271,7 @@ export async function toolUpdateDraft(
 	| { status: string; newDraftId: string; oldDraftId: string; message: string }
 	| { error: string }
 > {
-	const stub = getMailboxStub(env, mailboxId);
-
-	const oldDraft = (await stub.getEmail(params.draftId)) as EmailFull | null;
+	const oldDraft = await dbService.getEmail(db, mailboxId, params.draftId);
 	if (!oldDraft) {
 		return { error: "Draft not found" };
 	}
@@ -294,20 +279,22 @@ export async function toolUpdateDraft(
 	// Verify the body BEFORE deleting the old draft to prevent data loss
 	const newDraftId = crypto.randomUUID();
 	const rawBody = params.bodyHtml ?? oldDraft.body ?? "";
-	const verifiedBody = await verifyDraft(env.AI, rawBody);
+	const verifiedBody = await verifyDraft(ai, rawBody);
 
 	if (!verifiedBody) {
 		return { error: "Draft verification failed — keeping existing draft unchanged. Please try again." };
 	}
 
-	await stub.deleteEmail(params.draftId);
-	await stub.createEmail(
+	await dbService.deleteEmail(db, mailboxId, params.draftId);
+	await dbService.createEmail(
+		db,
+		mailboxId,
 		Folders.DRAFT,
 		{
 			id: newDraftId,
-			subject: params.subject ?? oldDraft.subject,
+			subject: params.subject ?? oldDraft.subject ?? "",
 			sender: mailboxId.toLowerCase(),
-			recipient: (params.to ?? oldDraft.recipient).toLowerCase(),
+			recipient: (params.to ?? oldDraft.recipient ?? "").toLowerCase(),
 			date: new Date().toISOString(),
 			body: verifiedBody,
 			in_reply_to: oldDraft.in_reply_to || null,
@@ -328,26 +315,24 @@ export async function toolUpdateDraft(
 // ── mark_email_read ────────────────────────────────────────────────
 
 export async function toolMarkEmailRead(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	emailId: string,
 	read: boolean,
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	await stub.updateEmail(emailId, { read });
+	await dbService.updateEmail(db, mailboxId, emailId, { read });
 	return { status: "updated", emailId, read };
 }
 
 // ── move_email ─────────────────────────────────────────────────────
 
 export async function toolMoveEmail(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	emailId: string,
 	folderId: string,
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	const success = await stub.moveEmail(emailId, folderId);
+	const success = await dbService.moveEmail(db, mailboxId, emailId, folderId);
 	if (success) {
 		return { status: "moved", emailId, folder: folderId };
 	}
@@ -357,31 +342,29 @@ export async function toolMoveEmail(
 // ── discard_draft ──────────────────────────────────────────────────
 
 export async function toolDiscardDraft(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	draftId: string,
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	const email = (await stub.getEmail(draftId)) as { folder_id?: string } | null;
+	const email = await dbService.getEmail(db, mailboxId, draftId);
 	if (!email) {
 		return { error: "Draft not found" };
 	}
 	if (email.folder_id !== Folders.DRAFT) {
 		return { error: "Cannot discard: email is not a draft" };
 	}
-	await stub.deleteEmail(draftId);
+	await dbService.deleteEmail(db, mailboxId, draftId);
 	return { status: "discarded", draftId };
 }
 
 // ── delete_email ───────────────────────────────────────────────────
 
 export async function toolDeleteEmail(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
 	emailId: string,
 ) {
-	const stub = getMailboxStub(env, mailboxId);
-	const result = await stub.deleteEmail(emailId);
+	const result = await dbService.deleteEmail(db, mailboxId, emailId);
 	if (result === null) {
 		return { error: "Email not found", emailId };
 	}
@@ -391,8 +374,10 @@ export async function toolDeleteEmail(
 // ── send_reply ─────────────────────────────────────────────────────
 
 export async function toolSendReply(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
+	ai: Ai,
+	bucket: R2Bucket,
 	params: {
 		originalEmailId: string;
 		to: string;
@@ -403,15 +388,16 @@ export async function toolSendReply(
 	| { status: "sent"; messageId: string; message: string }
 	| { error: string }
 > {
-	const stub = getMailboxStub(env, mailboxId);
-
 	// Check send rate limit
-	const rateLimitError = await (stub as unknown as RateLimitStub).checkSendRateLimit();
-	if (rateLimitError) {
-		return { error: rateLimitError };
+	const rateLimit = await dbService.checkSendRateLimit(db, mailboxId);
+	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
+		return { error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` };
+	}
+	if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
+		return { error: `Daily send limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit}). Please try again later.` };
 	}
 
-	const originalEmail = (await stub.getEmail(params.originalEmailId)) as EmailFull | null;
+	const originalEmail = await dbService.getEmail(db, mailboxId, params.originalEmailId);
 	if (!originalEmail) {
 		return { error: "Original email not found" };
 	}
@@ -422,7 +408,7 @@ export async function toolSendReply(
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
 	// Verify and append quoted original message
-	const sanitizedBody = await verifyDraft(env.AI, params.bodyHtml);
+	const sanitizedBody = await verifyDraft(ai, params.bodyHtml);
 	if (!sanitizedBody) {
 		return { error: "Draft verification failed — refusing to send unverified content. Please try again." };
 	}
@@ -434,7 +420,7 @@ export async function toolSendReply(
 	const fullBodyHtml = sanitizedBody + quotedBlock;
 
 	try {
-		await sendEmailFromMailbox(env.BUCKET, mailboxId, {
+		await sendEmailFromMailbox(bucket, mailboxId, {
 			to: params.to,
 			from: mailboxId,
 			subject: params.subject,
@@ -446,7 +432,9 @@ export async function toolSendReply(
 		return { error: `Failed to send reply: ${(e as Error).message}` };
 	}
 
-	await stub.createEmail(
+	await dbService.createEmail(
+		db,
+		mailboxId,
 		Folders.SENT,
 		{
 			id: messageId,
@@ -470,8 +458,10 @@ export async function toolSendReply(
 // ── send_email ─────────────────────────────────────────────────────
 
 export async function toolSendEmail(
-	env: Env,
+	db: D1Database,
 	mailboxId: string,
+	ai: Ai,
+	bucket: R2Bucket,
 	params: {
 		to: string;
 		subject: string;
@@ -481,25 +471,26 @@ export async function toolSendEmail(
 	| { status: "sent"; messageId: string; message: string }
 	| { error: string }
 > {
-	const stub = getMailboxStub(env, mailboxId);
-
 	// Check send rate limit
-	const rateLimitError = await (stub as unknown as RateLimitStub).checkSendRateLimit();
-	if (rateLimitError) {
-		return { error: rateLimitError };
+	const rateLimit = await dbService.checkSendRateLimit(db, mailboxId);
+	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
+		return { error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` };
+	}
+	if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
+		return { error: `Daily send limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit}). Please try again later.` };
 	}
 
 	const fromDomain = mailboxId.split("@")[1];
 	if (!fromDomain) throw new Error("Invalid mailbox email address");
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const sanitizedBody = await verifyDraft(env.AI, params.bodyHtml);
+	const sanitizedBody = await verifyDraft(ai, params.bodyHtml);
 	if (!sanitizedBody) {
 		return { error: "Draft verification failed — refusing to send unverified content. Please try again." };
 	}
 
 	try {
-		await sendEmailFromMailbox(env.BUCKET, mailboxId, {
+		await sendEmailFromMailbox(bucket, mailboxId, {
 			to: params.to,
 			from: mailboxId,
 			subject: params.subject,
@@ -510,7 +501,9 @@ export async function toolSendEmail(
 		return { error: `Failed to send email: ${(e as Error).message}` };
 	}
 
-	await stub.createEmail(
+	await dbService.createEmail(
+		db,
+		mailboxId,
 		Folders.SENT,
 		{
 			id: messageId,
