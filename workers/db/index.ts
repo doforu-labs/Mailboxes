@@ -92,7 +92,55 @@ export interface EmailFull {
 	thread_id: string | null;
 	message_id: string | null;
 	raw_headers: string | null;
-	attachments: any[];
+	attachments: AttachmentData[];
+}
+
+export interface EmailSummary {
+	id: string;
+	subject: string | null;
+	sender: string | null;
+	recipient: string | null;
+	cc: string | null;
+	bcc: string | null;
+	date: string | null;
+	read: boolean;
+	starred: boolean;
+	in_reply_to: string | null;
+	email_references: string | null;
+	thread_id: string | null;
+	folder_id: string | null;
+	snippet: string | null;
+}
+
+export interface ThreadedEmail {
+	id: string;
+	subject: string | null;
+	sender: string | null;
+	recipient: string | null;
+	date: string | null;
+	read: boolean;
+	starred: boolean;
+	thread_id: string | null;
+	folder_id: string | null;
+	in_reply_to: string | null;
+	email_references: string | null;
+	snippet: string | null;
+	thread_count: number;
+	thread_unread_count: number;
+	participants: string | null;
+	needs_reply?: boolean;
+	has_draft?: boolean;
+}
+
+export interface AttachmentRow {
+	id: string;
+	email_id: string;
+	mailbox_id: string;
+	filename: string;
+	mimetype: string;
+	size: number;
+	content_id: string | null;
+	disposition: string | null;
 }
 
 // ── Constants ─────────────────────────────────────────────────────
@@ -101,7 +149,7 @@ const ALLOWED_SORT_COLUMNS = [
 	"id", "subject", "sender", "recipient", "date", "read", "starred",
 ] as const;
 
-const SORT_COLUMN_MAP: Record<string, any> = {
+const SORT_COLUMN_MAP = {
 	id: schema.emails.id,
 	subject: schema.emails.subject,
 	sender: schema.emails.sender,
@@ -141,10 +189,10 @@ export async function getEmails(
 	db: D1Database,
 	mailboxId: string,
 	options: GetEmailsOptions = {},
-) {
+): Promise<EmailSummary[]> {
 	const { folder, threadId, page = 1, limit: rawLimit = 25, sortColumn: rawSortColumn = "date", sortDirection = "DESC" } = options;
 	const capLimit = Math.min(Math.max(rawLimit, 1), 100);
-	const sortCol = ALLOWED_SORT_COLUMNS.includes(rawSortColumn as any) ? rawSortColumn : "date";
+	const sortCol = (ALLOWED_SORT_COLUMNS as readonly string[]).includes(rawSortColumn ?? "") ? rawSortColumn : "date";
 	const offset = (page - 1) * capLimit;
 
 	const orm = drizzle(db, { schema });
@@ -157,7 +205,7 @@ export async function getEmails(
 		conditions.push(eq(schema.emails.thread_id, threadId));
 	}
 
-	const orderCol = SORT_COLUMN_MAP[sortCol];
+	const orderCol = SORT_COLUMN_MAP[sortCol as keyof typeof SORT_COLUMN_MAP]!;
 	const orderDir = sortDirection === "ASC" ? asc(orderCol) : desc(orderCol);
 
 	const result = await orm
@@ -257,7 +305,7 @@ export async function createEmail(
 	folder: string,
 	emailData: EmailData,
 	attachments: AttachmentData[],
-) {
+): Promise<void> {
 	// Resolve folder name or ID to the actual folder ID
 	const orm = drizzle(db, { schema });
 	const folderRow = await orm
@@ -394,7 +442,7 @@ export async function getAttachment(
 	db: D1Database,
 	mailboxId: string,
 	attachmentId: string,
-): Promise<any> {
+): Promise<AttachmentRow | null> {
 	const orm = drizzle(db, { schema });
 	const result = await orm
 		.select()
@@ -413,7 +461,7 @@ export async function getThreadEmails(
 	db: D1Database,
 	mailboxId: string,
 	threadId: string,
-): Promise<any[]> {
+): Promise<EmailFull[]> {
 	const emailRows = await db.prepare(
 		`SELECT * FROM emails WHERE mailbox_id = ?1 AND thread_id = ?2 ORDER BY date ASC`,
 	).bind(mailboxId, threadId).all() as any;
@@ -463,12 +511,12 @@ export async function getThreadedEmails(
 	db: D1Database,
 	mailboxId: string,
 	options: GetEmailsOptions = {},
-): Promise<any[]> {
+): Promise<ThreadedEmail[]> {
 	const { folder, page = 1, limit: rawLimit = 25 } = options;
 	const capLimit = Math.min(Math.max(rawLimit, 1), 100);
 
 	if (!folder) {
-		return getEmails(db, mailboxId, options);
+		return getEmails(db, mailboxId, options) as unknown as Promise<ThreadedEmail[]>;
 	}
 
 	const offset = (page - 1) * capLimit;
@@ -861,7 +909,7 @@ export async function searchEmails(
 	db: D1Database,
 	mailboxId: string,
 	options: SearchFilterOptions & { page?: number; limit?: number },
-): Promise<any[]> {
+): Promise<EmailSummary[]> {
 	const { page = 1, limit: rawLimit = 25 } = options;
 	const capLimit = Math.min(Math.max(rawLimit, 1), 100);
 	const { conditions, params } = buildSearchConditions(mailboxId, options, "e");

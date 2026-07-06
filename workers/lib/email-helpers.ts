@@ -8,7 +8,7 @@
  * Includes: D1 helpers, sender validation, message-ID generation,
  * threading, HTML utilities, and tool-logic (getFullEmail / getFullThread).
  */
-import type { EmailFull } from "./schemas";
+import type { EmailFull } from "../db";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { formatQuotedDate } from "../../shared/dates";
@@ -227,7 +227,7 @@ export async function getFullThread(
 
 	// Already sorted ASC by the D1 query, but ensure consistency
 	enriched.sort(
-		(a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+		(a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime(),
 	);
 
 	return { thread_id: threadId, message_count: enriched.length, messages: enriched };

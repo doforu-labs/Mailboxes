@@ -20,10 +20,16 @@
 	"scripts": {
 		"build": "react-router build",
 		"cf-typegen": "wrangler types",
+		"db:create": "wrangler d1 create agentic-inbox-db",
+		"db:migrate": "wrangler d1 migrations apply agentic-inbox-db --remote",
+		"db:migrate:local": "wrangler d1 migrations apply agentic-inbox-db --local",
+		"db:preview": "wrangler d1 migrations apply agentic-inbox-db --preview",
 		"deploy": "npm run build && wrangler deploy",
+		"deploy:full": "npm run build && wrangler deploy && wrangler d1 migrations apply agentic-inbox-db --remote",
 		"postinstall": "npx --yes patch-package",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
+		"test": "npx tsx --test 'workers/**/*.test.ts'",
 		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
 	},
 	"dependencies": {

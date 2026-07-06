@@ -31,7 +31,9 @@
 		{
 			"binding": "DB",
 			"database_name": "agentic-inbox-db",
-			"database_id": "d673eaba-6670-4a2f-adeb-78fcd6f1fd00"
+			"database_id": "d673eaba-6670-4a2f-adeb-78fcd6f1fd00",
+			"preview_database_id": "local",
+			"migrations_dir": "migrations"
 		}
 	]
 }

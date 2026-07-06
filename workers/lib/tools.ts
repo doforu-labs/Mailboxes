@@ -140,8 +140,8 @@ export async function toolDraftReply(
 	// Append quoted original message
 	const quotedBlock = original
 		? buildQuotedReplyBlock({
-				date: original.date,
-				sender: original.sender || params.to,
+				date: original.date ?? undefined,
+				sender: (original.sender || params.to) ?? undefined,
 				body: original.body ?? undefined,
 			})
 		: "";
@@ -413,8 +413,8 @@ export async function toolSendReply(
 		return { error: "Draft verification failed — refusing to send unverified content. Please try again." };
 	}
 	const quotedBlock = buildQuotedReplyBlock({
-		date: originalEmail.date,
-		sender: originalEmail.sender || params.to,
+		date: originalEmail.date ?? undefined,
+		sender: (originalEmail.sender || params.to) ?? undefined,
 		body: originalEmail.body ?? undefined,
 	});
 	const fullBodyHtml = sanitizedBody + quotedBlock;

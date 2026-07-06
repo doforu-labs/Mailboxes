@@ -23,7 +23,7 @@
     "paths": {
       "~/*": ["./app/*"]
     },
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "esModuleInterop": true,
     "resolveJsonModule": true
   }

@@ -55,8 +55,45 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 ## Getting Started
 
+### Local Development
+
+1. Clone the repository and install dependencies:
+
 ```bash
 npm install
+```
+
+2. Configure local environment variables:
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+   Edit `.dev.vars` and fill in the required values (see [Secrets](#secrets) below).
+
+3. Create the D1 database:
+
+```bash
+wrangler d1 create agentic-inbox-db
+```
+
+4. Copy the returned `database_id` from the previous step into the `d1_databases` array in `wrangler.jsonc`.
+
+5. Create the R2 bucket:
+
+```bash
+wrangler r2 bucket create agentic-inbox
+```
+
+6. Apply database migrations locally:
+
+```bash
+npm run db:migrate:local
+```
+
+7. Start the development server:
+
+```bash
 npm run dev
 ```
 
@@ -65,11 +102,35 @@ npm run dev
 1. Set your domain in `wrangler.jsonc`
 2. Create an R2 bucket named `agentic-inbox`: `wrangler r2 bucket create agentic-inbox`
 
-### Deploy
+### Production Deploy
 
 ```bash
 npm run deploy
 ```
+
+After deploying, apply database migrations in production:
+
+```bash
+npm run db:migrate
+```
+
+Or use the full deploy command that builds, deploys, and applies migrations in one step:
+
+```bash
+npm run deploy:full
+```
+
+### Secrets
+
+The following secrets must be configured for the Worker. Use `wrangler secret put <KEY>` to set each one.
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `POLICY_AUD` | Production only | Cloudflare Access policy audience tag. Shown in the Access modal when enabling one-click Access on the Worker. |
+| `TEAM_DOMAIN` | Production only | Cloudflare Access team domain. Can be the base Access URL (e.g. `https://your-team.cloudflareaccess.com`) or the full `/cdn-cgi/access/certs` URL. |
+| `RESEND_API_KEY` | Yes (for outbound email) | Resend API key for sending emails. Sign up at https://resend.com (free tier: 100 emails/day). |
+
+For local development, these values can be placed in `.dev.vars` instead.
 
 ## Prerequisites
 

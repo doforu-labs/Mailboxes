@@ -292,7 +292,7 @@ export async function handleResendInbound(
 
 	// ── 8. Determine threadId ──
 
-	const db = env.DB as unknown as D1Database;
+	const db = env.DB;
 	let threadId = emailReferences[0] || inReplyTo || messageId;
 
 	if (!inReplyTo && emailReferences.length === 0) {

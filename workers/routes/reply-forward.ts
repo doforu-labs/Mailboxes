@@ -5,7 +5,7 @@
 import type { Context } from "hono";
 import { sendEmailFromMailbox } from "../email-sender";
 import { storeAttachments } from "../lib/attachments";
-import type { EmailFull } from "../lib/schemas";
+import type { EmailFull } from "../db";
 import {
 	validateSender,
 	SenderValidationError,
@@ -26,7 +26,7 @@ export async function handleReplyEmail(c: AppContext) {
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
 
-	const rawOriginal = await dbService.getEmail(c.env.DB as unknown as D1Database, mailboxId, id);
+	const rawOriginal = await dbService.getEmail(c.env.DB, mailboxId, id);
 
 	if (!rawOriginal) {
 		return c.json({ error: "Original email not found" }, 404);
@@ -35,7 +35,7 @@ export async function handleReplyEmail(c: AppContext) {
 	// Resolve original email (follow draft -> in_reply_to chain)
 	let originalEmail: EmailFull = rawOriginal;
 	if (rawOriginal.folder_id === Folders.DRAFT && rawOriginal.in_reply_to) {
-		const realOriginal = await dbService.getEmail(c.env.DB as unknown as D1Database, mailboxId, rawOriginal.in_reply_to);
+		const realOriginal = await dbService.getEmail(c.env.DB, mailboxId, rawOriginal.in_reply_to);
 		if (realOriginal) originalEmail = realOriginal;
 	}
 
@@ -51,7 +51,7 @@ export async function handleReplyEmail(c: AppContext) {
 
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const rateLimit = await dbService.checkSendRateLimit(c.env.DB as unknown as D1Database, mailboxId);
+	const rateLimit = await dbService.checkSendRateLimit(c.env.DB, mailboxId);
 	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
 		return c.json({ error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` }, 429);
 	}
@@ -62,7 +62,7 @@ export async function handleReplyEmail(c: AppContext) {
 	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
 	await dbService.createEmail(
-		c.env.DB as unknown as D1Database,
+		c.env.DB,
 		mailboxId,
 		Folders.SENT,
 		{
@@ -93,7 +93,7 @@ export async function handleReplyEmail(c: AppContext) {
 		attachmentData,
 	);
 
-	await dbService.markThreadRead(c.env.DB as unknown as D1Database, mailboxId, thread_id);
+	await dbService.markThreadRead(c.env.DB, mailboxId, thread_id);
 
 	c.executionCtx.waitUntil(
 		sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
@@ -126,7 +126,7 @@ export async function handleForwardEmail(c: AppContext) {
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
 
-	const rawOriginal = await dbService.getEmail(c.env.DB as unknown as D1Database, mailboxId, id);
+	const rawOriginal = await dbService.getEmail(c.env.DB, mailboxId, id);
 
 	if (!rawOriginal) {
 		return c.json({ error: "Original email not found" }, 404);
@@ -142,7 +142,7 @@ export async function handleForwardEmail(c: AppContext) {
 
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const rateLimit = await dbService.checkSendRateLimit(c.env.DB as unknown as D1Database, mailboxId);
+	const rateLimit = await dbService.checkSendRateLimit(c.env.DB, mailboxId);
 	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
 		return c.json({ error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` }, 429);
 	}
@@ -153,7 +153,7 @@ export async function handleForwardEmail(c: AppContext) {
 	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
 	await dbService.createEmail(
-		c.env.DB as unknown as D1Database,
+		c.env.DB,
 		mailboxId,
 		Folders.SENT,
 		{

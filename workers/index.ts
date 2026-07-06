@@ -22,8 +22,15 @@ import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
 import { handleResendInbound } from "./inbound";
 import * as db from "./db";
+import type { SearchFilterOptions, EmailFull } from "./db";
 
 type AppContext = Context<D1MailboxContext>;
+
+// Local type for AI text generation output (available in CF Workers runtime)
+export interface AiTextGenerationOutput {
+	response?: string;
+	choices?: { message?: { content?: string } }[];
+}
 
 // -- Request body schemas (kept for validation) ---------------------
 
@@ -149,7 +156,7 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const threaded = boolQuery(c, "threaded");
 	const page = intQuery(c, "page");
 	const limit = intQuery(c, "limit");
-	const sortColumn = c.req.query("sortColumn") as any;
+	const sortColumn = c.req.query("sortColumn") as string | undefined;
 	const sortDirection = c.req.query("sortDirection") as "ASC" | "DESC" | undefined;
 	const dbClient = c.var.db;
 	const mailboxId = c.var.mailboxId;
@@ -296,7 +303,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/forward", handleForwardEmail);
 
 app.post("/api/v1/inbound/resend", async (c) => {
 	const payload = await c.req.json();
-	await handleResendInbound(payload, c.env, c.executionCtx);
+	await handleResendInbound(payload, c.env, c.executionCtx as unknown as ExecutionContext);
 	return c.json({ ok: true });
 });
 
@@ -326,16 +333,19 @@ app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => 
 // -- Search ---------------------------------------------------------
 
 app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
-	const searchOpts: Record<string, unknown> = {
-		query: c.req.query("query") || "", folder: c.req.query("folder"), from: c.req.query("from"),
-		to: c.req.query("to"), subject: c.req.query("subject"), date_start: c.req.query("date_start"),
-		date_end: c.req.query("date_end"), is_read: boolQuery(c, "is_read"),
+	const searchOpts: SearchFilterOptions = {
+		query: c.req.query("query") || "", folder: c.req.query("folder") ?? undefined, from: c.req.query("from") ?? undefined,
+		to: c.req.query("to") ?? undefined, subject: c.req.query("subject") ?? undefined,
+		date_start: c.req.query("date_start") ?? undefined,
+		date_end: c.req.query("date_end") ?? undefined, is_read: boolQuery(c, "is_read"),
 		is_starred: boolQuery(c, "is_starred"), has_attachment: boolQuery(c, "has_attachment"),
 	};
 	const dbClient = c.var.db;
 	const mailboxId = c.var.mailboxId;
-	const emails = await db.searchEmails(dbClient, mailboxId, { ...searchOpts, page: intQuery(c, "page"), limit: intQuery(c, "limit") } as any);
-	const totalCount = await db.countSearchResults(dbClient, mailboxId, searchOpts as any);
+	const page = intQuery(c, "page");
+	const limit = intQuery(c, "limit");
+	const emails = await db.searchEmails(dbClient, mailboxId, { ...searchOpts, page, limit });
+	const totalCount = await db.countSearchResults(dbClient, mailboxId, searchOpts);
 	return c.json({ emails, totalCount });
 });
 
@@ -400,6 +410,10 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 		return c.json({ error: "message is required" }, 400);
 	}
 
+	if (message.length > 10000) {
+		return c.json({ error: "message too long" }, 400);
+	}
+
 	// Save user message
 	await db.saveAiMessage(d1, mailboxId, 'user', message);
 
@@ -407,11 +421,10 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 	const history = await db.getAiChatHistory(d1, mailboxId, 30);
 
 	// Build messages
-	let email: any = undefined;
-	let thread: any[] | undefined = undefined;
+	let email: EmailFull | null | undefined = undefined;
+	let thread: EmailFull[] | undefined = undefined;
 	if (emailContext?.emailId) {
-		const result = await db.getEmail(d1, mailboxId, emailContext.emailId);
-		email = result?.email ?? result;
+		email = await db.getEmail(d1, mailboxId, emailContext.emailId);
 	}
 	if (emailContext?.threadId) {
 		thread = await db.getThreadEmails(d1, mailboxId, emailContext.threadId);
@@ -430,12 +443,13 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 				let fullReply = "";
 
 				try {
-					const result = await ai.run("@cf/moonshotai/kimi-k2.5", { messages: msgs } as any) as any;
-					fullReply = result.response || result.choices?.[0]?.message?.content || "";
+					const result = await ai.run("@cf/moonshotai/kimi-k2.5" as string, { messages: msgs });
+					const output = result as unknown as AiTextGenerationOutput;
+					fullReply = output.response || output.choices?.[0]?.message?.content || "";
 				} catch {
 					try {
-						const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages: msgs } as any) as any;
-						fullReply = result.response || "";
+						const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string, { messages: msgs });
+						fullReply = (result as unknown as AiTextGenerationOutput).response || "";
 					} catch {
 						controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
 						controller.close();
@@ -478,12 +492,13 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 		// Non-streaming JSON (backward compat)
 		let reply = "";
 		try {
-			const result = await ai.run("@cf/moonshotai/kimi-k2.5", { messages: msgs } as any) as any;
-			reply = result.response || result.choices?.[0]?.message?.content || "";
+			const result = await ai.run("@cf/moonshotai/kimi-k2.5" as string, { messages: msgs });
+			const output = result as unknown as AiTextGenerationOutput;
+			reply = output.response || output.choices?.[0]?.message?.content || "";
 		} catch {
 			try {
-				const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", { messages: msgs } as any) as any;
-				reply = result.response || "";
+				const result = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast" as string, { messages: msgs });
+				reply = (result as unknown as AiTextGenerationOutput).response || "";
 			} catch {
 				return c.json({ error: "AI temporarily unavailable" }, 503);
 			}

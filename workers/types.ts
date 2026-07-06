@@ -3,11 +3,6 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 export interface Env extends Cloudflare.Env {
-	POLICY_AUD: string;
-	TEAM_DOMAIN: string;
 	RESEND_API_KEY?: string;
-	DOMAINS?: string;
-	EMAIL_ADDRESSES?: string[];
 	DB: D1Database;
-	AI: Ai;
 }
