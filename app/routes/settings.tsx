@@ -153,8 +153,7 @@ export default function SettingsRoute() {
 						</div>
 						<Switch
 							checked={useCustomAi}
-							onChange={(e) => setUseCustomAi(e.target.checked)}
-							label={useCustomAi ? "Custom Provider" : "Cloudflare Default"}
+							onCheckedChange={(checked) => setUseCustomAi(checked)}
 						/>
 					</div>
 
