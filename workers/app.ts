@@ -44,8 +44,8 @@ const app = new Hono<{ Bindings: Env }>();
 
 // Cloudflare Access JWT validation middleware (production only)
 app.use("*", async (c, next) => {
-	// Skip validation in development
-	if (import.meta.env.DEV) {
+	// Skip validation in development (DEV env may not be set in Workers runtime)
+	if (import.meta.env.DEV || !c.env.POLICY_AUD || c.env.POLICY_AUD === "dev-placeholder") {
 		return next();
 	}
 
