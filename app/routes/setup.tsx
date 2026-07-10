@@ -6,7 +6,6 @@ import {
 	Button,
 	Input,
 	Loader,
-	Text,
 } from "@cloudflare/kumo";
 import {
 	CaretRightIcon,
@@ -88,9 +87,9 @@ function ErrorBanner({ message }: { message: string }) {
 	return (
 		<div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
 			<WarningIcon size={14} className="text-red-600 shrink-0" />
-			<Text variant="error" size="sm">
+			<span className="text-sm text-red-600">
 				{message}
-			</Text>
+			</span>
 		</div>
 	);
 }
@@ -324,9 +323,9 @@ export default function SetupRoute() {
 								autoFocus
 								required
 							/>
-							<Text variant="subtle" size="xs">
+							<p className="text-xs text-kumo-subtle">
 								Must already be added to Cloudflare and using its nameservers.
-							</Text>
+							</p>
 							<div className="flex justify-end gap-2 pt-2">
 								<Button
 									variant="secondary"
@@ -368,7 +367,7 @@ export default function SetupRoute() {
 								required
 							/>
 							<div className="rounded-lg bg-kumo-fill px-3 py-2.5">
-								<Text variant="subtle" size="xs">
+								<p className="text-xs text-kumo-subtle">
 									Get your key from{" "}
 									<a
 										href="https://resend.com/api-keys"
@@ -379,7 +378,7 @@ export default function SetupRoute() {
 										resend.com/api-keys
 									</a>
 									. Free plan includes 100 emails/day.
-								</Text>
+								</p>
 							</div>
 							<div className="flex justify-end gap-2 pt-2">
 								<Button
@@ -431,12 +430,12 @@ export default function SetupRoute() {
 								required
 							/>
 							<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
-								<Text variant="subtle" size="xs">
+								<p className="text-xs text-kumo-subtle">
 									<strong className="text-blue-700">
 										Required permissions:
 									</strong>{" "}
 									Zone:DNS:Edit + Zone:Email Routing:Edit
-								</Text>
+								</p>
 							</div>
 
 							{/* Progress indicators */}
