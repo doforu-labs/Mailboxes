@@ -131,8 +131,6 @@ function createMockEnv() {
 		AI: mockAi,
 		BUCKET: mockBucket,
 		RESEND_API_KEY: "",
-		DOMAINS: "example.com",
-		EMAIL_ADDRESSES: [],
 		POLICY_AUD: "dev-placeholder",
 	} as any;
 

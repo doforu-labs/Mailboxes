@@ -9,13 +9,7 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"vars": {
-		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN.
-		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
-		// The worker now fails closed outside local development if Access is not configured.
-		"DOMAINS": "",
-		"EMAIL_ADDRESSES": []
-	},
+	"vars": {},
 	// send_email binding removed — uses Resend API instead, which works on Workers Free plan.
 	"r2_buckets": [
 		{

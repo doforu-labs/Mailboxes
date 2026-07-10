@@ -134,11 +134,15 @@ app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 
 // -- Config ---------------------------------------------------------
 
-app.get("/api/v1/config", (c) => {
-	const domainsRaw = c.env.DOMAINS || "";
-	const domains = domainsRaw.split(",").map((d) => d.trim()).filter(Boolean);
-	const emailAddresses = c.env.EMAIL_ADDRESSES ?? [];
-	return c.json({ domains, emailAddresses });
+app.get("/api/v1/config", async (c) => {
+	// Derive domains dynamically from existing mailboxes in R2
+	const allMailboxes = await listMailboxes(c.env.BUCKET);
+	const domainSet = new Set<string>();
+	for (const m of allMailboxes) {
+		const domain = m.id.split("@")[1];
+		if (domain) domainSet.add(domain);
+	}
+	return c.json({ domains: Array.from(domainSet), emailAddresses: allMailboxes.map(m => m.id) });
 });
 
 // -- Mailboxes ------------------------------------------------------
@@ -151,10 +155,6 @@ app.get("/api/v1/mailboxes", async (c) => {
 app.post("/api/v1/mailboxes", async (c) => {
 	const { name, settings, email: rawEmail } = CreateMailboxBody.parse(await c.req.json());
 	const email = rawEmail.toLowerCase();
-	const allowedAddresses = (c.env.EMAIL_ADDRESSES ?? []) as string[];
-	if (allowedAddresses.length > 0 && !allowedAddresses.map((a) => a.toLowerCase()).includes(email)) {
-		return c.json({ error: "Mailbox creation is restricted to configured EMAIL_ADDRESSES" }, 403);
-	}
 	const key = `mailboxes/${email}.json`;
 	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
 	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
@@ -679,7 +679,7 @@ async function executeToolCall(
 			case "send_email":
 				return await toolSendEmail(db, mailboxId, ai, bucket, args);
 			case "list_mailboxes":
-				return await toolListMailboxes({ BUCKET: bucket, DB: db, RESEND_API_KEY: "", DOMAINS: "", EMAIL_ADDRESSES: [] } as any);
+				return await toolListMailboxes({ BUCKET: bucket, DB: db, RESEND_API_KEY: "" } as any);
 			default:
 				return { error: `Unknown tool: ${name}` };
 		}
@@ -1010,16 +1010,12 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 
 	if (!parsedEmail.to?.length || !parsedEmail.to[0].address) throw new Error("received email with empty to");
 
-	const allowedAddresses = ((env.EMAIL_ADDRESSES ?? []) as string[]).map((a) => a.toLowerCase());
 	const allRecipients = parsedEmail.to.map((t) => t.address?.toLowerCase()).filter(Boolean) as string[];
 	const ccRecipients = (parsedEmail.cc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 	const bccRecipients = (parsedEmail.bcc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 
 	let mailboxId: string | undefined;
-	if (allowedAddresses.length > 0) {
-		mailboxId = allRecipients.find((addr) => allowedAddresses.includes(addr));
-		if (!mailboxId) { console.log(`Ignoring email: no recipient matches EMAIL_ADDRESSES.`); return; }
-	} else { mailboxId = allRecipients[0]; }
+	mailboxId = allRecipients[0];
 	if (!mailboxId) throw new Error("received email with no valid recipient address");
 
 	const messageId = crypto.randomUUID();

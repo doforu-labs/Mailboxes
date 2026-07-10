@@ -162,8 +162,6 @@ function createMockEnv(opts: MockEnvOptions = {}) {
 		POLICY_AUD: "test-aud",
 		TEAM_DOMAIN: "test.cloudflareaccess.com",
 		RESEND_API_KEY: globalApiKey,
-		DOMAINS: "example.com",
-		EMAIL_ADDRESSES: emailAddresses,
 	} as any;
 
 	return {

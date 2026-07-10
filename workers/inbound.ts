@@ -136,10 +136,6 @@ export async function handleResendInbound(
 
 	// ── 1. Determine mailboxId from received_for or to addresses ──
 
-	const allowedAddresses = ((env.EMAIL_ADDRESSES ?? []) as string[]).map(
-		(a) => a.toLowerCase(),
-	);
-
 	// Prefer received_for (the original recipient address) over `to`
 	const candidateAddresses = [
 		...data.received_for.map((a) => a.toLowerCase()),
@@ -147,19 +143,7 @@ export async function handleResendInbound(
 	];
 
 	let mailboxId: string | undefined;
-	if (allowedAddresses.length > 0) {
-		mailboxId = candidateAddresses.find((addr) =>
-			allowedAddresses.includes(addr),
-		);
-		if (!mailboxId) {
-			console.log(
-				`Ignoring Resend inbound: no recipient matches EMAIL_ADDRESSES. Received: ${candidateAddresses.join(", ")}`,
-			);
-			return { ok: true }; // Silently ignore — not for us
-		}
-	} else {
-		mailboxId = candidateAddresses[0];
-	}
+	mailboxId = candidateAddresses[0];
 
 	if (!mailboxId) {
 		throw new Error("Resend inbound email has no valid recipient address");
