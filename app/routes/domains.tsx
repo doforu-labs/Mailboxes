@@ -23,6 +23,7 @@ import {
 } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
+import api from "~/services/api";
 import {
 	useDeleteDomain,
 	useDomains,
@@ -140,7 +141,10 @@ function PlatformSettingsSection() {
 		);
 	}, [creds]);
 
-	const handleSave = () => {
+	const [isVerifying, setIsVerifying] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
+
+	const handleSave = async () => {
 		if (!creds.cfApiToken.trim() || !creds.cfAccountId.trim()) {
 			toastManager.add({
 				title: "Both API Token and Account ID are required",
@@ -148,9 +152,31 @@ function PlatformSettingsSection() {
 			});
 			return;
 		}
+
+		// Verify credentials before saving
+		setIsVerifying(true);
+		try {
+			await api.detectCfDomains({
+				cfApiToken: creds.cfApiToken.trim(),
+				cfAccountId: creds.cfAccountId.trim(),
+			});
+		} catch {
+			toastManager.add({
+				title: "Verification failed",
+				description: "The provided Cloudflare API Token or Account ID is invalid. Please check and try again.",
+				variant: "error",
+			});
+			setIsVerifying(false);
+			return;
+		}
+		setIsVerifying(false);
+
+		// Save after verification
+		setIsSaving(true);
 		saveCfCredentials(creds);
+		setIsSaving(false);
 		setHasChanges(false);
-		toastManager.add({ title: "Cloudflare credentials saved" });
+		toastManager.add({ title: "Cloudflare credentials verified and saved" });
 	};
 
 	return (
@@ -272,9 +298,10 @@ function PlatformSettingsSection() {
 							variant="primary"
 							size="sm"
 							onClick={handleSave}
-							disabled={!hasChanges || !creds.cfApiToken.trim() || !creds.cfAccountId.trim()}
+							disabled={!hasChanges || isVerifying || isSaving || !creds.cfApiToken.trim() || !creds.cfAccountId.trim()}
+							loading={isVerifying || isSaving}
 						>
-							Save Credentials
+							{isVerifying ? "Verifying…" : isSaving ? "Saving…" : "Verify & Save"}
 						</Button>
 					</div>
 				</div>
