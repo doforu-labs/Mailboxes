@@ -2,229 +2,532 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Badge, Button, Input, Loader, Switch, useKumoToastManager } from "@cloudflare/kumo";
-import { RobotIcon, ArrowCounterClockwiseIcon, GearSixIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router";
-import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
-import type { AiProviderSettings } from "~/types";
+import {
+	Badge,
+	Button,
+	Dialog,
+	Loader,
+	useKumoToastManager,
+} from "@cloudflare/kumo";
+import {
+	CaretDownIcon,
+	CaretRightIcon,
+	GearSixIcon,
+	GlobeIcon,
+	LinkIcon,
+	PlusIcon,
+	TrashIcon,
+	AtIcon,
+	EyeIcon,
+	EyeSlashIcon,
+} from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import { Link as RouterLink } from "react-router";
+import api from "~/services/api";
+import {
+	useDeleteDomain,
+	useDomains,
+} from "~/queries/domains";
+import type { Domain } from "~/types";
+import { StatusBadge } from "~/components/DomainStatusBadge";
+import { AddDomainWizard } from "~/components/AddDomainWizard";
+import { CatchAllDialog } from "~/components/CatchAllDialog";
 
-// Placeholder shown in the textarea when no custom prompt is set.
-// The authoritative default prompt lives in workers/agent/index.ts (DEFAULT_SYSTEM_PROMROMPT).
-const PROMPT_PLACEHOLDER = `You are an email assistant that helps manage this inbox. You read emails, draft replies, and help organize conversations.\n\nWrite like a real person. Short, direct, flowing prose. Plain text only.\n\n(Leave empty to use the full built-in default prompt)`;
+// ── CF Credentials (localStorage) ────────────────────────────────
 
-export default function SettingsRoute() {
-	const { mailboxId } = useParams<{ mailboxId: string }>();
+const CF_CREDENTIALS_KEY = "mailboxes_cf_credentials";
+
+interface CfCredentials {
+	cfApiToken: string;
+	cfAccountId: string;
+}
+
+function loadCfCredentials(): CfCredentials {
+	try {
+		const raw = localStorage.getItem(CF_CREDENTIALS_KEY);
+		if (!raw) return { cfApiToken: "", cfAccountId: "" };
+		const parsed = JSON.parse(raw);
+		return {
+			cfApiToken: parsed.cfApiToken ?? "",
+			cfAccountId: parsed.cfAccountId ?? "",
+		};
+	} catch {
+		return { cfApiToken: "", cfAccountId: "" };
+	}
+}
+
+function saveCfCredentials(creds: CfCredentials): void {
+	localStorage.setItem(CF_CREDENTIALS_KEY, JSON.stringify(creds));
+}
+
+// ── CF Token Template URL ────────────────────────────────────────
+
+const CF_TOKEN_TEMPLATE_URL = (() => {
+	const permissions = [
+		{ key: "dns", type: "edit" },
+		{ key: "zone_settings", type: "edit" },
+	];
+	return `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
+		JSON.stringify(permissions)
+	)}&accountId=*&zoneId=all&name=Mailboxes%20Token`;
+})();
+
+// ── Domain Status Indicators ─────────────────────────────────────
+
+function DomainStatusIndicators({ domain }: { domain: Domain }) {
+	const isReceiving = !!domain.cf_zone_id;
+	const isSending = !!domain.resend_api_key && domain.status === "verified";
+
+	return (
+		<div className="flex items-center gap-2 mt-1">
+			<span
+				className="inline-flex items-center gap-1 text-[11px] font-medium"
+				title={
+					isReceiving
+						? "Email Routing active — CF-managed domain"
+						: "No Cloudflare zone linked — Email Routing not configured"
+				}
+			>
+				<span
+					className={`inline-block h-1.5 w-1.5 rounded-full ${
+						isReceiving ? "bg-green-500" : "bg-amber-400"
+					}`}
+				/>
+				<span className={isReceiving ? "text-green-600" : "text-amber-600"}>
+					Receiving
+				</span>
+			</span>
+			<span
+				className="inline-flex items-center gap-1 text-[11px] font-medium"
+				title={
+					isSending
+						? "Resend API key configured and DNS verified"
+						: !domain.resend_api_key
+							? "No Resend API key — sending not configured"
+							: "DNS not yet verified — sending unavailable"
+				}
+			>
+				<span
+					className={`inline-block h-1.5 w-1.5 rounded-full ${
+						isSending ? "bg-green-500" : "bg-amber-400"
+					}`}
+				/>
+				<span className={isSending ? "text-green-600" : "text-amber-600"}>
+					Sending
+				</span>
+			</span>
+		</div>
+	);
+}
+
+// ── Platform Settings ────────────────────────────────────────────
+
+function PlatformSettingsSection() {
 	const toastManager = useKumoToastManager();
-	const { data: mailbox } = useMailbox(mailboxId);
-	const updateMailboxMutation = useUpdateMailbox();
+	const [isExpanded, setIsExpanded] = useState(false);
+	const [creds, setCreds] = useState<CfCredentials>(loadCfCredentials);
+	const [showToken, setShowToken] = useState(false);
+	const [showAccountId, setShowAccountId] = useState(false);
+	const [hasChanges, setHasChanges] = useState(false);
 
-	const [displayName, setDisplayName] = useState("");
-	const [agentPrompt, setAgentPrompt] = useState("");
+	const isConfigured = !!(creds.cfApiToken.trim() && creds.cfAccountId.trim());
 
-	// AI Provider state
-	const [useCustomAi, setUseCustomAi] = useState(false);
-	const [aiBaseUrl, setAiBaseUrl] = useState("");
-	const [aiModelName, setAiModelName] = useState("");
-	const [aiApiKey, setAiApiKey] = useState("");
-	const [showAiApiKey, setShowAiApiKey] = useState(false);
+	// Track changes
+	useEffect(() => {
+		const saved = loadCfCredentials();
+		setHasChanges(
+			creds.cfApiToken !== saved.cfApiToken ||
+				creds.cfAccountId !== saved.cfAccountId
+		);
+	}, [creds]);
 
+	const [isVerifying, setIsVerifying] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 
-	useEffect(() => {
-		if (mailbox) {
-			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
-			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
-			const ap = mailbox.settings?.aiProvider;
-			setUseCustomAi(ap?.provider === "openai-compatible" && !!ap?.baseUrl);
-			setAiBaseUrl(ap?.baseUrl || "");
-			setAiModelName(ap?.modelName || "");
-			setAiApiKey(ap?.apiKey || "");
-		}
-	}, [mailbox]);
-
 	const handleSave = async () => {
-		if (!mailbox || !mailboxId) return;
+		if (!creds.cfApiToken.trim() || !creds.cfAccountId.trim()) {
+			toastManager.add({
+				title: "Both API Token and Account ID are required",
+				variant: "error",
+			});
+			return;
+		}
 
-		setIsSaving(true);
-
-		const aiProviderSettings: AiProviderSettings | undefined =
-			useCustomAi && aiBaseUrl.trim()
-				? {
-						provider: "openai-compatible",
-						baseUrl: aiBaseUrl.trim().replace(/\/+$/, ""),
-						modelName: aiModelName.trim() || undefined,
-						apiKey: aiApiKey.trim() || undefined,
-					}
-				: undefined;
-
-		const settings = {
-			...mailbox.settings,
-			fromName: displayName,
-			agentSystemPrompt: agentPrompt.trim() || undefined,
-			aiProvider: aiProviderSettings,
-		};
+		// Verify credentials before saving
+		setIsVerifying(true);
 		try {
-			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
-			toastManager.add({ title: "Settings saved!" });
+			await api.detectCfDomains({
+				cfApiToken: creds.cfApiToken.trim(),
+				cfAccountId: creds.cfAccountId.trim(),
+			});
 		} catch {
 			toastManager.add({
-				title: "Failed to save settings",
+				title: "Verification failed",
+				description: "The provided Cloudflare API Token or Account ID is invalid. Please check and try again.",
+				variant: "error",
+			});
+			setIsVerifying(false);
+			return;
+		}
+		setIsVerifying(false);
+
+		// Save after verification
+		setIsSaving(true);
+		saveCfCredentials(creds);
+		setIsSaving(false);
+		setHasChanges(false);
+		toastManager.add({ title: "Cloudflare credentials verified successfully" });
+	};
+
+	return (
+		<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden mb-6">
+			{/* Collapsed header */}
+			<button
+				type="button"
+				className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-kumo-fill/50"
+				onClick={() => setIsExpanded(!isExpanded)}
+			>
+				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-kumo-default">
+					<GearSixIcon size={16} />
+				</div>
+				<div className="min-w-0 flex-1">
+					<span className="text-sm font-medium text-kumo-default">
+						Platform Settings
+					</span>
+					<span className="text-xs text-kumo-subtle ml-2">
+						Cloudflare API credentials for domain detection
+					</span>
+				</div>
+				<Badge variant={isConfigured ? "success" : "warning"}>
+					{isConfigured ? "Configured" : "Not configured"}
+				</Badge>
+				{isExpanded ? (
+					<CaretDownIcon size={16} className="text-kumo-muted shrink-0" />
+				) : (
+					<CaretRightIcon size={16} className="text-kumo-muted shrink-0" />
+				)}
+			</button>
+
+			{/* Expanded content */}
+			{isExpanded && (
+				<div className="border-t border-kumo-line px-5 py-5 space-y-4">
+					<div>
+						<label className="mb-1 block text-sm font-medium text-kumo-default">
+							Cloudflare API Token
+						</label>
+						<div className="relative">
+							<input
+								type={showToken ? "text" : "password"}
+								className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+								placeholder="••••••••••••••••••••••••••••••••••••••••"
+								value={creds.cfApiToken}
+								onChange={(e) =>
+									setCreds((c) => ({ ...c, cfApiToken: e.target.value }))
+								}
+							/>
+							<button
+								type="button"
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+								onClick={() => setShowToken(!showToken)}
+							>
+								{showToken ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+							</button>
+						</div>
+					</div>
+					<div>
+						<label className="mb-1 block text-sm font-medium text-kumo-default">
+							Cloudflare Account ID
+						</label>
+						<div className="relative">
+							<input
+								type={showAccountId ? "text" : "password"}
+								className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+								placeholder="••••••••••••••••••••••••••••••••••••••••"
+								value={creds.cfAccountId}
+								onChange={(e) =>
+									setCreds((c) => ({ ...c, cfAccountId: e.target.value }))
+								}
+							/>
+							<button
+								type="button"
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+								onClick={() => setShowAccountId(!showAccountId)}
+							>
+								{showAccountId ? (
+									<EyeSlashIcon size={16} />
+								) : (
+									<EyeIcon size={16} />
+								)}
+							</button>
+						</div>
+					</div>
+
+					<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+						<p className="text-xs text-kumo-subtle">
+							<a
+								href={CF_TOKEN_TEMPLATE_URL}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
+							>
+								<LinkIcon size={12} />
+								Create a pre-configured token →
+							</a>
+						</p>
+						<p className="text-xs text-kumo-subtle mt-2">
+							Required permissions / 需要的权限:
+						</p>
+						<ul className="text-xs text-kumo-subtle list-disc list-inside mt-1 space-y-0.5">
+							<li>
+								Zone: DNS Edit / 区域: DNS 编辑
+							</li>
+							<li>
+								Zone: Zone Settings Edit / 区域: 区域设置 编辑
+							</li>
+							<li>
+								Zone: Email Routing Rules Edit / 区域: 电子邮件路由规则 编辑
+							</li>
+						</ul>
+						<p className="text-xs text-kumo-subtle mt-2">
+							The link above pre-fills DNS + Zone Settings permissions. Click "Add more" / "添加更多" to also add Email Routing Rules, then copy the token here.
+						</p>
+					</div>
+
+					<div className="flex justify-end">
+						<Button
+							variant="primary"
+							size="sm"
+							onClick={handleSave}
+							disabled={isVerifying || isSaving || !creds.cfApiToken.trim() || !creds.cfAccountId.trim()}
+							loading={isVerifying || isSaving}
+						>
+							{isVerifying ? "Verifying…" : isSaving ? "Saving…" : "Verify & Save"}
+						</Button>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── Page ───────────────────────────────────────────────────────────
+
+export function meta() {
+	return [{ title: "Domains — Mailboxes" }];
+}
+
+export default function DomainsRoute() {
+	const toastManager = useKumoToastManager();
+	const { data: domains = [], isFetched: domainsFetched } = useDomains();
+	const deleteDomain = useDeleteDomain();
+
+	const [isCreateOpen, setIsCreateOpen] = useState(false);
+	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+	const [domainToDelete, setDomainToDelete] = useState<Domain | null>(null);
+	const [isDeleting, setIsDeleting] = useState(false);
+	const [isCatchAllOpen, setIsCatchAllOpen] = useState(false);
+	const [catchAllDomain, setCatchAllDomain] = useState<Domain | null>(null);
+
+	const handleDelete = async () => {
+		if (!domainToDelete) return;
+		setIsDeleting(true);
+		try {
+			await deleteDomain.mutateAsync(domainToDelete.id);
+			toastManager.add({ title: "Domain deleted" });
+			setIsDeleteOpen(false);
+			setDomainToDelete(null);
+		} catch {
+			toastManager.add({
+				title: "Failed to delete domain",
 				variant: "error",
 			});
 		} finally {
-			setIsSaving(false);
+			setIsDeleting(false);
 		}
 	};
 
-	const handleResetPrompt = useCallback(() => {
-		setAgentPrompt("");
-	}, []);
-
-	if (!mailbox) {
-		return (
-			<div className="flex justify-center py-20">
-				<Loader size="lg" />
-			</div>
-		);
-	}
-
-	const isCustomPrompt = agentPrompt.trim().length > 0;
-	const isCustomAi = useCustomAi && aiBaseUrl.trim().length > 0;
-
 	return (
-		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
-			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
-
-			<div className="space-y-6">
-				{/* General */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
-						General
-					</div>
-					<div className="space-y-3">
-						<Input
-							label="Display Name"
-							value={displayName}
-							onChange={(e) => setDisplayName(e.target.value)}
-						/>
-						<Input label="Email" type="email" value={mailbox.email} disabled />
-					</div>
-				</div>
-
-				{/* AI Model */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="flex items-center justify-between mb-4">
-						<div className="flex items-center gap-2">
-							<GearSixIcon size={16} weight="duotone" className="text-kumo-subtle" />
-							<span className="text-sm font-medium text-kumo-default">
-								AI Model
-							</span>
-							{isCustomAi ? (
-								<Badge variant="primary">Custom</Badge>
-							) : (
-								<Badge variant="secondary">Cloudflare</Badge>
-							)}
-						</div>
-						<Switch
-							checked={useCustomAi}
-							onCheckedChange={(checked) => setUseCustomAi(checked)}
-						/>
-					</div>
-
-					{useCustomAi ? (
-						<div className="space-y-3">
-							<Input
-								label="Base URL"
-								type="url"
-								placeholder="https://api.deepseek.com/v1"
-								value={aiBaseUrl}
-								onChange={(e) => setAiBaseUrl(e.target.value)}
-							/>
-							<Input
-								label="Model Name"
-								placeholder="deepseek-v4-flash"
-								value={aiModelName}
-								onChange={(e) => setAiModelName(e.target.value)}
-							/>
-							<div className="relative">
-								<Input
-									label="API Key"
-									type={showAiApiKey ? "text" : "password"}
-									placeholder="sk-..."
-									value={aiApiKey}
-									onChange={(e) => setAiApiKey(e.target.value)}
-								/>
-								<button
-									type="button"
-									onClick={() => setShowAiApiKey(!showAiApiKey)}
-									className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
-									title={showAiApiKey ? "Hide key" : "Show key"}
+		<div className="min-h-screen bg-kumo-recessed">
+			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
+				{/* Header */}
+				<div className="mb-8">
+					<div className="flex items-center justify-between">
+						<div>
+							<div className="mb-2">
+								<RouterLink
+									to="/"
+									className="text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
 								>
-									{showAiApiKey ? "●" : "○"}
-								</button>
+									← Back to Mailboxes
+								</RouterLink>
 							</div>
-							<p className="text-xs text-kumo-subtle">
-								Falls back to Cloudflare Workers AI if the custom provider is unreachable.
-							</p>
+							<h1 className="text-2xl font-bold text-kumo-default">
+								Domains
+							</h1>
 						</div>
-					) : (
-						<p className="text-xs text-kumo-subtle">
-							Using <strong>Cloudflare Workers AI</strong> — {aiModelName || "@cf/moonshotai/kimi-k2.6"}.
-							Toggle the switch above to connect a custom OpenAI-compatible provider.
-						</p>
-					)}
-				</div>
-
-				{/* Agent System Prompt */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="flex items-center justify-between mb-4">
-						<div className="flex items-center gap-2">
-							<RobotIcon size={16} weight="duotone" className="text-kumo-subtle" />
-							<span className="text-sm font-medium text-kumo-default">
-								AI Agent Prompt
-							</span>
-							{isCustomPrompt ? (
-								<Badge variant="primary">Custom</Badge>
-							) : (
-								<Badge variant="secondary">Default</Badge>
-							)}
-						</div>
-						{isCustomPrompt && (
-							<Button
-								variant="ghost"
-								size="xs"
-								icon={<ArrowCounterClockwiseIcon size={14} />}
-								onClick={handleResetPrompt}
-							>
-								Reset to default
-							</Button>
-						)}
+						<Button
+							variant="primary"
+							icon={<PlusIcon size={16} />}
+							onClick={() => setIsCreateOpen(true)}
+						>
+							Add Domain
+						</Button>
 					</div>
-					<p className="text-xs text-kumo-subtle mb-3">
-						Customize how the AI agent behaves for this mailbox.
-						Leave empty to use the built-in default prompt.
-					</p>
-					<textarea
-						value={agentPrompt}
-						onChange={(e) => setAgentPrompt(e.target.value)}
-						placeholder={PROMPT_PLACEHOLDER}
-						rows={12}
-						className="w-full resize-y rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none focus:ring-1 focus:ring-kumo-ring font-mono leading-relaxed"
-					/>
-					<p className="text-xs text-kumo-subtle mt-2">
-						The prompt is sent as the system message to the AI model.
-						It controls the agent's personality, writing style, and behavior rules.
-					</p>
 				</div>
 
-				{/* Save */}
-				<div className="flex justify-end">
-					<Button variant="primary" onClick={handleSave} loading={isSaving}>
-						Save Changes
-					</Button>
-				</div>
+				{/* Platform Settings */}
+				<PlatformSettingsSection />
+
+				{/* Domain List */}
+				{!domainsFetched ? (
+					<div className="flex justify-center py-16">
+						<Loader size="lg" />
+					</div>
+				) : domains.length > 0 ? (
+					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
+						{domains.map((domain, idx) => (
+							<div
+								key={domain.id}
+								className={`group flex items-center gap-4 px-5 py-4 transition-colors ${
+									idx > 0 ? "border-t border-kumo-line" : ""
+								}`}
+							>
+								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+									<GlobeIcon size={18} />
+								</div>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<span className="text-sm font-medium text-kumo-default truncate">
+											{domain.name}
+										</span>
+										<StatusBadge status={domain.status} />
+									</div>
+									<div className="text-xs text-kumo-subtle mt-0.5">
+										Added{" "}
+										{new Date(domain.created_at).toLocaleDateString(undefined, {
+											year: "numeric",
+											month: "short",
+											day: "numeric",
+										})}
+									</div>
+									<DomainStatusIndicators domain={domain} />
+									{domain.catch_all_mailbox && (
+										<div className="text-xs text-kumo-accent mt-0.5">
+											Catch-all: {domain.catch_all_mailbox}
+										</div>
+									)}
+								</div>
+								<Button
+									variant="ghost"
+									size="sm"
+									shape="square"
+									icon={<AtIcon size={16} />}
+									aria-label={`Catch-all for ${domain.name}`}
+									title={domain.catch_all_mailbox ? `Catch-all: ${domain.catch_all_mailbox}` : "Set catch-all mailbox"}
+									onClick={() => {
+										setCatchAllDomain(domain);
+										setIsCatchAllOpen(true);
+									}}
+								/>
+								<Button
+									variant="ghost"
+									size="sm"
+									shape="square"
+									icon={<TrashIcon size={16} />}
+									aria-label={`Delete domain ${domain.name}`}
+									onClick={() => {
+										setDomainToDelete(domain);
+										setIsDeleteOpen(true);
+									}}
+								/>
+							</div>
+						))}
+					</div>
+				) : (
+					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
+						<div className="flex flex-col items-center text-center">
+							<div className="mb-4">
+								<GlobeIcon
+									size={48}
+									weight="thin"
+									className="text-kumo-subtle"
+								/>
+							</div>
+							<h3 className="text-base font-semibold text-kumo-default mb-1.5">
+								No domains yet
+							</h3>
+							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
+								Add a domain to start sending and receiving emails with
+								custom addresses.
+							</p>
+							<Button
+								variant="primary"
+								icon={<PlusIcon size={16} />}
+								onClick={() => setIsCreateOpen(true)}
+							>
+								Add Domain
+							</Button>
+						</div>
+					</div>
+				)}
 			</div>
+
+			{/* Add Domain Wizard */}
+			{isCreateOpen && (
+				<AddDomainWizard
+					onClose={() => setIsCreateOpen(false)}
+					onSuccess={() => setIsCreateOpen(false)}
+				/>
+			)}
+
+			{/* Catch-all Mailbox Dialog */}
+			<CatchAllDialog
+				domain={catchAllDomain}
+				open={isCatchAllOpen}
+				onClose={() => {
+					setIsCatchAllOpen(false);
+					setCatchAllDomain(null);
+				}}
+			/>
+
+			{/* Delete Domain Dialog */}
+			<Dialog.Root
+				open={isDeleteOpen}
+				onOpenChange={(open) => {
+					setIsDeleteOpen(open);
+					if (!open) setDomainToDelete(null);
+				}}
+			>
+				<Dialog size="sm" className="p-6">
+					<Dialog.Title className="text-base font-semibold mb-2">
+						Delete Domain
+					</Dialog.Title>
+					<p className="text-kumo-subtle text-sm mb-5">
+						Are you sure you want to delete{" "}
+						<strong className="text-kumo-default">
+							{domainToDelete?.name}
+						</strong>
+						? This will remove all DNS records and cannot be undone.
+					</p>
+					<div className="flex justify-end gap-2">
+						<Dialog.Close
+							render={(props) => (
+								<Button {...props} variant="secondary" size="sm">
+									Cancel
+								</Button>
+							)}
+						/>
+						<Button
+							variant="destructive"
+							size="sm"
+							loading={isDeleting}
+							onClick={handleDelete}
+						>
+							Delete
+						</Button>
+					</div>
+				</Dialog>
+			</Dialog.Root>
 		</div>
 	);
 }

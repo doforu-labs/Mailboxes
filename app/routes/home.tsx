@@ -300,75 +300,92 @@ export default function HomeRoute() {
 									className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden"
 								>
 									{/* Domain header row */}
-									<div className="flex items-center gap-3 px-5 py-3 border-b border-kumo-line bg-kumo-fill/50">
-										<GlobeIcon
-											size={16}
-											className="shrink-0 text-kumo-subtle"
-										/>
-										<span className="text-sm font-semibold text-kumo-default">
-											{isOther ? "Other" : domain.name}
-										</span>
-										{!isOther && <StatusBadge status={domain.status} />}
-										{groupMailboxes.length > 0 && (
-											<span className="text-xs text-kumo-subtle">
-												· {groupMailboxes.map((m) => m.name || m.email.split("@")[0]).join(", ")}
+									<div className="border-b border-kumo-line bg-kumo-fill/50">
+										{/* Row 1: Domain name, status, count, menu */}
+										<div className="flex items-center gap-3 px-5 py-3">
+											<GlobeIcon
+												size={16}
+												className="shrink-0 text-kumo-subtle"
+											/>
+											<span className="text-sm font-semibold text-kumo-default">
+												{isOther ? "Other" : domain.name}
 											</span>
-										)}
-										<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
-											{groupMailboxes.length}
-										</span>
-										<div className="ml-auto" ref={menuRef}>
-											{!isOther && (
-												<div className="relative">
-													<button
-														type="button"
-														className="inline-flex items-center justify-center rounded-md p-1 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
-														onClick={() =>
-															setOpenMenu(openMenu === domainId ? null : domainId)
-														}
-														aria-label="Domain actions"
-													>
-														<DotsThreeVerticalIcon size={16} />
-													</button>
-													{openMenu === domainId && (
-														<div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-kumo-line bg-kumo-base py-1 shadow-lg">
-															<RouterLink
-																to="/domains"
-																className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
-																onClick={() => setOpenMenu(null)}
-															>
-																Edit
-															</RouterLink>
-															<RouterLink
-																to="/domains"
-																className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
-																onClick={() => setOpenMenu(null)}
-															>
-																Manage DNS
-															</RouterLink>
-															<button
-																type="button"
-																className="flex items-center gap-2 w-full px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint text-left"
-																onClick={() => handleApiKeyOpen(domain)}
-															>
-																<KeyIcon size={14} />
-																Resend API Key
-																{(domain as any).resend_api_key ? (
-																	<CheckCircleIcon size={12} className="ml-auto text-green-500" weight="fill" />
-																) : (
-																	<WarningIcon size={12} className="ml-auto text-amber-500" weight="fill" />
+											{!isOther && <StatusBadge status={domain.status} />}
+											<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
+												{groupMailboxes.length}
+											</span>
+											<div className="ml-auto" ref={menuRef}>
+												{!isOther && (
+													<div className="relative">
+														<button
+															type="button"
+															className="inline-flex items-center justify-center rounded-md p-1 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
+															onClick={() =>
+																setOpenMenu(openMenu === domainId ? null : domainId)
+															}
+															aria-label="Domain actions"
+														>
+															<DotsThreeVerticalIcon size={16} />
+														</button>
+														{openMenu === domainId && (
+															<div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-kumo-line bg-kumo-base py-1 shadow-lg">
+																<RouterLink
+																	to="/settings"
+																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
+																	onClick={() => setOpenMenu(null)}
+																>
+																	Edit
+																</RouterLink>
+																<RouterLink
+																	to="/settings"
+																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
+																	onClick={() => setOpenMenu(null)}
+																>
+																	Manage DNS
+																</RouterLink>
+																<button
+																	type="button"
+																	className="flex items-center gap-2 w-full px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint text-left"
+																	onClick={() => handleApiKeyOpen(domain)}
+																>
+																	<KeyIcon size={14} />
+																	Resend API Key
+																	{(domain as any).resend_api_key ? (
+																		<CheckCircleIcon size={12} className="ml-auto text-green-500" weight="fill" />
+																	) : (
+																		<WarningIcon size={12} className="ml-auto text-amber-500" weight="fill" />
+																	)}
+																</button>
+																{domain.catch_all_mailbox && (
+																	<div className="px-3 py-2 text-xs text-kumo-subtle">
+																		Catch-all: {domain.catch_all_mailbox}
+																	</div>
 																)}
-															</button>
-															{domain.catch_all_mailbox && (
-																<div className="px-3 py-2 text-xs text-kumo-subtle">
-																	Catch-all: {domain.catch_all_mailbox}
-																</div>
-															)}
-														</div>
-													)}
-												</div>
-											)}
+															</div>
+														)}
+													</div>
+												)}
+											</div>
 										</div>
+										{/* Row 2: Added date, receiving/sending status, catch-all */}
+										{!isOther && (
+											<div className="flex items-center gap-3 px-5 pb-2.5 text-[11px]">
+												<span className="text-kumo-subtle">
+													Added {domain.created_at ? new Date(domain.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+												</span>
+												<span className="inline-flex items-center gap-1">
+													<span className={`inline-block h-1.5 w-1.5 rounded-full ${domain.cf_zone_id ? "bg-green-500" : "bg-amber-400"}`} />
+													<span className={domain.cf_zone_id ? "text-green-600" : "text-amber-600"}>Receiving</span>
+												</span>
+												<span className="inline-flex items-center gap-1">
+													<span className={`inline-block h-1.5 w-1.5 rounded-full ${(domain as any).resend_api_key && domain.status === "verified" ? "bg-green-500" : "bg-amber-400"}`} />
+													<span className={(domain as any).resend_api_key && domain.status === "verified" ? "text-green-600" : "text-amber-600"}>Sending</span>
+												</span>
+												{domain.catch_all_mailbox && (
+													<span className="text-blue-600">Catch-all: {domain.catch_all_mailbox}</span>
+												)}
+											</div>
+										)}
 									</div>
 
 									{/* Mailbox rows */}
@@ -432,7 +449,7 @@ export default function HomeRoute() {
 								mailbox.
 							</p>
 							<RouterLink
-							to="/domains"
+							to="/settings"
 							className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-kumo-brand text-white hover:bg-kumo-brand/90 no-underline"
 						>
 							<PlusIcon size={16} />
@@ -490,7 +507,7 @@ export default function HomeRoute() {
 								) : (
 									<p className="text-xs text-kumo-subtle">
 										No domains configured yet.{" "}
-										<RouterLink to="/domains" className="underline">
+										<RouterLink to="/settings" className="underline">
 											Add a domain
 										</RouterLink>{" "}
 										first.
