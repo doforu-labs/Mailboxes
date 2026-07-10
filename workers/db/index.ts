@@ -1122,6 +1122,7 @@ export interface DomainData {
 	cf_account_id?: string | null;
 	status: string;
 	catch_all_mailbox?: string | null;
+	resend_api_key?: string | null;
 	created_at: string;
 }
 
@@ -1131,6 +1132,7 @@ export interface DomainUpdate {
 	cf_account_id?: string | null;
 	status?: string;
 	catch_all_mailbox?: string | null;
+	resend_api_key?: string | null;
 }
 
 export async function createDomain(
@@ -1138,8 +1140,8 @@ export async function createDomain(
 	data: DomainData,
 ): Promise<void> {
 	await db.prepare(
-		`INSERT INTO domains (id, name, resend_domain_id, cf_zone_id, cf_account_id, status, created_at)
-		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+		`INSERT INTO domains (id, name, resend_domain_id, cf_zone_id, cf_account_id, status, resend_api_key, created_at)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
 	).bind(
 		data.id,
 		data.name,
@@ -1147,6 +1149,7 @@ export async function createDomain(
 		data.cf_zone_id ?? null,
 		data.cf_account_id ?? null,
 		data.status,
+		data.resend_api_key ?? null,
 		data.created_at,
 	).run();
 }
@@ -1201,6 +1204,7 @@ export async function updateDomain(
 	if (updates.cf_account_id !== undefined) setClause.cf_account_id = updates.cf_account_id ?? null;
 	if (updates.status !== undefined) setClause.status = updates.status;
 	if (updates.catch_all_mailbox !== undefined) setClause.catch_all_mailbox = updates.catch_all_mailbox ?? null;
+	if (updates.resend_api_key !== undefined) setClause.resend_api_key = updates.resend_api_key ?? null;
 
 	if (Object.keys(setClause).length === 0) {
 		return getDomain(db, id);
@@ -1242,13 +1246,13 @@ export async function getMailboxDomain(
 
 /**
  * Resolve the Resend API key for a given mailbox.
- * Priority: 1) per-mailbox R2 settings
+ * Priority: 1) per-mailbox R2 settings, 2) per-domain resend_api_key
  */
 export async function resolveResendApiKey(
 	env: { DB: D1Database; BUCKET: R2Bucket },
 	mailboxId: string,
 ): Promise<string | null> {
-	// Check per-mailbox R2 settings
+	// 1. Check per-mailbox R2 settings
 	try {
 		const obj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
 		if (obj) {
@@ -1256,6 +1260,16 @@ export async function resolveResendApiKey(
 			if (typeof settings.resendApiKey === "string" && settings.resendApiKey) {
 				return settings.resendApiKey;
 			}
+		}
+	} catch {
+		// Ignore read errors
+	}
+
+	// 2. Fallback: per-domain resend_api_key from domains table
+	try {
+		const domain = await getMailboxDomain(env.DB, mailboxId);
+		if (domain?.resend_api_key) {
+			return domain.resend_api_key;
 		}
 	} catch {
 		// Ignore read errors

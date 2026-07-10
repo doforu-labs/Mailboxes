@@ -44,3 +44,14 @@ export function useSetCatchAll() {
 		},
 	});
 }
+
+export function useUpdateDomainApiKey() {
+	const qc = useQueryClient();
+	return useMutation<Domain, Error, { domainId: string; apiKey: string }>({
+		mutationFn: ({ domainId, apiKey }) =>
+			api.domains.updateApiKey(domainId, apiKey) as Promise<Domain>,
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: queryKeys.domains.all });
+		},
+	});
+}

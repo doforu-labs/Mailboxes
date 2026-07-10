@@ -238,6 +238,8 @@ const api = {
 		delete: (id: string) => del<void>(`/api/v1/domains/${id}`),
 		setCatchAll: (domainId: string, catchAllMailbox: string | null) =>
 			put<Domain>(`/api/v1/domains/${domainId}/catch-all`, { catch_all_mailbox: catchAllMailbox }),
+		updateApiKey: (domainId: string, apiKey: string) =>
+			put<Domain>(`/api/v1/domains/${domainId}/api-key`, { resend_api_key: apiKey }),
 	},
 
 	verifyResendKey: (mailboxId: string, apiKey: string) =>

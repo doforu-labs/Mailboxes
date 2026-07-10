@@ -286,6 +286,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 				await dbService.updateDomain(c.env.DB, existingDomain.id, {
 					resend_domain_id: domainId,
 					status: normalizeDomainStatus(verifyData.status),
+					resend_api_key: resendApiKey,
 				});
 			} else {
 				await dbService.createDomain(c.env.DB, {
@@ -293,6 +294,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 					name: domain.toLowerCase(),
 					resend_domain_id: domainId,
 					status: normalizeDomainStatus(verifyData.status),
+					resend_api_key: resendApiKey,
 					created_at: new Date().toISOString(),
 				});
 			}
@@ -495,6 +497,7 @@ setup.post("/api/v1/domains", async (c) => {
 			id: domainId,
 			name: domain.toLowerCase(),
 			status: "pending",
+			resend_api_key: resendApiKey || null,
 			created_at: now,
 		});
 
@@ -689,6 +692,7 @@ setup.post("/api/v1/domains", async (c) => {
 			await dbService.updateDomain(c.env.DB, domainId, {
 				resend_domain_id: resendDomainId,
 				status: "pending",
+				resend_api_key: resendApiKey,
 			});
 		} else {
 			// Domain record created but Resend setup failed — leave as pending
@@ -785,6 +789,31 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ error: `Failed to update catch-all: ${msg}` }, 500);
+	}
+});
+
+// PUT /api/v1/domains/:id/api-key — update domain-level Resend API key
+setup.put("/api/v1/domains/:id/api-key", async (c) => {
+	try {
+		const id = c.req.param("id");
+		const body = await c.req.json<{ resend_api_key: string | null }>();
+
+		const domain = await dbService.getDomain(c.env.DB, id);
+		if (!domain) {
+			return c.json({ error: "Domain not found" }, 404);
+		}
+
+		const { resend_api_key } = body;
+
+		await dbService.updateDomain(c.env.DB, id, {
+			resend_api_key: resend_api_key || null,
+		});
+
+		const updated = await dbService.getDomain(c.env.DB, id);
+		return c.json(updated);
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `Failed to update API key: ${msg}` }, 500);
 	}
 });
 

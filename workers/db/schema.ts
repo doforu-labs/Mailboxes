@@ -65,5 +65,6 @@ export const domains = sqliteTable("domains", {
 	cf_account_id: text("cf_account_id"),
 	status: text("status").notNull().default("pending"),
 	catch_all_mailbox: text("catch_all_mailbox"),
+	resend_api_key: text("resend_api_key"),
 	created_at: text("created_at").notNull(),
 });

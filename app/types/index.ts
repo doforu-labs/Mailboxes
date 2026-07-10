@@ -78,6 +78,7 @@ export interface Domain {
 	cf_account_id?: string;
 	status: 'pending' | 'verified' | 'failed';
 	catch_all_mailbox?: string | null;
+	resend_api_key?: string | null;
 	created_at: string;
 }
 

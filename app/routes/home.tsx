@@ -12,7 +12,9 @@ import {
 import {
 	DotsThreeVerticalIcon,
 	EnvelopeIcon,
+	EyeIcon,
 	GlobeIcon,
+	KeyIcon,
 	PlusIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
@@ -23,7 +25,7 @@ import {
 	useDeleteMailbox,
 	useMailboxes,
 } from "~/queries/mailboxes";
-import { useDomains } from "~/queries/domains";
+import { useDomains, useUpdateDomainApiKey } from "~/queries/domains";
 import api from "~/services/api";
 import { StatusBadge } from "~/components/DomainStatusBadge";
 import type { Domain, Mailbox } from "~/types";
@@ -56,6 +58,14 @@ export default function HomeRoute() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [openMenu, setOpenMenu] = useState<string | null>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
+
+	// Domain API Key dialog state
+	const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
+	const [apiKeyDomain, setApiKeyDomain] = useState<{ id: string; name: string } | null>(null);
+	const [apiKeyValue, setApiKeyValue] = useState("");
+	const [showApiKey, setShowApiKey] = useState(false);
+	const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+	const updateApiKey = useUpdateDomainApiKey();
 
 	// Close menu on outside click
 	useEffect(() => {
@@ -173,6 +183,35 @@ export default function HomeRoute() {
 		}
 	};
 
+	const handleApiKeyOpen = (domain: Domain) => {
+		setApiKeyDomain({ id: domain.id, name: domain.name });
+		setApiKeyValue("");
+		setShowApiKey(false);
+		setIsApiKeyOpen(true);
+		setOpenMenu(null);
+	};
+
+	const handleApiKeySave = async () => {
+		if (!apiKeyDomain) return;
+		setIsSavingApiKey(true);
+		try {
+			await updateApiKey.mutateAsync({
+				domainId: apiKeyDomain.id,
+				apiKey: apiKeyValue.trim(),
+			});
+			toastManager.add({ title: `API Key updated for ${apiKeyDomain.name}` });
+			setIsApiKeyOpen(false);
+			setApiKeyDomain(null);
+		} catch {
+			toastManager.add({
+				title: "Failed to update API Key",
+				variant: "error",
+			});
+		} finally {
+			setIsSavingApiKey(false);
+		}
+	};
+
 	const handleDelete = async () => {
 		if (!mailboxToDelete) return;
 		setIsDeleting(true);
@@ -275,6 +314,14 @@ export default function HomeRoute() {
 															>
 																Manage DNS
 															</RouterLink>
+															<button
+																type="button"
+																className="flex items-center gap-2 w-full px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint text-left"
+																onClick={() => handleApiKeyOpen(domain)}
+															>
+																<KeyIcon size={14} />
+																API Key
+															</button>
 															{domain.catch_all_mailbox && (
 																<div className="px-3 py-2 text-xs text-kumo-subtle">
 																	Catch-all: {domain.catch_all_mailbox}
@@ -477,6 +524,54 @@ export default function HomeRoute() {
 						>
 							Delete
 						</Button>
+					</div>
+				</Dialog>
+			</Dialog.Root>
+
+			{/* API Key Dialog */}
+			<Dialog.Root open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen}>
+				<Dialog size="sm" className="p-6">
+					<Dialog.Title className="text-base font-semibold mb-1">
+						API Key — {apiKeyDomain?.name}
+					</Dialog.Title>
+					<p className="text-sm text-kumo-subtle mb-5">
+						Configure the Resend API key for this domain.
+					</p>
+					<div className="space-y-4">
+						<div className="relative">
+							<Input
+								label="Resend API Key"
+								type={showApiKey ? "text" : "password"}
+								placeholder="re_..."
+								value={apiKeyValue}
+								onChange={(e) => setApiKeyValue(e.target.value)}
+							/>
+							<button
+								type="button"
+								onClick={() => setShowApiKey(!showApiKey)}
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
+								title={showApiKey ? "Hide key" : "Show key"}
+							>
+								<EyeIcon size={16} weight={showApiKey ? "fill" : "regular"} />
+							</button>
+						</div>
+						<div className="flex justify-end gap-2 pt-2">
+							<Dialog.Close
+								render={(props) => (
+									<Button {...props} variant="secondary" size="sm">
+										Cancel
+									</Button>
+								)}
+							/>
+							<Button
+								variant="primary"
+								size="sm"
+								loading={isSavingApiKey}
+								onClick={handleApiKeySave}
+							>
+								Save
+							</Button>
+						</div>
 					</div>
 				</Dialog>
 			</Dialog.Root>

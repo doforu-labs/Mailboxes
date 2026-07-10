@@ -8,8 +8,7 @@
  * Uses the Resend REST API (https://api.resend.com/emails) to send emails.
  * Works on Workers Free plan — no need for Workers Paid's send_email binding.
  *
- * The API key can be set per-mailbox in the Settings UI (stored in R2),
- * or globally via the RESEND_API_KEY wrangler secret as a fallback.
+ * API key resolution: per-mailbox R2 settings → per-domain DB record → error.
  *
  * See: https://resend.com/docs/api-reference/emails/send-email
  */
@@ -118,7 +117,7 @@ export async function sendEmailFromMailbox(
 	_fallbackKey?: string,
 	db?: D1Database,
 ): Promise<{ messageId: string }> {
-	// Read API key from mailbox settings in R2
+	// 1. Read API key from mailbox settings in R2 (per-mailbox, highest priority)
 	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
 	if (obj) {
 		const settings = (await obj.json()) as { resendApiKey?: string };
@@ -127,7 +126,26 @@ export async function sendEmailFromMailbox(
 		}
 	}
 
+	// 2. Fallback: per-domain resend_api_key from domains table
+	if (db) {
+		try {
+			const atIdx = mailboxId.indexOf("@");
+			if (atIdx !== -1) {
+				const domainName = mailboxId.substring(atIdx + 1).toLowerCase();
+				const result = await db
+					.prepare("SELECT resend_api_key FROM domains WHERE name = ?")
+					.bind(domainName)
+					.first<{ resend_api_key?: string | null }>();
+				if (result?.resend_api_key) {
+					return sendEmail(result.resend_api_key, params);
+				}
+			}
+		} catch {
+			// Ignore domain lookup errors
+		}
+	}
+
 	throw new Error(
-		"Resend API key not configured for this mailbox. Go to Settings > Account to add one.",
+		"Resend API key not configured for this mailbox. Go to Settings > Account to add one,\nor set a domain-level API key in Domain Settings.",
 	);
 }
