@@ -48,6 +48,11 @@ app.use("*", async (c, next) => {
 		return next();
 	}
 
+	// Skip JWT for setup routes — first-time users have no Access policy yet
+	if (c.req.path.startsWith("/api/v1/setup/")) {
+		return next();
+	}
+
 	const { POLICY_AUD, TEAM_DOMAIN } = c.env;
 
 	// Fail closed in production if Access is not configured.

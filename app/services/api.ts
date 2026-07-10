@@ -92,6 +92,41 @@ interface EmailListResponse {
 	totalCount: number;
 }
 
+export interface SetupStatus {
+	configured: boolean;
+	mailboxCount: number;
+	hasEmails: boolean;
+}
+
+export interface VerifyDomainRequest {
+	domain: string;
+	resendApiKey: string;
+	cfApiToken: string;
+	cfAccountId: string;
+}
+
+export interface DnsRecord {
+	name: string;
+	type: string;
+	status: string;
+}
+
+export interface VerifyResult {
+	domainId: string;
+	status: string;
+	dnsRecords: DnsRecord[];
+}
+
+export interface SetupEmailRoutingRequest {
+	domain: string;
+	cfApiToken: string;
+	cfAccountId: string;
+}
+
+export interface SetupResult {
+	success: boolean;
+}
+
 // ---------- API client ----------
 
 const api = {
@@ -160,6 +195,13 @@ const api = {
 	// Search
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, { params }),
+
+	// Setup
+	getSetupStatus: () => get<SetupStatus>("/api/v1/setup/status"),
+	verifyDomain: (data: VerifyDomainRequest) =>
+		post<VerifyResult>("/api/v1/setup/verify-domain", data),
+	setupEmailRouting: (data: SetupEmailRoutingRequest) =>
+		post<SetupResult>("/api/v1/setup/email-routing", data),
 };
 
 export default api;

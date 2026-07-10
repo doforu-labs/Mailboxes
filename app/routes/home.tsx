@@ -12,7 +12,7 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import { EnvelopeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
 import {
@@ -27,7 +27,7 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
-	const { data: mailboxes = [], refetch: refetchMailboxes } = useMailboxes();
+	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
 
@@ -42,6 +42,13 @@ export default function HomeRoute() {
 		email: string;
 	} | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
+
+	// Redirect to /setup on first launch if no mailboxes exist
+	useEffect(() => {
+		if (mailboxesFetched && mailboxes.length === 0) {
+			window.location.href = "/setup";
+		}
+	}, [mailboxesFetched, mailboxes]);
 
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();

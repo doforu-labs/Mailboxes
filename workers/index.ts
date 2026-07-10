@@ -3,6 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { type Context, Hono } from "hono";
+import setup from "./setup";
 import { cors } from "hono/cors";
 import PostalMime from "postal-mime";
 import { z } from "zod";
@@ -131,6 +132,9 @@ app.use("/api/*", cors({
 	},
 }));
 app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
+
+// ── Setup routes (exempt from JWT — mounted before auth checks) ──
+app.route("/", setup);
 
 // -- Config ---------------------------------------------------------
 
