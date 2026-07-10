@@ -23,11 +23,11 @@ import * as dbService from "../db";
  */
 export async function listMailboxes(
 	bucket: R2Bucket,
-): Promise<{ id: string; email: string }[]> {
+): Promise<{ id: string; email: string; created_at: string }[]> {
 	const list = await bucket.list({ prefix: "mailboxes/" });
 	return list.objects.map((obj) => {
 		const id = obj.key.replace("mailboxes/", "").replace(".json", "");
-		return { id, email: id };
+		return { id, email: id, created_at: obj.uploaded.toISOString() };
 	});
 }
 

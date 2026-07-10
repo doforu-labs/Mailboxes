@@ -94,9 +94,13 @@ export default function HomeRoute() {
 			}
 		}
 
-		// Sort mailboxes within each group by id descending (newest first)
+		// Sort mailboxes within each group by created_at descending (newest first)
 		for (const group of map.values()) {
-			group.mailboxes.sort((a, b) => b.id.localeCompare(a.id));
+			group.mailboxes.sort((a, b) => {
+				const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+				const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+				return tb - ta;
+			});
 		}
 
 		// Only return groups that have mailboxes

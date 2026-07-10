@@ -30,6 +30,7 @@ export interface Mailbox {
 	email: string;
 	name: string;
 	settings?: MailboxSettings;
+	created_at?: string;
 }
 
 export interface Email {
