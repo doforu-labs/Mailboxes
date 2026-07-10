@@ -468,10 +468,20 @@ export default function SetupRoute() {
 									>
 										Create a pre-configured token →
 									</a>
-									{" — "}Opens the Cloudflare Dashboard with DNS Edit
-									permission selected. Then click "Add more" to add
-									"Email Routing Rules" → Edit as well. Copy the token and paste it
-									here.
+								</p>
+								<p className="text-xs text-kumo-subtle mt-1.5">
+									Required permissions / 需要的权限:
+								</p>
+								<ul className="text-xs text-kumo-subtle list-disc list-inside mt-0.5">
+									<li>
+										Zone: DNS Edit / 区域: DNS 编辑
+									</li>
+									<li>
+										Zone: Email Routing Rules Edit / 区域: 电子邮件路由规则 编辑
+									</li>
+								</ul>
+								<p className="text-xs text-kumo-subtle mt-1.5">
+									The link above pre-fills DNS permission. Click "Add more" / "添加更多" to add Email Routing Rules, then copy the token here.
 								</p>
 							</div>
 
