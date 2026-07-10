@@ -200,7 +200,6 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 								value={resendApiKey}
 								onChange={(e) => setResendApiKey(e.target.value)}
 								autoFocus
-								required
 							/>
 							<div className="rounded-lg bg-kumo-fill px-3 py-2.5">
 								<p className="text-xs text-kumo-subtle">
@@ -217,6 +216,14 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 								</p>
 							</div>
 							<div className="flex justify-end gap-2 pt-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									type="button"
+									onClick={() => { setError(null); setResendApiKey(""); setStep("dns"); }}
+								>
+									Skip
+								</Button>
 								<Button
 									variant="secondary"
 									size="sm"
@@ -404,7 +411,7 @@ function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
 			});
 			toastManager.add({
 				title: catchAllMailbox
-					? `Catch-all set to catchall@${domain.name}`
+					? `Catch-all set to ${catchAllMailbox}`
 					: "Catch-all disabled",
 			});
 			onClose();
@@ -450,8 +457,7 @@ function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
 							autoFocus
 						/>
 						<p className="text-xs text-kumo-subtle mt-1.5">
-							Type <code className="font-mono">*@{domain.name}</code> to route unmatched emails to{' '}
-							<code className="font-mono">catchall@{domain.name}</code>.{' '}
+							Enter <code className="font-mono">*@{domain.name}</code> to enable catch-all routing.{' '}
 							Clear the field to disable.
 						</p>
 					</div>

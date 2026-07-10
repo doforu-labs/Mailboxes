@@ -20,6 +20,7 @@ import {
 	useDeleteMailbox,
 	useMailboxes,
 } from "~/queries/mailboxes";
+import { useDomains } from "~/queries/domains";
 
 export function meta() {
 	return [{ title: "Mailboxes" }];
@@ -32,8 +33,10 @@ export default function HomeRoute() {
 	const deleteMailbox = useDeleteMailbox();
 
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
-	const [newEmail, setNewEmail] = useState("");
+	const [localPart, setLocalPart] = useState("");
+	const [selectedDomain, setSelectedDomain] = useState("");
 	const [newName, setNewName] = useState("");
+	const { data: domains = [] } = useDomains();
 	const [isCreating, setIsCreating] = useState(false);
 	const [createError, setCreateError] = useState<string | null>(null);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -53,31 +56,34 @@ export default function HomeRoute() {
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
 		setCreateError(null);
-		if (!newEmail) {
-			setCreateError("Please enter an email address");
+
+		if (!localPart) {
+			setCreateError("Please enter a local part");
 			return;
 		}
-		if (!newEmail.includes("@")) {
-			setCreateError("Please enter a valid email address (e.g. hello@example.com)");
+		if (!selectedDomain) {
+			setCreateError("Please select a domain");
 			return;
 		}
 
-		// Handle catch-all pattern (*@domain.com or *.@domain.com)
-		if (newEmail.startsWith("*@") || newEmail.startsWith("*.@")) {
-			const domain = newEmail.replace("*@", "").replace("*.@", "");
-			const catchAllEmail = `catchall@${domain}`;
+		const email = `${localPart}@${selectedDomain}`;
+
+		// Handle catch-all pattern (localPart === "*")
+		if (localPart === "*") {
+			const catchAllEmail = `*@${selectedDomain}`;
 			const name = newName || "Catch-all";
 			setIsCreating(true);
 			try {
 				await createMailbox.mutateAsync({ email: catchAllEmail, name });
-				const domains = await api.domains.list();
-				const matchedDomain = domains.find((d) => d.name === domain);
+				const allDomains = await api.domains.list();
+				const matchedDomain = allDomains.find((d) => d.name === selectedDomain);
 				if (matchedDomain) {
 					await api.domains.setCatchAll(matchedDomain.id, catchAllEmail);
 				}
 				toastManager.add({ title: `Catch-all mailbox ${catchAllEmail} created!` });
 				setIsCreateOpen(false);
-				setNewEmail("");
+				setLocalPart("");
+				setSelectedDomain("");
 				setNewName("");
 			} catch (err: unknown) {
 				const message = (err instanceof Error ? err.message : null) || "Failed to create catch-all mailbox";
@@ -88,13 +94,14 @@ export default function HomeRoute() {
 			return;
 		}
 
-		const name = newName || newEmail.split("@")[0];
+		const name = newName || localPart;
 		setIsCreating(true);
 		try {
-			await createMailbox.mutateAsync({ email: newEmail, name });
+			await createMailbox.mutateAsync({ email, name });
 			toastManager.add({ title: "Mailbox created successfully!" });
 			setIsCreateOpen(false);
-			setNewEmail("");
+			setLocalPart("");
+			setSelectedDomain("");
 			setNewName("");
 		} catch (err: unknown) {
 			const message = (err instanceof Error ? err.message : null) || "Failed to create mailbox";
@@ -224,14 +231,45 @@ export default function HomeRoute() {
 								{createError}
 							</Text>
 						)}
-						<Input
-							label="Email Address"
-							placeholder="hello@example.com"
-							size="sm"
-							value={newEmail}
-							onChange={(e) => setNewEmail(e.target.value)}
-							required
-						/>
+						<div className="grid gap-2">
+							<label className="m-0 text-base font-medium text-kumo-default">
+								Email Address
+							</label>
+							<div className="flex items-center">
+								<input
+									type="text"
+									className="h-6.5 min-w-0 flex-1 rounded-l-md border border-kumo-hairline border-r-0 bg-kumo-control px-2 text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none"
+									placeholder="hello"
+									value={localPart}
+									onChange={(e) => setLocalPart(e.target.value)}
+									required
+								/>
+								<span className="flex h-6.5 shrink-0 items-center border-y border-kumo-hairline bg-kumo-control px-1 text-xs text-kumo-subtle">
+									@
+								</span>
+								{domains.length > 0 ? (
+									<select
+										className="h-6.5 min-w-0 flex-1 appearance-none rounded-r-md border border-kumo-hairline border-l-0 bg-kumo-control px-2 pr-4 text-xs text-kumo-default focus:outline-none"
+										value={selectedDomain}
+										onChange={(e) => setSelectedDomain(e.target.value)}
+										required
+									>
+										<option value="" disabled>
+											Select domain…
+										</option>
+										{domains.map((domain) => (
+											<option key={domain.id} value={domain.name}>
+												{domain.name}
+											</option>
+										))}
+									</select>
+								) : (
+									<p className="text-xs text-kumo-subtle">
+										No domains configured yet. <RouterLink to="/domains" className="underline">Add a domain</RouterLink> first.
+									</p>
+								)}
+							</div>
+						</div>
 						<Input
 							label="Display Name (optional)"
 							placeholder="Info"

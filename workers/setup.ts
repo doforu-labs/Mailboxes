@@ -727,13 +727,13 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 		if (catch_all_mailbox) {
 			let resolvedMailbox: string;
 
-			// Handle simplified input: *@domain.com -> auto-create catchall@domain.com
+			// Handle simplified input: *@domain.com -> create catch-all mailbox *@domain.com
 			if (catch_all_mailbox.startsWith("*@")) {
 				const inputDomain = catch_all_mailbox.slice(2); // strip "*"
 				if (inputDomain.toLowerCase() !== domain.name) {
 					return c.json({ error: `Domain mismatch: ${inputDomain} != ${domain.name}` }, 400);
 				}
-				resolvedMailbox = `catchall@${domain.name}`;
+				resolvedMailbox = `*@${domain.name}`;
 
 				// Auto-create the catchall mailbox if it does not exist
 				const mailboxKey = `mailboxes/${resolvedMailbox}.json`;

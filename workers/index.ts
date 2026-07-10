@@ -76,7 +76,7 @@ export interface AiChatMessage {
 // -- Request body schemas (kept for validation) ---------------------
 
 const CreateMailboxBody = z.object({
-	email: z.string().email(),
+	email: z.string().regex(/^[a-z0-9*][a-z0-9.*_-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i, "Invalid email address"),
 	name: z.string().min(1),
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });
