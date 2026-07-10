@@ -61,6 +61,33 @@ export default function HomeRoute() {
 			setCreateError("Please enter a valid email address (e.g. hello@example.com)");
 			return;
 		}
+
+		// Handle catch-all pattern (*@domain.com or *.@domain.com)
+		if (newEmail.startsWith("*@") || newEmail.startsWith("*.@")) {
+			const domain = newEmail.replace("*@", "").replace("*.@", "");
+			const catchAllEmail = `catchall@${domain}`;
+			const name = newName || "Catch-all";
+			setIsCreating(true);
+			try {
+				await createMailbox.mutateAsync({ email: catchAllEmail, name });
+				const domains = await api.domains.list();
+				const matchedDomain = domains.find((d) => d.name === domain);
+				if (matchedDomain) {
+					await api.domains.setCatchAll(matchedDomain.id, catchAllEmail);
+				}
+				toastManager.add({ title: `Catch-all mailbox ${catchAllEmail} created!` });
+				setIsCreateOpen(false);
+				setNewEmail("");
+				setNewName("");
+			} catch (err: unknown) {
+				const message = (err instanceof Error ? err.message : null) || "Failed to create catch-all mailbox";
+				setCreateError(message);
+			} finally {
+				setIsCreating(false);
+			}
+			return;
+		}
+
 		const name = newName || newEmail.split("@")[0];
 		setIsCreating(true);
 		try {

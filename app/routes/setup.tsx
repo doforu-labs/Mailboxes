@@ -607,6 +607,14 @@ export default function SetupRoute() {
 								</Button>
 							</div>
 						</RouterLink>
+						<div className="mt-6 text-left max-w-sm mx-auto space-y-2">
+							<p className="text-xs font-semibold text-kumo-strong">Next steps:</p>
+							<ul className="text-xs text-kumo-subtle space-y-1 list-disc pl-4">
+								<li>Add more mailboxes from the Mailboxes page</li>
+								<li>Configure catch-all for unmatched emails from Domains page</li>
+								<li>Add more domains from Domains page</li>
+							</ul>
+						</div>
 					</div>
 				)}
 			</div>

@@ -146,15 +146,18 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 									<span className="text-sm text-red-600">{error}</span>
 								</div>
 							)}
-							<Input
-								label="Domain Name"
-								placeholder="example.com"
-								size="sm"
-								value={domainName}
-								onChange={(e) => setDomainName(e.target.value)}
-								autoFocus
-								required
-							/>
+							<div>
+								<label className="block text-sm font-medium text-kumo-strong mb-1">Domain Name</label>
+								<input
+									type="text"
+									placeholder="example.com"
+									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+									value={domainName}
+									onChange={(e) => setDomainName(e.target.value)}
+									autoFocus
+									required
+								/>
+							</div>
 							<div className="flex justify-end gap-2 pt-2">
 								<Dialog.Close
 									render={(props) => (
