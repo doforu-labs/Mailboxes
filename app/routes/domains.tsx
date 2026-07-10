@@ -245,11 +245,25 @@ function PlatformSettingsSection() {
 								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
 							>
 								<LinkIcon size={12} />
-								Create a pre-configured token
+								Create a pre-configured token →
 							</a>
 						</p>
-						<p className="text-xs text-kumo-subtle mt-1.5">
-							Required: DNS Edit, Zone Settings Edit, and Email Routing Rules Edit.
+						<p className="text-xs text-kumo-subtle mt-2">
+							Required permissions / 需要的权限:
+						</p>
+						<ul className="text-xs text-kumo-subtle list-disc list-inside mt-1 space-y-0.5">
+							<li>
+								Zone: DNS Edit / 区域: DNS 编辑
+							</li>
+							<li>
+								Zone: Zone Settings Edit / 区域: 区域设置 编辑
+							</li>
+							<li>
+								Zone: Email Routing Rules Edit / 区域: 电子邮件路由规则 编辑
+							</li>
+						</ul>
+						<p className="text-xs text-kumo-subtle mt-2">
+							The link above pre-fills DNS + Zone Settings permissions. Click "Add more" / "添加更多" to also add Email Routing Rules, then copy the token here.
 						</p>
 					</div>
 
