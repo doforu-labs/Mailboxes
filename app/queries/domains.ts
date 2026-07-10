@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import api from "~/services/api";
+import api, { type CreateDomainResponse, type DnsRecord } from "~/services/api";
 import type { Domain } from "~/types";
 import { queryKeys } from "./keys";
 
@@ -16,8 +16,8 @@ export function useDomains() {
 
 export function useCreateDomain() {
 	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: (data: { name: string; resendApiKey?: string }) => api.domains.create(data),
+	return useMutation<CreateDomainResponse, Error, { name: string; resendApiKey?: string }>({
+		mutationFn: (data) => api.domains.create(data) as Promise<CreateDomainResponse>,
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queryKeys.domains.all });
 		},

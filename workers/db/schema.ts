@@ -35,6 +35,7 @@ export const emails = sqliteTable("emails", {
 	thread_id: text("thread_id"),
 	message_id: text("message_id"),
 	raw_headers: text("raw_headers"),
+	send_status: text("send_status"), // NULL (not sent), "sending", "sent", "failed"
 });
 
 export const attachments = sqliteTable("attachments", {

@@ -175,6 +175,77 @@ app.get("/api/v1/mailboxes/:mailboxId", async (c) => {
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings: await obj.json() });
 });
 
+// ── Resend API Key verification ────────────────────────────────
+
+interface ResendDomainRecord {
+	id: string;
+	name: string;
+	status: string;
+	records: Array<{
+		record: string;
+		name: string;
+		type: string;
+		ttl: string;
+		status: string;
+		value: string;
+		priority?: number;
+	}>;
+}
+
+app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => {
+	try {
+		const { apiKey } = (await c.req.json()) as { apiKey?: string };
+		if (!apiKey) {
+			return c.json({ valid: false, error: "Missing API key" }, 400);
+		}
+
+		// Call Resend GET /domains to verify the key is valid
+		const res = await fetch("https://api.resend.com/domains", {
+			method: "GET",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+		});
+
+		if (res.status === 401 || res.status === 403) {
+			return c.json({ valid: false, error: "Invalid API key. Please check your Resend API key." }, 200);
+		}
+
+		if (!res.ok) {
+			const errBody = await res.json().catch(() => ({})) as { message?: string };
+			return c.json({ valid: false, error: errBody.message || `Resend API error: ${res.status}` }, 200);
+		}
+
+		const data = (await res.json()) as { data: ResendDomainRecord[] };
+		const domains = data.data ?? [];
+
+		// Extract the mailbox's email domain
+		const mailboxId = c.var.mailboxId;
+		const atIdx = mailboxId.indexOf("@");
+		const emailDomain = atIdx !== -1 ? mailboxId.substring(atIdx + 1).toLowerCase() : "";
+
+		// Find matching domain and its status
+		const matchingDomain = domains.find((d) => d.name.toLowerCase() === emailDomain);
+
+		return c.json({
+			valid: true,
+			domains: domains.map((d) => ({
+				id: d.id,
+				domain: d.name,
+				status: d.status,
+			})),
+			matchingDomain: matchingDomain
+				? { domain: matchingDomain.name, status: matchingDomain.status }
+				: null,
+			sendingReady: !!matchingDomain && (matchingDomain.status === "valid" || matchingDomain.status === "verified"),
+		});
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ valid: false, error: `Verification failed: ${msg}` }, 200);
+	}
+});
+
 app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { settings } = (await c.req.json()) as { settings: Record<string, unknown> };
@@ -259,16 +330,22 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			{ key: "subject", value: subject }, { key: "date", value: new Date().toISOString() },
 			{ key: "message-id", value: `<${outgoingMessageId}>` },
 		]),
+		send_status: "sending",
 	}, attachmentData);
 
-	c.executionCtx.waitUntil(
-		sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
+	try {
+		await sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
 			to, cc, bcc, from, subject, html, text,
 			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-		}, c.env.RESEND_API_KEY, c.env.DB).catch((e) => console.error("Deferred email delivery failed:", (e as Error).message)),
-	);
-	return c.json({ id: messageId, status: "sent" }, 202);
+		}, c.env.RESEND_API_KEY, c.env.DB);
+		await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "sent");
+		return c.json({ id: messageId, status: "sent" }, 200);
+	} catch (e) {
+		console.error("Email delivery failed:", (e as Error).message);
+		await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "failed").catch(() => {});
+		return c.json({ id: messageId, status: "failed", error: (e as Error).message || "Failed to send email." }, 500);
+	}
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {

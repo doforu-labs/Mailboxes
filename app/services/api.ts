@@ -127,6 +127,20 @@ export interface SetupResult {
 	success: boolean;
 }
 
+export interface ResendDomainStatus {
+	id: string;
+	domain: string;
+	status: string;
+}
+
+export interface VerifyResendResult {
+	valid: boolean;
+	error?: string;
+	domains?: ResendDomainStatus[];
+	matchingDomain?: { domain: string; status: string } | null;
+	sendingReady?: boolean;
+}
+
 export interface DetectCfDomainsRequest {
 	cfApiToken: string;
 	cfAccountId: string;
@@ -143,6 +157,11 @@ export interface DetectCfDomainsResult {
 }
 
 // ---------- API client ----------
+
+export interface CreateDomainResponse {
+	domain: Domain;
+	dnsRecords: DnsRecord[];
+}
 
 const api = {
 	// Config
@@ -215,11 +234,14 @@ const api = {
 	domains: {
 		list: () => get<Domain[]>("/api/v1/domains"),
 		create: (data: { name: string; resendApiKey?: string }) =>
-			post<Domain>("/api/v1/domains", data),
+			post<CreateDomainResponse>("/api/v1/domains", data),
 		delete: (id: string) => del<void>(`/api/v1/domains/${id}`),
 		setCatchAll: (domainId: string, catchAllMailbox: string | null) =>
 			put<Domain>(`/api/v1/domains/${domainId}/catch-all`, { catch_all_mailbox: catchAllMailbox }),
 	},
+
+	verifyResendKey: (mailboxId: string, apiKey: string) =>
+		post<VerifyResendResult>(`/api/v1/mailboxes/${mailboxId}/verify-resend`, { apiKey }),
 
 	// Setup
 	getSetupStatus: () => get<SetupStatus>("/api/v1/setup/status"),

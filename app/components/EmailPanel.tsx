@@ -181,6 +181,14 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				showThreadCount={hasThread}
 			/>
 
+			{email.send_status && (
+				<div className={`px-4 py-1.5 text-xs font-medium border-b border-kumo-line md:px-6 ${email.send_status === "sending" ? "bg-blue-50 text-blue-700" : email.send_status === "failed" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+					{email.send_status === "sending" && "Sending..."}
+					{email.send_status === "sent" && "Sent successfully"}
+					{email.send_status === "failed" && "Delivery failed - email was not sent"}
+				</div>
+			)}
+
 			<div className="flex-1 overflow-y-auto">
 				{hasThread ? (
 					allMessages.map((msg, idx) => {

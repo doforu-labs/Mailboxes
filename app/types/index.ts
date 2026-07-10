@@ -57,6 +57,7 @@ export interface Email {
 	participants?: string;
 	needs_reply?: boolean;
 	has_draft?: boolean;
+	send_status?: string | null; // NULL (not sent), "sending", "sent", "failed"
 }
 
 export interface Attachment {

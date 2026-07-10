@@ -7,6 +7,7 @@ import {
 	Dialog,
 	Input,
 	Loader,
+	Badge,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
@@ -27,6 +28,7 @@ import {
 	useSetCatchAll,
 } from "~/queries/domains";
 import type { Domain } from "~/types";
+import api from "~/services/api";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -57,19 +59,25 @@ function StatusBadge({ status }: { status: Domain["status"] }) {
 interface AddDomainWizardProps {
 	onClose: () => void;
 	onSuccess: () => void;
+	defaultDomain?: string;
+	defaultApiKey?: string;
 }
 
-type WizardStep = "domain" | "resend-key" | "dns-records" | "done";
+type WizardStep = "domain" | "resend-key" | "dns-records" | "verify" | "done";
 
-function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
+export function AddDomainWizard({ onClose, onSuccess, defaultDomain, defaultApiKey }: AddDomainWizardProps) {
 	const toastManager = useKumoToastManager();
 	const createDomain = useCreateDomain();
 
-	const [step, setStep] = useState<WizardStep>("domain");
-	const [domainName, setDomainName] = useState("");
-	const [resendApiKey, setResendApiKey] = useState("");
+	const [step, setStep] = useState<WizardStep>(defaultApiKey ? "domain" : "domain");
+	const [domainName, setDomainName] = useState(defaultDomain ?? "");
+	const [resendApiKey, setResendApiKey] = useState(defaultApiKey ?? "");
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [dnsRecords, setDnsRecords] = useState<Array<{ name: string; type: string; status: string }>>([]);
+	const [verifyStatus, setVerifyStatus] = useState<"idle" | "verifying" | "verified" | "failed">("idle");
+	const [verifyError, setVerifyError] = useState<string | null>(null);
+	const [createdDomainId, setCreatedDomainId] = useState<string | null>(null);
 
 	// Step A: Domain name
 	const handleDomainSubmit = (e: FormEvent) => {
@@ -97,12 +105,12 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 
 		setIsProcessing(true);
 		try {
-			// Call backend which creates the Resend domain and returns DNS records
-			await createDomain.mutateAsync({
+			const result = await createDomain.mutateAsync({
 				name: domainName.trim(),
 				resendApiKey: resendApiKey.trim(),
 			});
-
+			setDnsRecords(result.dnsRecords);
+			setCreatedDomainId(result.domain.id);
 			setStep("dns-records");
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : "Failed to add domain";
@@ -112,20 +120,40 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 		}
 	};
 
-	// Step C → D: User confirms DNS records
-	const handleDnsConfirm = () => {
+	// Step C → Verify: user adds DNS records, then clicks verify
+	const handleVerify = async () => {
+		setVerifyError(null);
+		setVerifyStatus("verifying");
+		try {
+			const result = await api.verifyDomain({
+				domain: domainName.trim(),
+				resendApiKey: resendApiKey.trim(),
+				cfApiToken: "",
+				cfAccountId: "",
+			});
+			if (result.status === "verified" || result.status === "valid") {
+				setVerifyStatus("verified");
+				setStep("done");
+				toastManager.add({ title: `Domain ${domainName} verified successfully!` });
+				onSuccess();
+			} else {
+				setVerifyStatus("failed");
+				setVerifyError(`Domain status: ${result.status}. DNS records may still be propagating. Please wait a few minutes and try again.`);
+			}
+		} catch (err: unknown) {
+			setVerifyStatus("failed");
+			const msg = err instanceof Error ? err.message : "Verification failed";
+			setVerifyError(msg);
+		}
+	};
+
+	const handleSkipVerify = () => {
 		setStep("done");
-		toastManager.add({ title: "Domain added! Waiting for DNS verification." });
+		toastManager.add({ title: "Domain added! You can verify DNS later from the Domains page." });
 		onSuccess();
 	};
 
-	const handleClose = () => {
-		if (step === "done") {
-			onClose();
-		} else {
-			onClose();
-		}
-	};
+	const handleClose = () => onClose();
 
 	return (
 		<Dialog.Root open onOpenChange={handleClose}>
@@ -220,7 +248,7 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 									variant="secondary"
 									size="sm"
 									type="button"
-									onClick={() => { setError(null); setResendApiKey(""); setStep("dns"); }}
+									onClick={() => { setError(null); setResendApiKey(""); setStep("dns-records"); }}
 								>
 									Skip
 								</Button>
@@ -246,7 +274,7 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 					</>
 				)}
 
-				{/* ── Step C: DNS Records ───────────────────── */}
+				{/* ── Step C: DNS Records (dynamic) ────────────────── */}
 				{step === "dns-records" && (
 					<>
 						<Dialog.Title className="text-base font-semibold mb-1">
@@ -254,64 +282,41 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle mb-5">
 							Add these DNS records to <strong className="text-kumo-default">{domainName}</strong> at your
-							DNS provider to enable email sending via Resend.
+							domain registrar or DNS provider to enable email sending via Resend.
 						</p>
 
 						<div className="space-y-3 mb-5">
-							{/* MX Record */}
-							<div className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
-								<div className="flex items-center gap-2 mb-2">
-									<span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
-										MX
-									</span>
-									<span className="text-xs text-kumo-subtle">
-										Priority: 10
-									</span>
-								</div>
-								<div className="space-y-1">
-									<div>
-										<span className="text-xs text-kumo-subtle">Name: </span>
-										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
-											@
-										</code>
+							{dnsRecords.map((record, i) => (
+								<div key={i} className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
+									<div className="flex items-center gap-2 mb-2">
+										<span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
+											{record.type}
+										</span>
+										{record.name && (
+											<span className="text-xs text-kumo-subtle">
+												Name: <code className="text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">{record.name}</code>
+											</span>
+										)}
+										<Badge variant={record.status === "verified" ? "success" : record.status === "failed" ? "error" : "info"}>
+											{record.status}
+										</Badge>
 									</div>
-									<div>
-										<span className="text-xs text-kumo-subtle">Value: </span>
-										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded break-all">
-											feedback-smtp.us-east-1.amazonses.com
-										</code>
-									</div>
+									<p className="text-xs text-kumo-subtle">
+										Go to your DNS provider and add this {record.type} record. The status above shows whether Resend has detected it.
+									</p>
 								</div>
-							</div>
-
-							{/* TXT Record (SPF) */}
-							<div className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
-								<div className="flex items-center gap-2 mb-2">
-									<span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
-										TXT
-									</span>
+							))}
+							{dnsRecords.length === 0 && (
+								<div className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
+									<p className="text-sm text-kumo-subtle">No DNS records returned. The domain may already be configured.</p>
 								</div>
-								<div className="space-y-1">
-									<div>
-										<span className="text-xs text-kumo-subtle">Name: </span>
-										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
-											@
-										</code>
-									</div>
-									<div>
-										<span className="text-xs text-kumo-subtle">Value: </span>
-										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded break-all">
-											v=spf1 include:amazonses.com ~all
-										</code>
-									</div>
-								</div>
-							</div>
+							)}
 						</div>
 
 						<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 mb-5">
 							<p className="text-xs text-kumo-subtle">
-								DNS changes may take up to 24-48 hours to propagate. We'll
-								automatically verify the domain once the records are detected.
+								DNS changes may take a few minutes to propagate. After adding the records above,
+								click <strong>"Verify DNS"</strong> to check if they are detected.
 							</p>
 						</div>
 
@@ -324,14 +329,28 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 								Back
 							</Button>
 							<Button
+								variant="secondary"
+								size="sm"
+								onClick={handleSkipVerify}
+							>
+								Skip for Now
+							</Button>
+							<Button
 								variant="primary"
 								size="sm"
-								onClick={handleDnsConfirm}
+								loading={verifyStatus === "verifying"}
+								onClick={handleVerify}
 							>
-								I'll Add These Later
+								Verify DNS
 								<CheckCircleIcon size={14} />
 							</Button>
 						</div>
+
+						{verifyError && (
+							<div className="mt-4 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2.5">
+								<p className="text-xs text-yellow-800">{verifyError}</p>
+							</div>
+						)}
 					</>
 				)}
 

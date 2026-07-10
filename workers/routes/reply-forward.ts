@@ -89,14 +89,15 @@ export async function handleReplyEmail(c: AppContext) {
 				...(originalMsgId ? [{ key: "in-reply-to", value: `<${originalMsgId}>` }] : []),
 				...(references.length > 0 ? [{ key: "references", value: references.map((r: string) => `<${r}>`).join(" ") }] : []),
 			]),
+			send_status: "sending",
 		},
 		attachmentData,
 	);
 
 	await dbService.markThreadRead(c.env.DB, mailboxId, thread_id);
 
-	c.executionCtx.waitUntil(
-		sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
+	try {
+		await sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
 			to,
 			cc,
 			bcc,
@@ -112,12 +113,14 @@ export async function handleReplyEmail(c: AppContext) {
 				contentId: att.contentId,
 			})),
 			headers: buildThreadingHeaders(originalMsgId, references),
-		}, c.env.RESEND_API_KEY, c.env.DB).catch((e) => {
-			console.error("Deferred reply delivery failed:", (e as Error).message);
-		}),
-	);
-
-	return c.json({ id: messageId, status: "sent" }, 202);
+		}, c.env.RESEND_API_KEY, c.env.DB);
+		await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
+		return c.json({ id: messageId, status: "sent" }, 200);
+	} catch (e) {
+		console.error("Reply delivery failed:", (e as Error).message);
+		await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "failed").catch(() => {});
+		return c.json({ id: messageId, status: "failed", error: (e as Error).message || "Failed to send reply." }, 500);
+	}
 }
 
 export async function handleForwardEmail(c: AppContext) {
@@ -178,12 +181,13 @@ export async function handleForwardEmail(c: AppContext) {
 				{ key: "date", value: new Date().toISOString() },
 				{ key: "message-id", value: `<${outgoingMessageId}>` },
 			]),
+			send_status: "sending",
 		},
 		attachmentData,
 	);
 
-	c.executionCtx.waitUntil(
-		sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
+	try {
+		await sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
 			to,
 			cc,
 			bcc,
@@ -198,10 +202,12 @@ export async function handleForwardEmail(c: AppContext) {
 				disposition: att.disposition,
 				contentId: att.contentId,
 			})),
-		}, c.env.RESEND_API_KEY, c.env.DB).catch((e) => {
-			console.error("Deferred forward delivery failed:", (e as Error).message);
-		}),
-	);
-
-	return c.json({ id: messageId, status: "sent" }, 202);
+		}, c.env.RESEND_API_KEY, c.env.DB);
+		await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
+		return c.json({ id: messageId, status: "sent" }, 200);
+	} catch (e) {
+		console.error("Forward delivery failed:", (e as Error).message);
+		await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "failed").catch(() => {});
+		return c.json({ id: messageId, status: "failed", error: (e as Error).message || "Failed to forward email." }, 500);
+	}
 }

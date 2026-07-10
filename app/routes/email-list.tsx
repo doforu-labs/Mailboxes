@@ -384,23 +384,41 @@ export default function EmailListRoute() {
 														</span>
 													</Tooltip>
 												)}
-												<span className="text-sm text-kumo-subtle shrink-0 ml-auto">
-													{formatListDate(email.date)}
+												{folder === Folders.SENT && email.send_status === "sending" && (
+													<span className="shrink-0 text-xs text-blue-500 font-medium animate-pulse">
+														Sending...
 												</span>
+												)}
+												{folder === Folders.SENT && email.send_status === "sent" && (
+													<span className="shrink-0 text-xs text-green-600 font-medium">
+														✓ Sent
+													</span>
+												)}
+												{folder === Folders.SENT && email.send_status === "failed" && (
+													<Tooltip content="Delivery failed" asChild>
+														<span className="shrink-0 text-xs text-kumo-destructive font-medium">
+															Failed
+														</span>
+													</Tooltip>
+												)}
 											</div>
 											<div className="truncate text-sm mt-0.5">
-												<span
-													className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}
-												>
-													{email.subject}
-												</span>
-											{snippet && (
-												<span className="text-kumo-subtle font-normal">
-													{" "}&mdash; {snippet}
-												</span>
-											)}
+													<span
+														className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}
+													>
+														{email.subject}
+													</span>
+													{snippet && (
+														<span className="text-kumo-subtle font-normal">
+															{" "}&mdash; {snippet}
+														</span>
+													)}
 										</div>
 									</div>
+
+										<span className="shrink-0 text-sm text-kumo-subtle ml-2 whitespace-nowrap self-center">
+											{formatListDate(email.date)}
+										</span>
 
 										{/* Hover actions */}
 										<div className="hidden group-hover:flex items-center shrink-0">

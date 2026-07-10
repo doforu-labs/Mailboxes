@@ -35,6 +35,7 @@ export interface EmailData {
 	thread_id?: string | null;
 	message_id?: string | null;
 	raw_headers?: string | null;
+	send_status?: string | null;
 }
 
 export interface AttachmentData {
@@ -92,6 +93,7 @@ export interface EmailFull {
 	thread_id: string | null;
 	message_id: string | null;
 	raw_headers: string | null;
+	send_status: string | null;
 	attachments: AttachmentData[];
 }
 
@@ -110,6 +112,7 @@ export interface EmailSummary {
 	thread_id: string | null;
 	folder_id: string | null;
 	snippet: string | null;
+	send_status: string | null;
 }
 
 export interface ThreadedEmail {
@@ -130,6 +133,7 @@ export interface ThreadedEmail {
 	participants: string | null;
 	needs_reply?: boolean;
 	has_draft?: boolean;
+	send_status?: string | null;
 }
 
 export interface AttachmentRow {
@@ -224,6 +228,7 @@ export async function getEmails(
 			thread_id: schema.emails.thread_id,
 			folder_id: schema.emails.folder_id,
 			snippet: sql<string>`SUBSTR(${schema.emails.body}, 1, 300)`,
+			send_status: schema.emails.send_status,
 		})
 		.from(schema.emails)
 		.where(and(...conditions))
@@ -335,8 +340,8 @@ export async function createEmail(
 
 	stmts.push(
 		db.prepare(
-			`INSERT INTO emails (id, mailbox_id, folder_id, subject, sender, recipient, cc, bcc, date, read, starred, body, in_reply_to, email_references, thread_id, message_id, raw_headers)
-			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)`,
+			`INSERT INTO emails (id, mailbox_id, folder_id, subject, sender, recipient, cc, bcc, date, read, starred, body, in_reply_to, email_references, thread_id, message_id, raw_headers, send_status)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)`,
 		).bind(
 			emailData.id,
 			mailboxId,
@@ -355,6 +360,7 @@ export async function createEmail(
 			emailData.thread_id ?? null,
 			emailData.message_id ?? null,
 			emailData.raw_headers ?? null,
+			emailData.send_status ?? null,
 		),
 	);
 
@@ -377,6 +383,20 @@ export async function createEmail(
 	}
 
 	await db.batch(stmts);
+}
+
+// ── 4b. updateEmailSendStatus ────────────────────────────────────
+
+export async function updateEmailSendStatus(
+	db: D1Database,
+	mailboxId: string,
+	emailId: string,
+	sendStatus: "sending" | "sent" | "failed",
+): Promise<void> {
+	await db
+		.prepare("UPDATE emails SET send_status = ?1 WHERE id = ?2 AND mailbox_id = ?3")
+		.bind(sendStatus, emailId, mailboxId)
+		.run();
 }
 
 // ── 5. updateEmail ───────────────────────────────────────────────
@@ -553,7 +573,7 @@ export async function getThreadedEmails(
 			SELECT
 				lp.id, lp.subject, lp.sender, lp.recipient, lp.date,
 				lp.read, lp.starred, lp.thread_id, lp.folder_id,
-				lp.in_reply_to, lp.email_references,
+				lp.in_reply_to, lp.email_references, lp.send_status,
 				SUBSTR(lp.body, 1, 300) as snippet,
 				ds.thread_count, ds.thread_unread_count, ds.participants
 			FROM latest_per_group lp
@@ -642,7 +662,7 @@ export async function getThreadedEmails(
 		SELECT
 			lif.id, lif.subject, lif.sender, lif.recipient, lif.date,
 			lif.read, lif.starred, lif.thread_id, lif.folder_id,
-			lif.in_reply_to, lif.email_references,
+			lif.in_reply_to, lif.email_references, lif.send_status,
 			SUBSTR(lif.body, 1, 300) as snippet,
 			cs.thread_count, cs.thread_unread_count, cs.participants,
 			CASE WHEN lmc.folder_id != (SELECT id FROM folders WHERE mailbox_id = ?1 AND name = 'sent' LIMIT 1)
