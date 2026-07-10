@@ -4,7 +4,6 @@
 
 import {
 	Button,
-	Input,
 	Loader,
 } from "@cloudflare/kumo";
 import {
@@ -13,13 +12,15 @@ import {
 	EnvelopeIcon,
 	EyeIcon,
 	EyeSlashIcon,
-	GlobeIcon,
 	GearSixIcon,
-	KeyIcon,
+	GlobeIcon,
 	UserIcon,
 	WarningIcon,
 } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
+import { Link as RouterLink } from "react-router";
+import api from "~/services/api";
+import type { CfZone } from "~/services/api";
 
 // Cloudflare API Token Template URL — pre-fills the token creation page
 // with DNS Edit + Zone Settings Edit permissions.
@@ -34,9 +35,6 @@ const CF_TOKEN_TEMPLATE_URL = (() => {
 		JSON.stringify(permissions)
 	)}&accountId=*&zoneId=all&name=Mailboxes%20Token`;
 })();
-import { Link as RouterLink } from "react-router";
-import api from "~/services/api";
-import type { VerifyResult } from "~/services/api";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -50,9 +48,8 @@ interface StepConfig {
 
 const STEPS: StepConfig[] = [
 	{ id: "welcome", label: "Welcome", icon: <EnvelopeIcon size={16} /> },
-	{ id: "domain", label: "Domain", icon: <GlobeIcon size={16} /> },
-	{ id: "resend", label: "Resend", icon: <KeyIcon size={16} /> },
-	{ id: "cloudflare", label: "Cloudflare", icon: <GearSixIcon size={16} /> },
+	{ id: "cf-config", label: "CF Config", icon: <GearSixIcon size={16} /> },
+	{ id: "select-domain", label: "Domain", icon: <GlobeIcon size={16} /> },
 	{ id: "mailbox", label: "Mailbox", icon: <UserIcon size={16} /> },
 	{ id: "complete", label: "Done", icon: <CheckCircleIcon size={16} /> },
 ];
@@ -110,69 +107,42 @@ function ErrorBanner({ message }: { message: string }) {
 	);
 }
 
-// ── Status Badge ───────────────────────────────────────────────────
-
-function StatusBadge({
-	status,
-	label,
-}: {
-	status: "pending" | "loading" | "success" | "error";
-	label: string;
-}) {
-	const color =
-		status === "success"
-			? "text-green-600"
-			: status === "error"
-				? "text-red-600"
-				: status === "loading"
-					? "text-blue-600"
-					: "text-kumo-subtle";
-	const icon =
-		status === "success" ? (
-			<CheckCircleIcon size={14} />
-		) : status === "error" ? (
-			<WarningIcon size={14} />
-		) : status === "loading" ? (
-			<Loader size={14} />
-		) : null;
-	return (
-		<span className={`flex items-center gap-1.5 text-xs font-medium ${color}`}>
-			{icon}
-			{label}
-		</span>
-	);
-}
-
 // ── Setup Page ─────────────────────────────────────────────────────
 
 export default function SetupRoute() {
 	// Current step index
 	const [stepIndex, setStepIndex] = useState(0);
 
-	// Form state
-	const [domain, setDomain] = useState("");
-	const [resendApiKey, setResendApiKey] = useState("");
+	// Form state — CF config
 	const [cfApiToken, setCfApiToken] = useState("");
 	const [cfAccountId, setCfAccountId] = useState("");
 	const [showCfToken, setShowCfToken] = useState(false);
-const [showCfAccountId, setShowCfAccountId] = useState(false);
-const [mailboxEmail, setMailboxEmail] = useState("");
+	const [showCfAccountId, setShowCfAccountId] = useState(false);
+
+	// Form state — domain selection
+	const [cfDomains, setCfDomains] = useState<CfZone[]>([]);
+	const [selectedDomain, setSelectedDomain] = useState("");
+	const [customDomain, setCustomDomain] = useState("");
+	const [useCustomDomain, setUseCustomDomain] = useState(false);
+	const [isDetectingDomains, setIsDetectingDomains] = useState(false);
+
+	// Form state — mailbox
+	const [mailboxEmail, setMailboxEmail] = useState("");
 	const [mailboxName, setMailboxName] = useState("");
 
 	// Loading / error state
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Cloudflare step progress
-	const [domainVerifyStatus, setDomainVerifyStatus] = useState<
-		"pending" | "loading" | "success" | "error"
-	>("pending");
+	// Email routing status
 	const [emailRoutingStatus, setEmailRoutingStatus] = useState<
 		"pending" | "loading" | "success" | "error"
 	>("pending");
-	const [_verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
 
 	const stepId = STEPS[stepIndex].id;
+
+	// Resolved domain (either selected from CF or custom)
+	const domain = useCustomDomain ? customDomain.trim() : selectedDomain;
 
 	// ── Navigation ──────────────────────────────────────────────────
 
@@ -184,31 +154,7 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 
 	// ── Step Handlers ───────────────────────────────────────────────
 
-	const handleDomainSubmit = (e: FormEvent) => {
-		e.preventDefault();
-		setError(null);
-		if (!domain.trim()) {
-			setError("Please enter a domain name");
-			return;
-		}
-		// Auto-fill mailbox email with hello@domain
-		if (!mailboxEmail) {
-			setMailboxEmail(`hello@${domain.trim()}`);
-		}
-		goNext();
-	};
-
-	const handleResendSubmit = (e: FormEvent) => {
-		e.preventDefault();
-		setError(null);
-		if (!resendApiKey.trim()) {
-			setError("Please enter your Resend API Key");
-			return;
-		}
-		goNext();
-	};
-
-	const handleCloudflareSubmit = async (e: FormEvent) => {
+	const handleCfConfigSubmit = async (e: FormEvent) => {
 		e.preventDefault();
 		setError(null);
 
@@ -217,52 +163,54 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 			return;
 		}
 
-		setIsProcessing(true);
-		setEmailRoutingStatus("pending");
+		setIsDetectingDomains(true);
+		setError(null);
 
 		try {
-			// Step A: Create Resend domain + add DNS records via CF (only if Resend key provided)
-			if (resendApiKey.trim()) {
-				setDomainVerifyStatus("loading");
-				const result = await api.verifyDomain({
-					domain: domain.trim(),
-					resendApiKey: resendApiKey.trim(),
-					cfApiToken: cfApiToken.trim(),
-					cfAccountId: cfAccountId.trim(),
-				});
-				setVerifyResult(result);
-				setDomainVerifyStatus("success");
-			} else {
-				setDomainVerifyStatus("success");
-			}
-
-			// Step B: Configure email routing
-			setEmailRoutingStatus("loading");
-			const routingResult = await api.setupEmailRouting({
-				domain: domain.trim(),
+			const result = await api.detectCfDomains({
 				cfApiToken: cfApiToken.trim(),
 				cfAccountId: cfAccountId.trim(),
 			});
-			setEmailRoutingStatus(routingResult.success ? "success" : "error");
+			setCfDomains(result.zones);
+
+			// If only one zone, auto-select it
+			if (result.zones.length === 1) {
+				setSelectedDomain(result.zones[0].name);
+			}
+
+			goNext();
 		} catch (err: unknown) {
 			const msg =
 				err instanceof Error
 					? err.message
-					: "Unknown error during Cloudflare setup";
+					: "Failed to detect domains from Cloudflare";
 			setError(msg);
-			if (domainVerifyStatus === "loading") {
-				setDomainVerifyStatus("error");
-			}
-			setEmailRoutingStatus("error");
 		} finally {
-			setIsProcessing(false);
+			setIsDetectingDomains(false);
 		}
 	};
 
-	const handleCloudflareNext = () => {
-		if (domainVerifyStatus === "success" && emailRoutingStatus === "success") {
-			goNext();
+	const handleDomainSubmit = (e: FormEvent) => {
+		e.preventDefault();
+		setError(null);
+
+		const resolvedDomain = useCustomDomain ? customDomain.trim() : selectedDomain;
+
+		if (!resolvedDomain) {
+			setError("Please select or enter a domain");
+			return;
 		}
+		if (!resolvedDomain.includes(".")) {
+			setError("Please enter a valid domain (e.g. example.com)");
+			return;
+		}
+
+		// Auto-fill mailbox email with hello@domain
+		if (!mailboxEmail) {
+			setMailboxEmail(`hello@${resolvedDomain}`);
+		}
+
+		goNext();
 	};
 
 	const handleMailboxSubmit = async (e: FormEvent) => {
@@ -280,6 +228,21 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 
 		setIsProcessing(true);
 		try {
+			// 1. Set up email routing for the CF domain
+			setEmailRoutingStatus("loading");
+			const routingResult = await api.setupEmailRouting({
+				domain: domain.trim(),
+				cfApiToken: cfApiToken.trim(),
+				cfAccountId: cfAccountId.trim(),
+			});
+			setEmailRoutingStatus(routingResult.success ? "success" : "error");
+
+			if (!routingResult.success) {
+				setError("Email routing setup failed. You can retry from Settings later.");
+				return;
+			}
+
+			// 2. Create the first mailbox
 			const name = mailboxName.trim() || mailboxEmail.split("@")[0];
 			await api.createMailbox(mailboxEmail.toLowerCase(), name);
 			goNext();
@@ -287,6 +250,7 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 			const msg =
 				err instanceof Error ? err.message : "Failed to create mailbox";
 			setError(msg);
+			setEmailRoutingStatus("error");
 		} finally {
 			setIsProcessing(false);
 		}
@@ -316,7 +280,8 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 						</h1>
 						<p className="text-sm text-kumo-subtle max-w-sm mx-auto mb-8 leading-relaxed">
 							A lightweight, self-hosted email client built on Cloudflare
-							Workers. Let's get your first mailbox set up in a few steps.
+							Workers. Let's connect your Cloudflare account and set up your
+							first mailbox.
 						</p>
 						<div className="flex justify-center">
 							<Button variant="primary" size="lg" onClick={goNext}>
@@ -327,162 +292,57 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 					</div>
 				)}
 
-				{/* ── Step 1: Domain ───────────────────────────── */}
-				{stepId === "domain" && (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base p-8">
-						<h2 className="text-lg font-semibold text-kumo-default mb-1">
-							Mail Domain
-						</h2>
-						<p className="text-sm text-kumo-subtle mb-6">
-							Enter the domain you'll use for sending and receiving email.
-						</p>
-						<form onSubmit={handleDomainSubmit} className="space-y-4">
-							{error && <ErrorBanner message={error} />}
-							<Input
-								label="Email Domain"
-								placeholder="example.com"
-								size="sm"
-								value={domain}
-								onChange={(e) => setDomain(e.target.value)}
-								autoFocus
-								required
-							/>
-							<p className="text-xs text-kumo-subtle">
-								Must already be added to Cloudflare and using its nameservers.
-							</p>
-							<div className="flex justify-end gap-2 pt-2">
-								<Button
-									variant="secondary"
-									size="sm"
-									type="button"
-									onClick={goBack}
-								>
-									Back
-								</Button>
-								<Button variant="primary" size="sm" type="submit">
-									Continue
-									<CaretRightIcon size={14} />
-								</Button>
-							</div>
-						</form>
-					</div>
-				)}
-
-				{/* ── Step 2: Resend API Key ──────────────────── */}
-				{stepId === "resend" && (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base p-8">
-						<h2 className="text-lg font-semibold text-kumo-default mb-1">
-							Resend API Key
-						</h2>
-						<p className="text-sm text-kumo-subtle mb-6">
-							Enter your Resend API key to enable email sending.
-							You can skip this step and add it later in Settings.
-						</p>
-						<form onSubmit={handleResendSubmit} className="space-y-4">
-							{error && <ErrorBanner message={error} />}
-							<Input
-								label="Resend API Key"
-								placeholder="re_••••••••••••••••••••••••••••"
-								size="sm"
-								type="password"
-								value={resendApiKey}
-								onChange={(e) => setResendApiKey(e.target.value)}
-								autoFocus
-								required
-							/>
-							<div className="rounded-lg bg-kumo-fill px-3 py-2.5">
-								<p className="text-xs text-kumo-subtle">
-									Get your key from{" "}
-									<a
-										href="https://resend.com/api-keys"
-										target="_blank"
-										rel="noopener noreferrer"
-										className="text-blue-600 underline"
-									>
-										resend.com/api-keys
-									</a>
-									. Free plan includes 100 emails/day.
-								</p>
-							</div>
-							<div className="flex justify-between gap-2 pt-2">
-								<Button
-									variant="secondary"
-									size="sm"
-									type="button"
-									onClick={() => { setResendApiKey(""); goNext(); }}
-								>
-									Skip for now
-								</Button>
-								<div className="flex gap-2">
-									<Button
-										variant="secondary"
-										size="sm"
-										type="button"
-										onClick={goBack}
-									>
-										Back
-									</Button>
-									<Button variant="primary" size="sm" type="submit">
-										Continue
-										<CaretRightIcon size={14} />
-									</Button>
-								</div>
-							</div>
-						</form>
-					</div>
-				)}
-
-				{/* ── Step 3: Cloudflare Config ────────────────── */}
-				{stepId === "cloudflare" && (
+				{/* ── Step 1: CF Config ────────────────────────── */}
+				{stepId === "cf-config" && (
 					<div className="rounded-xl border border-kumo-line bg-kumo-base p-8">
 						<h2 className="text-lg font-semibold text-kumo-default mb-1">
 							Cloudflare Configuration
 						</h2>
 						<p className="text-sm text-kumo-subtle mb-6">
-							Provide your Cloudflare credentials to set up Email
-							Routing automatically.
+							Enter your Cloudflare credentials. We'll auto-detect the domains
+							in your account.
 						</p>
-						<form onSubmit={handleCloudflareSubmit} className="space-y-4">
+						<form onSubmit={handleCfConfigSubmit} className="space-y-4">
 							{error && <ErrorBanner message={error} />}
 							<div>
 								<label className="mb-1 block text-sm font-medium text-kumo-default">Cloudflare API Token</label>
 								<div className="relative">
 									<input
-									type={showCfToken ? "text" : "password"}
-									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-									placeholder="••••••••••••••••••••••••••••••••••••••••"
-									value={cfApiToken}
-									onChange={(e) => setCfApiToken(e.target.value)}
-									autoFocus
-									required
-								/>
+										type={showCfToken ? "text" : "password"}
+										className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+										placeholder="••••••••••••••••••••••••••••••••••••••••"
+										value={cfApiToken}
+										onChange={(e) => setCfApiToken(e.target.value)}
+										autoFocus
+										required
+									/>
 									<button
-									type="button"
-									className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
-									onClick={() => setShowCfToken(!showCfToken)}
-								>
-									{showCfToken ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
-								</button>
+										type="button"
+										className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+										onClick={() => setShowCfToken(!showCfToken)}
+									>
+										{showCfToken ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+									</button>
 								</div>
 							</div>
 							<div>
 								<label className="mb-1 block text-sm font-medium text-kumo-default">Cloudflare Account ID</label>
 								<div className="relative">
 									<input
-									type={showCfAccountId ? "text" : "password"}
-									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-									placeholder="••••••••••••••••••••••••••••••••••••••••"
-									value={cfAccountId}
-									onChange={(e) => setCfAccountId(e.target.value)}
-									required
-								/>
+										type={showCfAccountId ? "text" : "password"}
+										className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+										placeholder="••••••••••••••••••••••••••••••••••••••••"
+										value={cfAccountId}
+										onChange={(e) => setCfAccountId(e.target.value)}
+										required
+									/>
 									<button
-									type="button"
-									className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
-									onClick={() => setShowCfAccountId(!showCfAccountId)}
-								>
-									{showCfAccountId ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
-								</button>
+										type="button"
+										className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+										onClick={() => setShowCfAccountId(!showCfAccountId)}
+									>
+										{showCfAccountId ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+									</button>
 								</div>
 							</div>
 							<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
@@ -514,39 +374,110 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 									The link above pre-fills DNS + Zone Settings permissions. Click "Add more" / "添加更多" to also add Email Routing Rules, then copy the token here.
 								</p>
 							</div>
+							<div className="flex justify-end gap-2 pt-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									type="button"
+									onClick={goBack}
+								>
+									Back
+								</Button>
+								<Button
+									variant="primary"
+									size="sm"
+									type="submit"
+									loading={isDetectingDomains}
+									disabled={isDetectingDomains}
+								>
+									Detect Domains
+									<CaretRightIcon size={14} />
+								</Button>
+							</div>
+						</form>
+					</div>
+				)}
 
-							{/* Progress indicators */}
-							{domainVerifyStatus !== "pending" ||
-							emailRoutingStatus !== "pending" ? (
-								<div className="space-y-2 rounded-lg bg-kumo-fill px-4 py-3">
-									<StatusBadge
-										status={domainVerifyStatus}
-										label={
-											!resendApiKey.trim()
-												? "Resend skipped"
-												: domainVerifyStatus === "loading"
-													? "Creating Resend domain & DNS records…"
-													: domainVerifyStatus === "success"
-														? "Domain verified & DNS configured"
-														: domainVerifyStatus === "error"
-															? "Domain verification failed"
-															: "Domain verification"
-										}
-									/>
-									<StatusBadge
-										status={emailRoutingStatus}
-										label={
-											emailRoutingStatus === "loading"
-												? "Setting up catch-all email routing…"
-												: emailRoutingStatus === "success"
-													? "Email routing enabled"
-													: emailRoutingStatus === "error"
-														? "Email routing setup failed"
-														: "Email routing"
-										}
-									/>
-								</div>
-							) : null}
+				{/* ── Step 2: Select Domain ────────────────────── */}
+				{stepId === "select-domain" && (
+					<div className="rounded-xl border border-kumo-line bg-kumo-base p-8">
+						<h2 className="text-lg font-semibold text-kumo-default mb-1">
+							Select Domain
+						</h2>
+						<p className="text-sm text-kumo-subtle mb-6">
+							Pick a domain from your Cloudflare account, or enter one manually.
+						</p>
+						<form onSubmit={handleDomainSubmit} className="space-y-4">
+							{error && <ErrorBanner message={error} />}
+
+							{cfDomains.length > 0 && (
+								<>
+									<div>
+										<label className="mb-1 block text-sm font-medium text-kumo-default">
+											Detected Domains ({cfDomains.length})
+										</label>
+										<select
+											className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 text-sm text-kumo-default focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+											value={selectedDomain}
+											onChange={(e) => {
+												setSelectedDomain(e.target.value);
+												setUseCustomDomain(false);
+												setCustomDomain("");
+											}}
+											disabled={useCustomDomain}
+										>
+											<option value="">Select a domain…</option>
+											{cfDomains
+												.filter((z) => z.status === "active")
+												.map((zone) => (
+													<option key={zone.id} value={zone.name}>
+														{zone.name}
+													</option>
+												))}
+											{/* Show inactive domains separately */}
+											{cfDomains.some((z) => z.status !== "active") && (
+												<optgroup label="Inactive / pending domains">
+													{cfDomains
+														.filter((z) => z.status !== "active")
+														.map((zone) => (
+															<option key={zone.id} value={zone.name}>
+																{zone.name} ({zone.status})
+															</option>
+														))}
+												</optgroup>
+											)}
+										</select>
+									</div>
+
+									<div className="flex items-center gap-2">
+										<div className="h-px flex-1 bg-kumo-line" />
+										<span className="text-xs text-kumo-subtle">or</span>
+										<div className="h-px flex-1 bg-kumo-line" />
+									</div>
+								</>
+							)}
+
+							<div>
+								<label className="mb-1 block text-sm font-medium text-kumo-default">
+									{cfDomains.length > 0 ? "Enter domain manually" : "Domain Name"}
+								</label>
+								<input
+									type="text"
+									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+									placeholder="example.com"
+									value={customDomain}
+									onChange={(e) => {
+										setCustomDomain(e.target.value);
+										setUseCustomDomain(true);
+										setSelectedDomain("");
+									}}
+									disabled={!useCustomDomain && cfDomains.length > 0 && !!selectedDomain}
+									autoFocus={cfDomains.length === 0}
+								/>
+								<p className="text-xs text-kumo-subtle mt-1">
+									Must be added to Cloudflare and using its nameservers.
+								</p>
+							</div>
 
 							<div className="flex justify-end gap-2 pt-2">
 								<Button
@@ -557,60 +488,76 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 								>
 									Back
 								</Button>
-								{domainVerifyStatus === "success" &&
-								emailRoutingStatus === "success" ? (
-									<Button
-										variant="primary"
-										size="sm"
-										type="button"
-										onClick={handleCloudflareNext}
-									>
-										Continue
-										<CaretRightIcon size={14} />
-									</Button>
-								) : (
-									<Button
-										variant="primary"
-										size="sm"
-										type="submit"
-										loading={isProcessing}
-										disabled={isProcessing}
-									>
-										Verify & Configure
-									</Button>
-								)}
+								<Button variant="primary" size="sm" type="submit">
+									Continue
+									<CaretRightIcon size={14} />
+								</Button>
 							</div>
 						</form>
 					</div>
 				)}
 
-				{/* ── Step 4: Create First Mailbox ────────────── */}
+				{/* ── Step 3: Create First Mailbox ────────────── */}
 				{stepId === "mailbox" && (
 					<div className="rounded-xl border border-kumo-line bg-kumo-base p-8">
 						<h2 className="text-lg font-semibold text-kumo-default mb-1">
 							Create Your First Mailbox
 						</h2>
 						<p className="text-sm text-kumo-subtle mb-6">
-							This is the email address you'll use to send and receive.
+							This is the email address you'll use to send and receive on{" "}
+							<strong className="text-kumo-default">{domain}</strong>.
 						</p>
 						<form onSubmit={handleMailboxSubmit} className="space-y-4">
 							{error && <ErrorBanner message={error} />}
-							<Input
-								label="Email Address"
-								placeholder="hello@example.com"
-								size="sm"
-								value={mailboxEmail}
-								onChange={(e) => setMailboxEmail(e.target.value)}
-								autoFocus
-								required
-							/>
-							<Input
-								label="Display Name (optional)"
-								placeholder="Info"
-								size="sm"
-								value={mailboxName}
-								onChange={(e) => setMailboxName(e.target.value)}
-							/>
+							<div>
+								<label className="mb-1 block text-sm font-medium text-kumo-default">Email Address</label>
+								<input
+									type="email"
+									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+									placeholder="hello@example.com"
+									value={mailboxEmail}
+									onChange={(e) => setMailboxEmail(e.target.value)}
+									autoFocus
+									required
+								/>
+							</div>
+							<div>
+								<label className="mb-1 block text-sm font-medium text-kumo-default">Display Name (optional)</label>
+								<input
+									type="text"
+									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+									placeholder="Info"
+									value={mailboxName}
+									onChange={(e) => setMailboxName(e.target.value)}
+								/>
+							</div>
+
+							{/* Email routing progress */}
+							{emailRoutingStatus !== "pending" && (
+								<div className="space-y-1 rounded-lg bg-kumo-fill px-4 py-3">
+									<p className="text-xs text-kumo-subtle">
+										{emailRoutingStatus === "loading" && (
+											<span className="flex items-center gap-1.5">
+												<Loader size={12} />
+												Setting up catch-all email routing…
+											</span>
+										)}
+										{emailRoutingStatus === "success" && (
+											<span className="flex items-center gap-1.5 text-green-600">
+												<CheckCircleIcon size={12} />
+												Email routing enabled
+											</span>
+										)}
+										{emailRoutingStatus === "error" && (
+											<span className="flex items-center gap-1.5 text-red-600">
+												<WarningIcon size={12} />
+												Email routing failed — you can retry from Settings
+											</span>
+										)}
+									</p>
+								</div>
+							)}
+
 							<div className="flex justify-end gap-2 pt-2">
 								<Button
 									variant="secondary"
@@ -634,7 +581,7 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 					</div>
 				)}
 
-				{/* ── Step 5: Complete ────────────────────────── */}
+				{/* ── Step 4: Complete ────────────────────────── */}
 				{stepId === "complete" && (
 					<div className="rounded-xl border border-kumo-line bg-kumo-base p-10 text-center">
 						<div className="flex justify-center mb-5">

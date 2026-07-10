@@ -127,6 +127,21 @@ export interface SetupResult {
 	success: boolean;
 }
 
+export interface DetectCfDomainsRequest {
+	cfApiToken: string;
+	cfAccountId: string;
+}
+
+export interface CfZone {
+	id: string;
+	name: string;
+	status: string;
+}
+
+export interface DetectCfDomainsResult {
+	zones: CfZone[];
+}
+
 // ---------- API client ----------
 
 const api = {
@@ -199,13 +214,15 @@ const api = {
 	// Domains
 	domains: {
 		list: () => get<Domain[]>("/api/v1/domains"),
-		create: (data: { name: string }) =>
+		create: (data: { name: string; resendApiKey?: string }) =>
 			post<Domain>("/api/v1/domains", data),
 		delete: (id: string) => del<void>(`/api/v1/domains/${id}`),
 	},
 
 	// Setup
 	getSetupStatus: () => get<SetupStatus>("/api/v1/setup/status"),
+	detectCfDomains: (data: DetectCfDomainsRequest) =>
+		post<DetectCfDomainsResult>("/api/v1/setup/detect-cf-domains", data),
 	verifyDomain: (data: VerifyDomainRequest) =>
 		post<VerifyResult>("/api/v1/setup/verify-domain", data),
 	setupEmailRouting: (data: SetupEmailRoutingRequest) =>

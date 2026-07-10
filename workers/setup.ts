@@ -9,6 +9,76 @@ import * as dbService from "./db";
 
 const setup = new Hono<{ Bindings: Env }>();
 
+// ── POST /api/v1/setup/detect-cf-domains ───────────────────────────
+// Given a CF API Token + Account ID, return all zones in the account.
+setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
+	try {
+		const body = await c.req.json<{
+			cfApiToken: string;
+			cfAccountId: string;
+		}>();
+
+		const { cfApiToken, cfAccountId } = body;
+
+		if (!cfApiToken || !cfAccountId) {
+			return c.json(
+				{ error: "Missing required fields: cfApiToken, cfAccountId" },
+				400,
+			);
+		}
+
+		// Fetch all zones for the account (paginated, up to 5 pages = 500 zones)
+		const zones: Array<{ id: string; name: string; status: string }> = [];
+		let page = 1;
+		let hasMore = true;
+
+		while (hasMore && page <= 5) {
+			const url = new URL(
+				`https://api.cloudflare.com/client/v4/zones?account.id=${cfAccountId}&page=${page}&per_page=100`,
+			);
+			const res = await fetch(url.toString(), {
+				method: "GET",
+				headers: {
+					Authorization: `Bearer ${cfApiToken}`,
+					"Content-Type": "application/json",
+				},
+			});
+
+			if (!res.ok) {
+				const errBody = await res.json().catch(() => ({}));
+				const msg =
+					(errBody as any)?.errors?.[0]?.message ||
+					`Cloudflare API error: ${res.status}`;
+				return c.json({ error: msg }, 400);
+			}
+
+			const data = (await res.json()) as {
+				success: boolean;
+				errors: Array<{ message: string }>;
+				result: Array<{ id: string; name: string; status: string }>;
+				result_info: { total_pages: number };
+			};
+
+			if (!data.success) {
+				const msg = data.errors?.[0]?.message || "Cloudflare API returned an error";
+				return c.json({ error: msg }, 400);
+			}
+
+			for (const zone of data.result) {
+				zones.push({ id: zone.id, name: zone.name, status: zone.status });
+			}
+
+			hasMore = page < data.result_info.total_pages;
+			page++;
+		}
+
+		return c.json({ zones });
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `Failed to detect CF domains: ${msg}` }, 500);
+	}
+});
+
 // ── GET /api/v1/setup/status ───────────────────────────────────────
 // Check whether the application has been configured.
 setup.get("/api/v1/setup/status", async (c) => {
@@ -570,9 +640,53 @@ setup.post("/api/v1/domains", async (c) => {
 				const errBody = await resendRes.json().catch(() => ({}));
 				// Domain record created but Resend setup failed — leave as pending
 			}
-		}
+	} else if (resendApiKey) {
+		// Resend-only mode: create Resend domain, return DNS records for user to add manually
+		const resendRes = await fetch("https://api.resend.com/domains", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${resendApiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ name: domain, region: "us-east-1" }),
+		});
 
-		const updatedDomain = await dbService.getDomain(c.env.DB, domainId);
+		if (resendRes.ok) {
+			const resendData = (await resendRes.json()) as {
+				id: string;
+				records: Array<{
+					record: string;
+					name: string;
+					type: string;
+					ttl: string;
+					status: string;
+					value: string;
+					priority?: number;
+				}>;
+			};
+
+			resendDomainId = resendData.id;
+
+			// Collect DNS records for the user to add manually
+			for (const record of resendData.records) {
+				dnsResults.push({
+					name: record.name,
+					type: record.type,
+					status: record.status || "pending",
+				});
+			}
+
+			// Update domain with Resend info
+			await dbService.updateDomain(c.env.DB, domainId, {
+				resend_domain_id: resendDomainId,
+				status: "pending",
+			});
+		} else {
+			// Domain record created but Resend setup failed — leave as pending
+		}
+	}
+
+	const updatedDomain = await dbService.getDomain(c.env.DB, domainId);
 		return c.json({ domain: updatedDomain, dnsRecords: dnsResults }, 201);
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";

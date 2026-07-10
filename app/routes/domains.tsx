@@ -7,10 +7,16 @@ import {
 	Dialog,
 	Input,
 	Loader,
-	Text,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
-import { GlobeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+	CaretRightIcon,
+	CheckCircleIcon,
+	GlobeIcon,
+	PlusIcon,
+	TrashIcon,
+	WarningIcon,
+} from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import {
@@ -19,6 +25,8 @@ import {
 	useDomains,
 } from "~/queries/domains";
 import type { Domain } from "~/types";
+
+// ── Helpers ────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: Domain["status"] }) {
 	const styles: Record<Domain["status"], string> = {
@@ -42,6 +50,313 @@ function StatusBadge({ status }: { status: Domain["status"] }) {
 	);
 }
 
+// ── Add Domain Wizard ──────────────────────────────────────────────
+
+interface AddDomainWizardProps {
+	onClose: () => void;
+	onSuccess: () => void;
+}
+
+type WizardStep = "domain" | "resend-key" | "dns-records" | "done";
+
+function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
+	const toastManager = useKumoToastManager();
+	const createDomain = useCreateDomain();
+
+	const [step, setStep] = useState<WizardStep>("domain");
+	const [domainName, setDomainName] = useState("");
+	const [resendApiKey, setResendApiKey] = useState("");
+	const [isProcessing, setIsProcessing] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	// Step A: Domain name
+	const handleDomainSubmit = (e: FormEvent) => {
+		e.preventDefault();
+		setError(null);
+		if (!domainName.trim()) {
+			setError("Please enter a domain name");
+			return;
+		}
+		if (!domainName.includes(".")) {
+			setError("Please enter a valid domain (e.g. example.com)");
+			return;
+		}
+		setStep("resend-key");
+	};
+
+	// Step B: Resend API Key → create domain via backend + get DNS records
+	const handleResendSubmit = async (e: FormEvent) => {
+		e.preventDefault();
+		setError(null);
+		if (!resendApiKey.trim()) {
+			setError("Please enter your Resend API Key");
+			return;
+		}
+
+		setIsProcessing(true);
+		try {
+			// Call backend which creates the Resend domain and returns DNS records
+			await createDomain.mutateAsync({
+				name: domainName.trim(),
+				resendApiKey: resendApiKey.trim(),
+			});
+
+			setStep("dns-records");
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to add domain";
+			setError(msg);
+		} finally {
+			setIsProcessing(false);
+		}
+	};
+
+	// Step C → D: User confirms DNS records
+	const handleDnsConfirm = () => {
+		setStep("done");
+		toastManager.add({ title: "Domain added! Waiting for DNS verification." });
+		onSuccess();
+	};
+
+	const handleClose = () => {
+		if (step === "done") {
+			onClose();
+		} else {
+			onClose();
+		}
+	};
+
+	return (
+		<Dialog.Root open onOpenChange={handleClose}>
+			<Dialog size="sm" className="p-6">
+				{/* ── Step A: Domain Name ──────────────────── */}
+				{step === "domain" && (
+					<>
+						<Dialog.Title className="text-base font-semibold mb-1">
+							Add Domain
+						</Dialog.Title>
+						<p className="text-sm text-kumo-subtle mb-5">
+							Enter the domain you want to add for sending and receiving email via Resend.
+						</p>
+						<form onSubmit={handleDomainSubmit} className="space-y-4">
+							{error && (
+								<div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+									<WarningIcon size={14} className="text-red-600 shrink-0" />
+									<span className="text-sm text-red-600">{error}</span>
+								</div>
+							)}
+							<Input
+								label="Domain Name"
+								placeholder="example.com"
+								size="sm"
+								value={domainName}
+								onChange={(e) => setDomainName(e.target.value)}
+								autoFocus
+								required
+							/>
+							<div className="flex justify-end gap-2 pt-2">
+								<Dialog.Close
+									render={(props) => (
+										<Button {...props} variant="secondary" size="sm">
+											Cancel
+										</Button>
+									)}
+								/>
+								<Button type="submit" variant="primary" size="sm">
+									Continue
+									<CaretRightIcon size={14} />
+								</Button>
+							</div>
+						</form>
+					</>
+				)}
+
+				{/* ── Step B: Resend API Key ────────────────── */}
+				{step === "resend-key" && (
+					<>
+						<Dialog.Title className="text-base font-semibold mb-1">
+							Resend API Key
+						</Dialog.Title>
+						<p className="text-sm text-kumo-subtle mb-5">
+							Enter your Resend API key to set up email sending for{" "}
+							<strong className="text-kumo-default">{domainName}</strong>.
+						</p>
+						<form onSubmit={handleResendSubmit} className="space-y-4">
+							{error && (
+								<div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+									<WarningIcon size={14} className="text-red-600 shrink-0" />
+									<span className="text-sm text-red-600">{error}</span>
+								</div>
+							)}
+							<Input
+								label="Resend API Key"
+								placeholder="re_••••••••••••••••••••••••••••"
+								size="sm"
+								type="password"
+								value={resendApiKey}
+								onChange={(e) => setResendApiKey(e.target.value)}
+								autoFocus
+								required
+							/>
+							<div className="rounded-lg bg-kumo-fill px-3 py-2.5">
+								<p className="text-xs text-kumo-subtle">
+									Get your key from{" "}
+									<a
+										href="https://resend.com/api-keys"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-blue-600 underline"
+									>
+										resend.com/api-keys
+									</a>
+									. Free plan includes 100 emails/day.
+								</p>
+							</div>
+							<div className="flex justify-end gap-2 pt-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									type="button"
+									onClick={() => { setError(null); setStep("domain"); }}
+								>
+									Back
+								</Button>
+								<Button
+									type="submit"
+									variant="primary"
+									size="sm"
+									loading={isProcessing}
+									disabled={isProcessing}
+								>
+									Create Domain
+								</Button>
+							</div>
+						</form>
+					</>
+				)}
+
+				{/* ── Step C: DNS Records ───────────────────── */}
+				{step === "dns-records" && (
+					<>
+						<Dialog.Title className="text-base font-semibold mb-1">
+							Add DNS Records
+						</Dialog.Title>
+						<p className="text-sm text-kumo-subtle mb-5">
+							Add these DNS records to <strong className="text-kumo-default">{domainName}</strong> at your
+							DNS provider to enable email sending via Resend.
+						</p>
+
+						<div className="space-y-3 mb-5">
+							{/* MX Record */}
+							<div className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
+								<div className="flex items-center gap-2 mb-2">
+									<span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
+										MX
+									</span>
+									<span className="text-xs text-kumo-subtle">
+										Priority: 10
+									</span>
+								</div>
+								<div className="space-y-1">
+									<div>
+										<span className="text-xs text-kumo-subtle">Name: </span>
+										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
+											@
+										</code>
+									</div>
+									<div>
+										<span className="text-xs text-kumo-subtle">Value: </span>
+										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded break-all">
+											feedback-smtp.us-east-1.amazonses.com
+										</code>
+									</div>
+								</div>
+							</div>
+
+							{/* TXT Record (SPF) */}
+							<div className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
+								<div className="flex items-center gap-2 mb-2">
+									<span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
+										TXT
+									</span>
+								</div>
+								<div className="space-y-1">
+									<div>
+										<span className="text-xs text-kumo-subtle">Name: </span>
+										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
+											@
+										</code>
+									</div>
+									<div>
+										<span className="text-xs text-kumo-subtle">Value: </span>
+										<code className="text-xs text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded break-all">
+											v=spf1 include:amazonses.com ~all
+										</code>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 mb-5">
+							<p className="text-xs text-kumo-subtle">
+								DNS changes may take up to 24-48 hours to propagate. We'll
+								automatically verify the domain once the records are detected.
+							</p>
+						</div>
+
+						<div className="flex justify-end gap-2">
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => setStep("resend-key")}
+							>
+								Back
+							</Button>
+							<Button
+								variant="primary"
+								size="sm"
+								onClick={handleDnsConfirm}
+							>
+								I'll Add These Later
+								<CheckCircleIcon size={14} />
+							</Button>
+						</div>
+					</>
+				)}
+
+				{/* ── Step D: Done ─────────────────────────── */}
+				{step === "done" && (
+					<>
+						<div className="flex justify-center mb-4">
+							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
+								<CheckCircleIcon size={24} className="text-green-500" />
+							</div>
+						</div>
+						<Dialog.Title className="text-base font-semibold text-center mb-1">
+							Domain Added
+						</Dialog.Title>
+						<p className="text-sm text-kumo-subtle text-center mb-5">
+							<strong className="text-kumo-default">{domainName}</strong> has been
+							added and is waiting for DNS verification. Once the DNS records
+							propagate, the domain will be verified automatically.
+						</p>
+						<div className="flex justify-center">
+							<Dialog.Close
+								render={(props) => (
+									<Button {...props} variant="primary" size="sm">
+										Done
+									</Button>
+								)}
+							/>
+						</div>
+					</>
+				)}
+			</Dialog>
+		</Dialog.Root>
+	);
+}
+
+// ── Page ───────────────────────────────────────────────────────────
+
 export function meta() {
 	return [{ title: "Domains — Mailboxes" }];
 }
@@ -49,43 +364,12 @@ export function meta() {
 export default function DomainsRoute() {
 	const toastManager = useKumoToastManager();
 	const { data: domains = [], isFetched: domainsFetched } = useDomains();
-	const createDomain = useCreateDomain();
 	const deleteDomain = useDeleteDomain();
 
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
-	const [newDomainName, setNewDomainName] = useState("");
-	const [isCreating, setIsCreating] = useState(false);
-	const [createError, setCreateError] = useState<string | null>(null);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [domainToDelete, setDomainToDelete] = useState<Domain | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
-
-	const handleCreate = async (e: FormEvent) => {
-		e.preventDefault();
-		setCreateError(null);
-		if (!newDomainName.trim()) {
-			setCreateError("Please enter a domain name");
-			return;
-		}
-		// Basic validation: must contain a dot
-		if (!newDomainName.includes(".")) {
-			setCreateError("Please enter a valid domain (e.g. example.com)");
-			return;
-		}
-		setIsCreating(true);
-		try {
-			await createDomain.mutateAsync({ name: newDomainName.trim() });
-			toastManager.add({ title: "Domain added successfully!" });
-			setIsCreateOpen(false);
-			setNewDomainName("");
-		} catch (err: unknown) {
-			const message =
-				(err instanceof Error ? err.message : null) || "Failed to add domain";
-			setCreateError(message);
-		} finally {
-			setIsCreating(false);
-		}
-	};
 
 	const handleDelete = async () => {
 		if (!domainToDelete) return;
@@ -210,46 +494,13 @@ export default function DomainsRoute() {
 				)}
 			</div>
 
-			{/* Create Domain Dialog */}
-			<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-5">
-						Add Domain
-					</Dialog.Title>
-					<form onSubmit={handleCreate} className="space-y-4">
-						{createError && (
-							<Text variant="error" size="sm">
-								{createError}
-							</Text>
-						)}
-						<Input
-							label="Domain Name"
-							placeholder="example.com"
-							size="sm"
-							value={newDomainName}
-							onChange={(e) => setNewDomainName(e.target.value)}
-							required
-						/>
-						<div className="flex justify-end gap-2 pt-2">
-							<Dialog.Close
-								render={(props) => (
-									<Button {...props} variant="secondary" size="sm">
-										Cancel
-									</Button>
-								)}
-							/>
-							<Button
-								type="submit"
-								variant="primary"
-								size="sm"
-								loading={isCreating}
-							>
-								Add Domain
-							</Button>
-						</div>
-					</form>
-				</Dialog>
-			</Dialog.Root>
+			{/* Add Domain Wizard */}
+			{isCreateOpen && (
+				<AddDomainWizard
+					onClose={() => setIsCreateOpen(false)}
+					onSuccess={() => setIsCreateOpen(false)}
+				/>
+			)}
 
 			{/* Delete Domain Dialog */}
 			<Dialog.Root
