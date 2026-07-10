@@ -176,7 +176,7 @@ function PlatformSettingsSection() {
 		saveCfCredentials(creds);
 		setIsSaving(false);
 		setHasChanges(false);
-		toastManager.add({ title: "Cloudflare credentials verified and saved" });
+		toastManager.add({ title: "Cloudflare credentials verified successfully" });
 	};
 
 	return (
@@ -298,7 +298,7 @@ function PlatformSettingsSection() {
 							variant="primary"
 							size="sm"
 							onClick={handleSave}
-							disabled={!hasChanges || isVerifying || isSaving || !creds.cfApiToken.trim() || !creds.cfAccountId.trim()}
+							disabled={isVerifying || isSaving || !creds.cfApiToken.trim() || !creds.cfAccountId.trim()}
 							loading={isVerifying || isSaving}
 						>
 							{isVerifying ? "Verifying…" : isSaving ? "Saving…" : "Verify & Save"}
