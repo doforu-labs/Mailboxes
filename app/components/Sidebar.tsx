@@ -152,7 +152,7 @@ export default function Sidebar() {
 					size="sm"
 					icon={<PencilSimpleIcon size={14} />}
 					onClick={() => startCompose()}
-					className="w-full"
+					className="w-fit"
 				>
 					New
 				</Button>
