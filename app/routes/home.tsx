@@ -21,7 +21,6 @@ import {
 	TrashIcon,
 	WarningIcon,
 } from "@phosphor-icons/react";
-import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import {
@@ -62,7 +61,6 @@ export default function HomeRoute() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [openMenu, setOpenMenu] = useState<string | null>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
-	const [isAddDomainOpen, setIsAddDomainOpen] = useState(false);
 
 	// Domain API Key dialog state
 	const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
@@ -279,13 +277,6 @@ export default function HomeRoute() {
 						</h1>
 						<div className="flex items-center gap-2">
 							<Button
-								variant="secondary"
-								icon={<PlusIcon size={14} />}
-								onClick={() => setIsAddDomainOpen(true)}
-							>
-								Add Domain
-							</Button>
-							<Button
 								variant="primary"
 								icon={<PlusIcon size={16} />}
 								onClick={() => setIsCreateOpen(true)}
@@ -435,13 +426,13 @@ export default function HomeRoute() {
 								Get started by adding a domain to create your first
 								mailbox.
 							</p>
-							<Button
-								variant="primary"
-								icon={<PlusIcon size={16} />}
-								onClick={() => setIsAddDomainOpen(true)}
-							>
-								Add Domain
-							</Button>
+							<RouterLink
+							to="/domains"
+							className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-kumo-brand text-white hover:bg-kumo-brand/90 no-underline"
+						>
+							<PlusIcon size={16} />
+							Add Domain
+						</RouterLink>
 						</div>
 					</div>
 				)}
@@ -701,15 +692,7 @@ export default function HomeRoute() {
 				</Dialog>
 			</Dialog.Root>
 
-			{/* Add Domain Wizard */}
-			{isAddDomainOpen && (
-				<AddDomainWizard
-					onClose={() => setIsAddDomainOpen(false)}
-					onSuccess={() => {
-					setIsAddDomainOpen(false);
-				}}
-				/>
-			)}
+
 		</div>
 	);
 }

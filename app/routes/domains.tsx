@@ -3,18 +3,25 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import {
+	Badge,
 	Button,
 	Dialog,
 	Loader,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
+	CaretDownIcon,
+	CaretRightIcon,
+	GearSixIcon,
 	GlobeIcon,
+	LinkIcon,
 	PlusIcon,
 	TrashIcon,
 	AtIcon,
+	EyeIcon,
+	EyeSlashIcon,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import {
 	useDeleteDomain,
@@ -24,6 +31,243 @@ import type { Domain } from "~/types";
 import { StatusBadge } from "~/components/DomainStatusBadge";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { CatchAllDialog } from "~/components/CatchAllDialog";
+
+// ── CF Credentials (localStorage) ────────────────────────────────
+
+const CF_CREDENTIALS_KEY = "mailboxes_cf_credentials";
+
+interface CfCredentials {
+	cfApiToken: string;
+	cfAccountId: string;
+}
+
+function loadCfCredentials(): CfCredentials {
+	try {
+		const raw = localStorage.getItem(CF_CREDENTIALS_KEY);
+		if (!raw) return { cfApiToken: "", cfAccountId: "" };
+		const parsed = JSON.parse(raw);
+		return {
+			cfApiToken: parsed.cfApiToken ?? "",
+			cfAccountId: parsed.cfAccountId ?? "",
+		};
+	} catch {
+		return { cfApiToken: "", cfAccountId: "" };
+	}
+}
+
+function saveCfCredentials(creds: CfCredentials): void {
+	localStorage.setItem(CF_CREDENTIALS_KEY, JSON.stringify(creds));
+}
+
+// ── CF Token Template URL ────────────────────────────────────────
+
+const CF_TOKEN_TEMPLATE_URL = (() => {
+	const permissions = [
+		{ key: "dns", type: "edit" },
+		{ key: "zone_settings", type: "edit" },
+	];
+	return `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
+		JSON.stringify(permissions)
+	)}&accountId=*&zoneId=all&name=Mailboxes%20Token`;
+})();
+
+// ── Domain Status Indicators ─────────────────────────────────────
+
+function DomainStatusIndicators({ domain }: { domain: Domain }) {
+	const isReceiving = !!domain.cf_zone_id;
+	const isSending = !!domain.resend_api_key && domain.status === "verified";
+
+	return (
+		<div className="flex items-center gap-2 mt-1">
+			<span
+				className="inline-flex items-center gap-1 text-[11px] font-medium"
+				title={
+					isReceiving
+						? "Email Routing active — CF-managed domain"
+						: "No Cloudflare zone linked — Email Routing not configured"
+				}
+			>
+				<span
+					className={`inline-block h-1.5 w-1.5 rounded-full ${
+						isReceiving ? "bg-green-500" : "bg-amber-400"
+					}`}
+				/>
+				<span className={isReceiving ? "text-green-600" : "text-amber-600"}>
+					Receiving
+				</span>
+			</span>
+			<span
+				className="inline-flex items-center gap-1 text-[11px] font-medium"
+				title={
+					isSending
+						? "Resend API key configured and DNS verified"
+						: !domain.resend_api_key
+							? "No Resend API key — sending not configured"
+							: "DNS not yet verified — sending unavailable"
+				}
+			>
+				<span
+					className={`inline-block h-1.5 w-1.5 rounded-full ${
+						isSending ? "bg-green-500" : "bg-amber-400"
+					}`}
+				/>
+				<span className={isSending ? "text-green-600" : "text-amber-600"}>
+					Sending
+				</span>
+			</span>
+		</div>
+	);
+}
+
+// ── Platform Settings ────────────────────────────────────────────
+
+function PlatformSettingsSection() {
+	const toastManager = useKumoToastManager();
+	const [isExpanded, setIsExpanded] = useState(false);
+	const [creds, setCreds] = useState<CfCredentials>(loadCfCredentials);
+	const [showToken, setShowToken] = useState(false);
+	const [showAccountId, setShowAccountId] = useState(false);
+	const [hasChanges, setHasChanges] = useState(false);
+
+	const isConfigured = !!(creds.cfApiToken.trim() && creds.cfAccountId.trim());
+
+	// Track changes
+	useEffect(() => {
+		const saved = loadCfCredentials();
+		setHasChanges(
+			creds.cfApiToken !== saved.cfApiToken ||
+				creds.cfAccountId !== saved.cfAccountId
+		);
+	}, [creds]);
+
+	const handleSave = () => {
+		if (!creds.cfApiToken.trim() || !creds.cfAccountId.trim()) {
+			toastManager.add({
+				title: "Both API Token and Account ID are required",
+				variant: "error",
+			});
+			return;
+		}
+		saveCfCredentials(creds);
+		setHasChanges(false);
+		toastManager.add({ title: "Cloudflare credentials saved" });
+	};
+
+	return (
+		<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden mb-6">
+			{/* Collapsed header */}
+			<button
+				type="button"
+				className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-kumo-fill/50"
+				onClick={() => setIsExpanded(!isExpanded)}
+			>
+				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-kumo-default">
+					<GearSixIcon size={16} />
+				</div>
+				<div className="min-w-0 flex-1">
+					<span className="text-sm font-medium text-kumo-default">
+						Platform Settings
+					</span>
+					<span className="text-xs text-kumo-subtle ml-2">
+						Cloudflare API credentials for domain detection
+					</span>
+				</div>
+				<Badge variant={isConfigured ? "success" : "warning"}>
+					{isConfigured ? "Configured" : "Not configured"}
+				</Badge>
+				{isExpanded ? (
+					<CaretDownIcon size={16} className="text-kumo-muted shrink-0" />
+				) : (
+					<CaretRightIcon size={16} className="text-kumo-muted shrink-0" />
+				)}
+			</button>
+
+			{/* Expanded content */}
+			{isExpanded && (
+				<div className="border-t border-kumo-line px-5 py-5 space-y-4">
+					<div>
+						<label className="mb-1 block text-sm font-medium text-kumo-default">
+							Cloudflare API Token
+						</label>
+						<div className="relative">
+							<input
+								type={showToken ? "text" : "password"}
+								className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+								placeholder="••••••••••••••••••••••••••••••••••••••••"
+								value={creds.cfApiToken}
+								onChange={(e) =>
+									setCreds((c) => ({ ...c, cfApiToken: e.target.value }))
+								}
+							/>
+							<button
+								type="button"
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+								onClick={() => setShowToken(!showToken)}
+							>
+								{showToken ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+							</button>
+						</div>
+					</div>
+					<div>
+						<label className="mb-1 block text-sm font-medium text-kumo-default">
+							Cloudflare Account ID
+						</label>
+						<div className="relative">
+							<input
+								type={showAccountId ? "text" : "password"}
+								className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+								placeholder="••••••••••••••••••••••••••••••••••••••••"
+								value={creds.cfAccountId}
+								onChange={(e) =>
+									setCreds((c) => ({ ...c, cfAccountId: e.target.value }))
+								}
+							/>
+							<button
+								type="button"
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+								onClick={() => setShowAccountId(!showAccountId)}
+							>
+								{showAccountId ? (
+									<EyeSlashIcon size={16} />
+								) : (
+									<EyeIcon size={16} />
+								)}
+							</button>
+						</div>
+					</div>
+
+					<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+						<p className="text-xs text-kumo-subtle">
+							<a
+								href={CF_TOKEN_TEMPLATE_URL}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
+							>
+								<LinkIcon size={12} />
+								Create a pre-configured token
+							</a>
+						</p>
+						<p className="text-xs text-kumo-subtle mt-1.5">
+							Required: DNS Edit, Zone Settings Edit, and Email Routing Rules Edit.
+						</p>
+					</div>
+
+					<div className="flex justify-end">
+						<Button
+							variant="primary"
+							size="sm"
+							onClick={handleSave}
+							disabled={!hasChanges || !creds.cfApiToken.trim() || !creds.cfAccountId.trim()}
+						>
+							Save Credentials
+						</Button>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
 
 // ── Page ───────────────────────────────────────────────────────────
 
@@ -90,6 +334,9 @@ export default function DomainsRoute() {
 					</div>
 				</div>
 
+				{/* Platform Settings */}
+				<PlatformSettingsSection />
+
 				{/* Domain List */}
 				{!domainsFetched ? (
 					<div className="flex justify-center py-16">
@@ -122,6 +369,7 @@ export default function DomainsRoute() {
 											day: "numeric",
 										})}
 									</div>
+									<DomainStatusIndicators domain={domain} />
 									{domain.catch_all_mailbox && (
 										<div className="text-xs text-kumo-accent mt-0.5">
 											Catch-all: {domain.catch_all_mailbox}
