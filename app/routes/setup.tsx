@@ -11,6 +11,8 @@ import {
 	CaretRightIcon,
 	CheckCircleIcon,
 	EnvelopeIcon,
+	EyeIcon,
+	EyeSlashIcon,
 	GlobeIcon,
 	GearSixIcon,
 	KeyIcon,
@@ -151,7 +153,9 @@ export default function SetupRoute() {
 	const [resendApiKey, setResendApiKey] = useState("");
 	const [cfApiToken, setCfApiToken] = useState("");
 	const [cfAccountId, setCfAccountId] = useState("");
-	const [mailboxEmail, setMailboxEmail] = useState("");
+	const [showCfToken, setShowCfToken] = useState(false);
+const [showCfAccountId, setShowCfAccountId] = useState(false);
+const [mailboxEmail, setMailboxEmail] = useState("");
 	const [mailboxName, setMailboxName] = useState("");
 
 	// Loading / error state
@@ -439,25 +443,47 @@ export default function SetupRoute() {
 						</p>
 						<form onSubmit={handleCloudflareSubmit} className="space-y-4">
 							{error && <ErrorBanner message={error} />}
-							<Input
-								label="Cloudflare API Token"
-								placeholder="••••••••••••••••••••"
-								size="sm"
-								type="password"
-								value={cfApiToken}
-								onChange={(e) => setCfApiToken(e.target.value)}
-								autoFocus
-								required
-							/>
-							<Input
-								label="Cloudflare Account ID"
-								placeholder="••••••••••••••••••••"
-								size="sm"
-								type="password"
-								value={cfAccountId}
-								onChange={(e) => setCfAccountId(e.target.value)}
-								required
-							/>
+							<div>
+								<label className="mb-1 block text-sm font-medium text-kumo-default">Cloudflare API Token</label>
+								<div className="relative">
+									<input
+									type={showCfToken ? "text" : "password"}
+									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+									placeholder="••••••••••••••••••••••••••••••••••••••••"
+									value={cfApiToken}
+									onChange={(e) => setCfApiToken(e.target.value)}
+									autoFocus
+									required
+								/>
+									<button
+									type="button"
+									className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+									onClick={() => setShowCfToken(!showCfToken)}
+								>
+									{showCfToken ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+								</button>
+								</div>
+							</div>
+							<div>
+								<label className="mb-1 block text-sm font-medium text-kumo-default">Cloudflare Account ID</label>
+								<div className="relative">
+									<input
+									type={showCfAccountId ? "text" : "password"}
+									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+									placeholder="••••••••••••••••••••••••••••••••••••••••"
+									value={cfAccountId}
+									onChange={(e) => setCfAccountId(e.target.value)}
+									required
+								/>
+									<button
+									type="button"
+									className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+									onClick={() => setShowCfAccountId(!showCfAccountId)}
+								>
+									{showCfAccountId ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+								</button>
+								</div>
+							</div>
 							<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
 								<p className="text-xs text-kumo-subtle">
 									<a
