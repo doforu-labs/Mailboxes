@@ -334,11 +334,14 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			);
 		}
 
-		// 1. Get zone ID
-		const zonesUrl = new URL(
+		// 1. Get zone ID — try exact match first, then parent zone for subdomains
+		let zoneId: string | null = null;
+		
+		// Try exact match
+		let zonesUrl = new URL(
 			`https://api.cloudflare.com/client/v4/zones?name=${domain}&status=active`,
 		);
-		const zonesRes = await fetch(zonesUrl.toString(), {
+		let zonesRes = await fetch(zonesUrl.toString(), {
 			method: "GET",
 			headers: {
 				Authorization: `Bearer ${cfApiToken}`,
@@ -346,28 +349,53 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			},
 		});
 
-		if (!zonesRes.ok) {
-			const errBody = await zonesRes.json().catch(() => ({}));
-			const msg =
-				(errBody as any)?.errors?.[0]?.message ||
-				`Cloudflare API error: ${zonesRes.status}`;
-			return c.json({ error: `Failed to find Cloudflare zone: ${msg}` }, 400);
+		if (zonesRes.ok) {
+			const zonesData = (await zonesRes.json()) as {
+				success: boolean;
+				errors: Array<{ message: string }>;
+				result: Array<{ id: string }>;
+			};
+			if (zonesData.success && zonesData.result?.length) {
+				zoneId = zonesData.result[0].id;
+			}
 		}
 
-		const zonesData = (await zonesRes.json()) as {
-			success: boolean;
-			errors: Array<{ message: string }>;
-			result: Array<{ id: string }>;
-		};
+		// If not found, try parent zones for subdomains
+		if (!zoneId) {
+			const parts = domain.split(".");
+			for (let i = 1; i < parts.length - 1; i++) {
+				const parentZone = parts.slice(i).join(".");
+				zonesUrl = new URL(
+					`https://api.cloudflare.com/client/v4/zones?name=${parentZone}&status=active`,
+				);
+				zonesRes = await fetch(zonesUrl.toString(), {
+					method: "GET",
+					headers: {
+						Authorization: `Bearer ${cfApiToken}`,
+						"Content-Type": "application/json",
+					},
+				});
 
-		if (!zonesData.success || !zonesData.result?.length) {
+				if (zonesRes.ok) {
+					const zonesData = (await zonesRes.json()) as {
+						success: boolean;
+						errors: Array<{ message: string }>;
+						result: Array<{ id: string }>;
+					};
+					if (zonesData.success && zonesData.result?.length) {
+						zoneId = zonesData.result[0].id;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!zoneId) {
 			return c.json(
-				{ error: `Zone "${domain}" not found in Cloudflare.` },
+				{ error: `Zone for "${domain}" not found in Cloudflare.` },
 				400,
 			);
 		}
-
-		const zoneId = zonesData.result[0].id;
 
 		// 2. Enable Email Routing
 		const enableRes = await fetch(
