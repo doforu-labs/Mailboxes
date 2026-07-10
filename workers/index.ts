@@ -1023,7 +1023,17 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 	if (!mailboxId) throw new Error("received email with no valid recipient address");
 
 	const messageId = crypto.randomUUID();
-	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) { console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`); return; }
+	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) {
+		const domain = mailboxId.split("@")[1];
+		const domainRecord = await db.getDomainByName(env.DB, domain);
+		if (domainRecord?.catch_all_mailbox) {
+			mailboxId = domainRecord.catch_all_mailbox;
+			console.log(`No exact match for original recipient, routing to catch-all: ${mailboxId}`);
+		} else {
+			console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`);
+			return;
+		}
+	}
 
 	const attachmentData: StoredAttachment[] = [];
 	if (parsedEmail.attachments) {

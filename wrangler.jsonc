@@ -25,7 +25,7 @@
 		{
 			"binding": "DB",
 			"database_name": "mailboxes-db",
-			"database_id": "cb53f644-578f-45f2-b4f0-9393158cfd77",
+			"database_id": "bce48f1a-88a3-4a57-8cee-a0f0c7a7ac38",
 			"preview_database_id": "local",
 			"migrations_dir": "migrations"
 		}

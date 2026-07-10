@@ -1101,6 +1101,7 @@ export interface DomainData {
 	cf_zone_id?: string | null;
 	cf_account_id?: string | null;
 	status: string;
+	catch_all_mailbox?: string | null;
 	created_at: string;
 }
 
@@ -1109,6 +1110,7 @@ export interface DomainUpdate {
 	cf_zone_id?: string | null;
 	cf_account_id?: string | null;
 	status?: string;
+	catch_all_mailbox?: string | null;
 }
 
 export async function createDomain(
@@ -1178,6 +1180,7 @@ export async function updateDomain(
 	if (updates.cf_zone_id !== undefined) setClause.cf_zone_id = updates.cf_zone_id ?? null;
 	if (updates.cf_account_id !== undefined) setClause.cf_account_id = updates.cf_account_id ?? null;
 	if (updates.status !== undefined) setClause.status = updates.status;
+	if (updates.catch_all_mailbox !== undefined) setClause.catch_all_mailbox = updates.catch_all_mailbox ?? null;
 
 	if (Object.keys(setClause).length === 0) {
 		return getDomain(db, id);

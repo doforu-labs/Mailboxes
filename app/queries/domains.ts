@@ -33,3 +33,14 @@ export function useDeleteDomain() {
 		},
 	});
 }
+
+export function useSetCatchAll() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({ domainId, catchAllMailbox }: { domainId: string; catchAllMailbox: string | null }) =>
+			api.domains.setCatchAll(domainId, catchAllMailbox),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: queryKeys.domains.all });
+		},
+	});
+}

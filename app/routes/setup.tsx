@@ -600,10 +600,12 @@ export default function SetupRoute() {
 							be routed to your Worker.
 						</p>
 						<RouterLink to="/">
-							<Button variant="primary" size="lg">
-								Go to Mailboxes
-								<CaretRightIcon size={16} />
-							</Button>
+							<div className="flex justify-center">
+								<Button variant="primary" size="lg">
+									Go to Mailboxes
+									<CaretRightIcon size={16} />
+								</Button>
+							</div>
 						</RouterLink>
 					</div>
 				)}

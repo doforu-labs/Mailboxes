@@ -16,6 +16,7 @@ import {
 	PlusIcon,
 	TrashIcon,
 	WarningIcon,
+	AtIcon,
 } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
 import { Link as RouterLink } from "react-router";
@@ -23,6 +24,7 @@ import {
 	useCreateDomain,
 	useDeleteDomain,
 	useDomains,
+	useSetCatchAll,
 } from "~/queries/domains";
 import type { Domain } from "~/types";
 
@@ -355,6 +357,125 @@ function AddDomainWizard({ onClose, onSuccess }: AddDomainWizardProps) {
 	);
 }
 
+// ── Catch-all Mailbox Dialog ────────────────────────────────────
+
+interface CatchAllDialogProps {
+	domain: Domain | null;
+	open: boolean;
+	onClose: () => void;
+}
+
+function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
+	const toastManager = useKumoToastManager();
+	const setCatchAll = useSetCatchAll();
+
+	const [inputValue, setInputValue] = useState<string>(
+		domain?.catch_all_mailbox ? `*@${domain.name}` : "",
+	);
+	const [isSaving, setIsSaving] = useState(false);
+
+	const handleSave = async () => {
+		if (!domain) return;
+		setIsSaving(true);
+		try {
+			const value = inputValue.trim();
+			let catchAllMailbox: string | null;
+
+			if (!value) {
+				// Empty field -> disable catch-all
+				catchAllMailbox = null;
+			} else if (value === `*@${domain.name}`) {
+				// Simplified input -> pass as-is, backend will auto-create
+				catchAllMailbox = value;
+			} else {
+				toastManager.add({
+					title: `Please enter *@${domain.name} to enable catch-all`,
+					variant: "error",
+				});
+				return;
+			}
+
+			await setCatchAll.mutateAsync({
+				domainId: domain.id,
+				catchAllMailbox,
+			});
+			toastManager.add({
+				title: catchAllMailbox
+					? `Catch-all set to catchall@${domain.name}`
+					: "Catch-all disabled",
+			});
+			onClose();
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to update catch-all";
+			toastManager.add({ title: msg, variant: "error" });
+		} finally {
+			setIsSaving(false);
+		}
+	};
+
+	if (!domain) return null;
+
+	return (
+		<Dialog.Root
+			open={open}
+			onOpenChange={(isOpen) => {
+				if (!isOpen) onClose();
+			}}
+		>
+			<Dialog size="sm" className="p-6">
+				<Dialog.Title className="text-base font-semibold mb-1">
+					Catch-all Mailbox
+				</Dialog.Title>
+				<p className="text-sm text-kumo-subtle mb-5">
+					When an email arrives for a non-existent address on{' '}
+					<strong className="text-kumo-default">{domain.name}</strong>,{' '}
+					it will be delivered to the catch-all mailbox instead of being dropped.
+				</p>
+
+				<div className="space-y-4">
+					<div>
+						<label className="block text-sm font-medium text-kumo-default mb-1.5">
+							{domain.catch_all_mailbox
+								? `Catch-all: ${domain.catch_all_mailbox}`
+								: "Catch-all: disabled"}
+						</label>
+						<Input
+							placeholder={`*@${domain.name}`}
+							size="sm"
+							value={inputValue}
+							onChange={(e) => setInputValue(e.target.value)}
+							autoFocus
+						/>
+						<p className="text-xs text-kumo-subtle mt-1.5">
+							Type <code className="font-mono">*@{domain.name}</code> to route unmatched emails to{' '}
+							<code className="font-mono">catchall@{domain.name}</code>.{' '}
+							Clear the field to disable.
+						</p>
+					</div>
+					<div className="flex justify-end gap-2 pt-2">
+						<Dialog.Close
+							render={(props) => (
+								<Button {...props} variant="secondary" size="sm">
+									Cancel
+								</Button>
+							)}
+						/>
+						<Button
+							variant="primary"
+							size="sm"
+							loading={isSaving}
+							disabled={isSaving}
+							onClick={handleSave}
+						>
+							Save
+						</Button>
+					</div>
+				</div>
+			</Dialog>
+		</Dialog.Root>
+	);
+}
+
 // ── Page ───────────────────────────────────────────────────────────
 
 export function meta() {
@@ -370,6 +491,8 @@ export default function DomainsRoute() {
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [domainToDelete, setDomainToDelete] = useState<Domain | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isCatchAllOpen, setIsCatchAllOpen] = useState(false);
+	const [catchAllDomain, setCatchAllDomain] = useState<Domain | null>(null);
 
 	const handleDelete = async () => {
 		if (!domainToDelete) return;
@@ -450,7 +573,24 @@ export default function DomainsRoute() {
 											day: "numeric",
 										})}
 									</div>
+									{domain.catch_all_mailbox && (
+										<div className="text-xs text-kumo-accent mt-0.5">
+											Catch-all: {domain.catch_all_mailbox}
+										</div>
+									)}
 								</div>
+								<Button
+									variant="ghost"
+									size="sm"
+									shape="square"
+									icon={<AtIcon size={16} />}
+									aria-label={`Catch-all for ${domain.name}`}
+									title={domain.catch_all_mailbox ? `Catch-all: ${domain.catch_all_mailbox}` : "Set catch-all mailbox"}
+									onClick={() => {
+										setCatchAllDomain(domain);
+										setIsCatchAllOpen(true);
+									}}
+								/>
 								<Button
 									variant="ghost"
 									size="sm"
@@ -501,6 +641,16 @@ export default function DomainsRoute() {
 					onSuccess={() => setIsCreateOpen(false)}
 				/>
 			)}
+
+			{/* Catch-all Mailbox Dialog */}
+			<CatchAllDialog
+				domain={catchAllDomain}
+				open={isCatchAllOpen}
+				onClose={() => {
+					setIsCatchAllOpen(false);
+					setCatchAllDomain(null);
+				}}
+			/>
 
 			{/* Delete Domain Dialog */}
 			<Dialog.Root

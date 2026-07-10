@@ -75,6 +75,7 @@ export interface Domain {
 	cf_zone_id?: string;
 	cf_account_id?: string;
 	status: 'pending' | 'verified' | 'failed';
+	catch_all_mailbox?: string | null;
 	created_at: string;
 }
 

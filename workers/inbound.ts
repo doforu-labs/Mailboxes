@@ -139,10 +139,20 @@ export async function handleResendInbound(
 
 	const mailboxKey = `mailboxes/${mailboxId}.json`;
 	if (!(await env.BUCKET.head(mailboxKey))) {
-		console.log(
-			`Ignoring Resend inbound for ${mailboxId}: mailbox does not exist`,
-		);
-		return { ok: true };
+		// Mailbox not found — check for catch-all routing
+		const domain = mailboxId.split("@")[1];
+		const domainRecord = await dbService.getDomainByName(env.DB, domain);
+		if (domainRecord?.catch_all_mailbox) {
+			mailboxId = domainRecord.catch_all_mailbox;
+			console.log(
+				`No exact match for Resend inbound, routing to catch-all: ${mailboxId}`,
+			);
+		} else {
+			console.log(
+				`Ignoring Resend inbound for ${mailboxId}: mailbox does not exist`,
+			);
+			return { ok: true };
+		}
 	}
 
 	// ── 3. Get Resend API key ──

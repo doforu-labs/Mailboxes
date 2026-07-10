@@ -217,6 +217,8 @@ const api = {
 		create: (data: { name: string; resendApiKey?: string }) =>
 			post<Domain>("/api/v1/domains", data),
 		delete: (id: string) => del<void>(`/api/v1/domains/${id}`),
+		setCatchAll: (domainId: string, catchAllMailbox: string | null) =>
+			put<Domain>(`/api/v1/domains/${domainId}/catch-all`, { catch_all_mailbox: catchAllMailbox }),
 	},
 
 	// Setup

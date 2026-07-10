@@ -711,4 +711,72 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 	}
 });
 
+// PUT /api/v1/domains/:id/catch-all — set or clear the catch-all mailbox
+setup.put("/api/v1/domains/:id/catch-all", async (c) => {
+	try {
+		const id = c.req.param("id");
+		const body = await c.req.json<{ catch_all_mailbox: string | null }>();
+
+		const domain = await dbService.getDomain(c.env.DB, id);
+		if (!domain) {
+			return c.json({ error: "Domain not found" }, 404);
+		}
+
+		const { catch_all_mailbox } = body;
+
+		if (catch_all_mailbox) {
+			let resolvedMailbox: string;
+
+			// Handle simplified input: *@domain.com -> auto-create catchall@domain.com
+			if (catch_all_mailbox.startsWith("*@")) {
+				const inputDomain = catch_all_mailbox.slice(2); // strip "*"
+				if (inputDomain.toLowerCase() !== domain.name) {
+					return c.json({ error: `Domain mismatch: ${inputDomain} != ${domain.name}` }, 400);
+				}
+				resolvedMailbox = `catchall@${domain.name}`;
+
+				// Auto-create the catchall mailbox if it does not exist
+				const mailboxKey = `mailboxes/${resolvedMailbox}.json`;
+				if (!(await c.env.BUCKET.head(mailboxKey))) {
+					const defaultSettings = {
+						fromName: "Catch-all",
+						forwarding: { enabled: false, email: "" },
+						signature: { enabled: false, text: "" },
+						autoReply: { enabled: false, subject: "", message: "" },
+					};
+					await c.env.BUCKET.put(mailboxKey, JSON.stringify(defaultSettings));
+					await dbService.initMailboxFolders(c.env.DB, resolvedMailbox);
+				}
+			} else {
+				// Traditional input: verify the mailbox exists in R2
+				resolvedMailbox = catch_all_mailbox;
+				const mailboxKey = `mailboxes/${resolvedMailbox}.json`;
+				if (!(await c.env.BUCKET.head(mailboxKey))) {
+					return c.json({ error: `Mailbox "${resolvedMailbox}" does not exist` }, 400);
+				}
+				// Verify the mailbox belongs to this domain
+				const mailboxDomain = resolvedMailbox.split("@")[1]?.toLowerCase();
+				if (mailboxDomain !== domain.name) {
+					return c.json({ error: `Mailbox must belong to domain ${domain.name}` }, 400);
+				}
+			}
+
+			await dbService.updateDomain(c.env.DB, id, {
+				catch_all_mailbox: resolvedMailbox,
+			});
+		} else {
+			// Clear catch-all
+			await dbService.updateDomain(c.env.DB, id, {
+				catch_all_mailbox: null,
+			});
+		}
+
+	const updated = await dbService.getDomain(c.env.DB, id);
+	return c.json(updated);
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `Failed to update catch-all: ${msg}` }, 500);
+	}
+});
+
 export default setup;
