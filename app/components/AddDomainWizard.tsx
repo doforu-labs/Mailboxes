@@ -228,8 +228,9 @@ export function AddDomainWizard({
 			const creds = loadCfCredentials();
 			if (creds.cfApiToken && creds.cfAccountId) {
 				const result = await api.detectCfDomains(creds);
+				const trimmed = domainName.trim();
 				const match = result.zones.find(
-					(z) => z.name === domainName.trim(),
+					(z) => z.name === trimmed || trimmed.endsWith(`.${z.name}`),
 				);
 				if (match) {
 					setIsCfManaged(true);
