@@ -296,10 +296,12 @@ export default function SetupRoute() {
 							A lightweight, self-hosted email client built on Cloudflare
 							Workers. Let's get your first mailbox set up in a few steps.
 						</p>
-						<Button variant="primary" size="lg" onClick={goNext}>
-							Get Started
-							<CaretRightIcon size={16} />
-						</Button>
+						<div className="flex justify-center">
+							<Button variant="primary" size="lg" onClick={goNext}>
+								Get Started
+								<CaretRightIcon size={16} />
+							</Button>
+						</div>
 					</div>
 				)}
 
