@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 import api, { type VerifyResendResult } from "~/services/api";
-import { AddDomainWizard } from "~/routes/domains";
+import { AddDomainWizard } from "~/components/AddDomainWizard";
 import type { AiProviderSettings } from "~/types";
 
 // Placeholder shown in the textarea when no custom prompt is set.

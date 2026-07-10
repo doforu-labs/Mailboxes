@@ -5,22 +5,28 @@
 import {
 	Button,
 	Dialog,
-	Empty,
 	Input,
-	Loader,
 	Text,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
-import { EnvelopeIcon, GlobeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
-import { type FormEvent, useEffect, useState } from "react";
+import {
+	DotsThreeVerticalIcon,
+	EnvelopeIcon,
+	GlobeIcon,
+	PlusIcon,
+	TrashIcon,
+} from "@phosphor-icons/react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
-import api from "~/services/api";
 import {
 	useCreateMailbox,
 	useDeleteMailbox,
 	useMailboxes,
 } from "~/queries/mailboxes";
 import { useDomains } from "~/queries/domains";
+import api from "~/services/api";
+import { StatusBadge } from "~/components/DomainStatusBadge";
+import type { Domain, Mailbox } from "~/types";
 
 export function meta() {
 	return [{ title: "Mailboxes" }];
@@ -28,7 +34,10 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
-	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
+	const {
+		data: mailboxes = [],
+		isFetched: mailboxesFetched,
+	} = useMailboxes();
 	const createMailbox = useCreateMailbox();
 	const deleteMailbox = useDeleteMailbox();
 
@@ -45,13 +54,54 @@ export default function HomeRoute() {
 		email: string;
 	} | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [openMenu, setOpenMenu] = useState<string | null>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
 
-	// Redirect to /setup on first launch if no mailboxes exist
+	// Close menu on outside click
 	useEffect(() => {
-		if (mailboxesFetched && mailboxes.length === 0) {
-			window.location.href = "/setup";
+		function handleClick(e: MouseEvent) {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				setOpenMenu(null);
+			}
 		}
-	}, [mailboxesFetched, mailboxes]);
+		if (openMenu) {
+			document.addEventListener("mousedown", handleClick);
+			return () => document.removeEventListener("mousedown", handleClick);
+		}
+	}, [openMenu]);
+
+	// Group mailboxes by domain
+	const groupedMailboxes = useMemo(() => {
+		const map = new Map<string, { domain: Domain; mailboxes: Mailbox[] }>();
+
+		// Initialize all domain groups
+		for (const d of domains) {
+			map.set(d.name, { domain: d, mailboxes: [] });
+		}
+
+		// Assign mailboxes to their domain group
+		for (const m of mailboxes) {
+			const domainName = m.email.split("@")[1];
+			const group = map.get(domainName);
+			if (group) {
+				group.mailboxes.push(m);
+			} else {
+				// Unknown domain mailboxes go into "Other" group
+				if (!map.has("__other__")) {
+					map.set("__other__", { domain: null as any, mailboxes: [] });
+				}
+				map.get("__other__")!.mailboxes.push(m);
+			}
+		}
+
+		// Sort mailboxes within each group by id descending (newest first)
+		for (const group of map.values()) {
+			group.mailboxes.sort((a, b) => b.id.localeCompare(a.id));
+		}
+
+		// Only return groups that have mailboxes
+		return [...map.values()].filter((g) => g.mailboxes.length > 0);
+	}, [domains, mailboxes]);
 
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
@@ -76,17 +126,23 @@ export default function HomeRoute() {
 			try {
 				await createMailbox.mutateAsync({ email: catchAllEmail, name });
 				const allDomains = await api.domains.list();
-				const matchedDomain = allDomains.find((d) => d.name === selectedDomain);
+				const matchedDomain = allDomains.find(
+					(d) => d.name === selectedDomain,
+				);
 				if (matchedDomain) {
 					await api.domains.setCatchAll(matchedDomain.id, catchAllEmail);
 				}
-				toastManager.add({ title: `Catch-all mailbox ${catchAllEmail} created!` });
+				toastManager.add({
+					title: `Catch-all mailbox ${catchAllEmail} created!`,
+				});
 				setIsCreateOpen(false);
 				setLocalPart("");
 				setSelectedDomain("");
 				setNewName("");
 			} catch (err: unknown) {
-				const message = (err instanceof Error ? err.message : null) || "Failed to create catch-all mailbox";
+				const message =
+					(err instanceof Error ? err.message : null) ||
+					"Failed to create catch-all mailbox";
 				setCreateError(message);
 			} finally {
 				setIsCreating(false);
@@ -104,7 +160,9 @@ export default function HomeRoute() {
 			setSelectedDomain("");
 			setNewName("");
 		} catch (err: unknown) {
-			const message = (err instanceof Error ? err.message : null) || "Failed to create mailbox";
+			const message =
+				(err instanceof Error ? err.message : null) ||
+				"Failed to create mailbox";
 			setCreateError(message);
 		} finally {
 			setIsCreating(false);
@@ -120,78 +178,155 @@ export default function HomeRoute() {
 			setIsDeleteOpen(false);
 			setMailboxToDelete(null);
 		} catch {
-			toastManager.add({ title: "Failed to delete mailbox", variant: "error" });
+			toastManager.add({
+				title: "Failed to delete mailbox",
+				variant: "error",
+			});
 		} finally {
 			setIsDeleting(false);
 		}
 	};
 
+	const isEmpty = groupedMailboxes.length === 0;
+
 	return (
 		<div className="min-h-screen bg-kumo-recessed">
 			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
+				{/* Header */}
 				<div className="mb-8">
-				<div className="flex items-center justify-between">
-					<h1 className="text-2xl font-bold text-kumo-default">Mailboxes</h1>
-					<div className="flex items-center gap-2">
-						<RouterLink
-							to="/domains"
-							className="inline-flex items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-3 py-1.5 text-sm font-medium text-kumo-default transition-colors hover:bg-kumo-tint"
-						>
-							<GlobeIcon size={14} />
-							Domains
-						</RouterLink>
-						<Button
-							variant="primary"
-							icon={<PlusIcon size={16} />}
-							onClick={() => setIsCreateOpen(true)}
-						>
-							New Mailbox
-						</Button>
+					<div className="flex items-center justify-between">
+						<h1 className="text-2xl font-bold text-kumo-default">
+							Mailboxes
+						</h1>
+						<div className="flex items-center gap-2">
+							<RouterLink
+								to="/setup"
+								className="inline-flex items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-3 py-1.5 text-sm font-medium text-kumo-default transition-colors hover:bg-kumo-tint"
+							>
+								<PlusIcon size={14} />
+								New Domain
+							</RouterLink>
+							<Button
+								variant="primary"
+								icon={<PlusIcon size={16} />}
+								onClick={() => setIsCreateOpen(true)}
+							>
+								New Mailbox
+							</Button>
+						</div>
 					</div>
-				</div>
 				</div>
 
-				{mailboxes.length > 0 ? (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-						{mailboxes.map((account, idx) => (
-							<RouterLink
-								key={account.id}
-								to={`/mailbox/${account.id}`}
-								className={`group flex items-center gap-4 px-5 py-4 no-underline transition-colors hover:bg-kumo-tint ${
-									idx > 0 ? "border-t border-kumo-line" : ""
-								}`}
-							>
-								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
-									{account.name.charAt(0).toUpperCase()}
-								</div>
-								<div className="min-w-0 flex-1">
-									<div className="text-sm font-medium text-kumo-default truncate">
-										{account.name}
+				{/* Content */}
+				{!isEmpty ? (
+					<div className="space-y-4">
+						{groupedMailboxes.map(({ domain, mailboxes: groupMailboxes }) => {
+							const domainId = domain?.id ?? "__other__";
+							const isOther = domain === null;
+
+							return (
+								<div
+									key={domainId}
+									className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden"
+								>
+									{/* Domain header row */}
+									<div className="flex items-center gap-3 px-5 py-3 border-b border-kumo-line bg-kumo-fill/50">
+										<GlobeIcon
+											size={16}
+											className="shrink-0 text-kumo-subtle"
+										/>
+										<span className="text-sm font-semibold text-kumo-default">
+											{isOther ? "Other" : domain.name}
+										</span>
+										{!isOther && <StatusBadge status={domain.status} />}
+										<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
+											{groupMailboxes.length}
+										</span>
+										<div className="ml-auto" ref={menuRef}>
+											{!isOther && (
+												<div className="relative">
+													<button
+														type="button"
+														className="inline-flex items-center justify-center rounded-md p-1 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
+														onClick={() =>
+															setOpenMenu(openMenu === domainId ? null : domainId)
+														}
+														aria-label="Domain actions"
+													>
+														<DotsThreeVerticalIcon size={16} />
+													</button>
+													{openMenu === domainId && (
+														<div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-kumo-line bg-kumo-base py-1 shadow-lg">
+															<RouterLink
+																to="/domains"
+																className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
+																onClick={() => setOpenMenu(null)}
+															>
+																Edit
+															</RouterLink>
+															<RouterLink
+																to="/domains"
+																className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
+																onClick={() => setOpenMenu(null)}
+															>
+																Manage DNS
+															</RouterLink>
+															{domain.catch_all_mailbox && (
+																<div className="px-3 py-2 text-xs text-kumo-subtle">
+																	Catch-all: {domain.catch_all_mailbox}
+																</div>
+															)}
+														</div>
+													)}
+												</div>
+											)}
+										</div>
 									</div>
-									<div className="text-sm text-kumo-subtle">
-										{account.email}
-									</div>
+
+									{/* Mailbox rows */}
+									{groupMailboxes.map((account, idx) => (
+										<RouterLink
+											key={account.id}
+											to={`/mailbox/${account.id}/emails/inbox`}
+											className={`group flex items-center gap-4 px-5 py-3.5 no-underline transition-colors hover:bg-kumo-tint ${
+												idx > 0 ? "border-t border-kumo-line" : ""
+											}`}
+										>
+											<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+												<EnvelopeIcon size={14} className="text-kumo-subtle" />
+											</div>
+											<div className="min-w-0 flex-1">
+												<div className="text-sm font-medium text-kumo-default truncate">
+													{account.name}
+												</div>
+												<div className="text-xs text-kumo-subtle truncate">
+													{account.email}
+												</div>
+											</div>
+											<Button
+												variant="ghost"
+												size="sm"
+												shape="square"
+												icon={<TrashIcon size={16} />}
+												aria-label={`Delete mailbox ${account.email}`}
+												onClick={(e) => {
+													e.preventDefault();
+													e.stopPropagation();
+													setMailboxToDelete({
+														id: account.id,
+														email: account.email,
+													});
+													setIsDeleteOpen(true);
+												}}
+											/>
+										</RouterLink>
+									))}
 								</div>
-								<Button
-									variant="ghost"
-									size="sm"
-									shape="square"
-									icon={<TrashIcon size={16} />}
-									aria-label={`Delete mailbox ${account.email}`}
-									onClick={(e) => {
-										e.preventDefault();
-										e.stopPropagation();
-										setMailboxToDelete({
-											id: account.id,
-											email: account.email,
-										});
-										setIsDeleteOpen(true);
-									}}
-								/>
-							</RouterLink>
-						))}
+							);
+						})}
 					</div>
 				) : (
+					/* Empty state */
 					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
 						<div className="flex flex-col items-center text-center">
 							<div className="mb-4">
@@ -205,15 +340,16 @@ export default function HomeRoute() {
 								No mailboxes yet
 							</h3>
 							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
-								Create a mailbox to start sending and receiving emails with your domain.
+								Get started by adding a domain to create your first
+								mailbox.
 							</p>
-							<Button
-								variant="primary"
-								icon={<PlusIcon size={16} />}
-								onClick={() => setIsCreateOpen(true)}
+							<RouterLink
+								to="/setup"
+								className="inline-flex items-center gap-1.5 rounded-lg bg-kumo-accent px-4 py-2 text-sm font-medium text-white no-underline transition-colors hover:opacity-90"
 							>
-								Create Mailbox
-							</Button>
+								<PlusIcon size={16} />
+								Add Domain
+							</RouterLink>
 						</div>
 					</div>
 				)}
@@ -265,7 +401,11 @@ export default function HomeRoute() {
 									</select>
 								) : (
 									<p className="text-xs text-kumo-subtle">
-										No domains configured yet. <RouterLink to="/domains" className="underline">Add a domain</RouterLink> first.
+										No domains configured yet.{" "}
+										<RouterLink to="/setup" className="underline">
+											Add a domain
+										</RouterLink>{" "}
+										first.
 									</p>
 								)}
 							</div>
