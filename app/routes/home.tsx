@@ -309,6 +309,11 @@ export default function HomeRoute() {
 											{isOther ? "Other" : domain.name}
 										</span>
 										{!isOther && <StatusBadge status={domain.status} />}
+										{groupMailboxes.length > 0 && (
+											<span className="text-xs text-kumo-subtle">
+												· {groupMailboxes.map((m) => m.name || m.email.split("@")[0]).join(", ")}
+											</span>
+										)}
 										<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
 											{groupMailboxes.length}
 										</span>
