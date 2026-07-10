@@ -1,10 +1,10 @@
 {
-	"name": "agentic-inbox",
+	"name": "mailboxes",
 	"private": true,
 	"license": "Apache-2.0",
 	"type": "module",
 	"cloudflare": {
-		"label": "Agentic Inbox",
+		"label": "Mailboxes",
 		"products": [
 			"Workers",
 			"Durable Objects",
@@ -20,12 +20,12 @@
 	"scripts": {
 		"build": "react-router build",
 		"cf-typegen": "wrangler types",
-		"db:create": "wrangler d1 create agentic-inbox-db",
-		"db:migrate": "wrangler d1 migrations apply agentic-inbox-db --remote",
-		"db:migrate:local": "wrangler d1 migrations apply agentic-inbox-db --local",
-		"db:preview": "wrangler d1 migrations apply agentic-inbox-db --preview",
+		"db:create": "wrangler d1 create mailboxes-db",
+		"db:migrate": "wrangler d1 migrations apply mailboxes-db --remote",
+		"db:migrate:local": "wrangler d1 migrations apply mailboxes-db --local",
+		"db:preview": "wrangler d1 migrations apply mailboxes-db --preview",
 		"deploy": "npm run build && wrangler deploy",
-		"deploy:full": "npm run build && wrangler deploy && wrangler d1 migrations apply agentic-inbox-db --remote",
+		"deploy:full": "npm run build && wrangler deploy && wrangler d1 migrations apply mailboxes-db --remote",
 		"postinstall": "npx --yes patch-package",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",

@@ -25,7 +25,7 @@ import {
 import { queryKeys } from "~/queries/keys";
 
 export function meta() {
-	return [{ title: "Agentic Inbox" }];
+	return [{ title: "Mailboxes" }];
 }
 
 export default function HomeRoute() {

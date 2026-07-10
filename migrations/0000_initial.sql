@@ -1,4 +1,4 @@
--- Initial schema for agentic-inbox D1 database
+-- Initial schema for mailboxes D1 database
 -- Multi-tenant: all tables include mailbox_id for per-mailbox isolation
 
 CREATE TABLE IF NOT EXISTS folders (

@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "agentic-inbox",
+	"name": "mailboxes",
 	"compatibility_date": "2025-11-28",
 	"main": "./workers/app.ts",
 	"observability": {
@@ -20,8 +20,8 @@
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",
-			"bucket_name": "agentic-inbox",
-			"preview_bucket_name": "agentic-inbox"
+			"bucket_name": "mailboxes",
+			"preview_bucket_name": "mailboxes"
 		}
 	],
 	"ai": {
@@ -30,8 +30,8 @@
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "agentic-inbox-db",
-			"database_id": "d673eaba-6670-4a2f-adeb-78fcd6f1fd00",
+			"database_name": "mailboxes-db",
+			"database_id": "cb53f644-578f-45f2-b4f0-9393158cfd77",
 			"preview_database_id": "local",
 			"migrations_dir": "migrations"
 		}
