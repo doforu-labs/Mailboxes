@@ -83,7 +83,6 @@ const MOCK_FULL_EMAIL = {
 
 interface MockEnvOptions {
 	resendApiKey?: string;
-	globalApiKey?: string;
 	emailAddresses?: string[];
 	mailboxExists?: boolean;
 }
@@ -91,7 +90,6 @@ interface MockEnvOptions {
 function createMockEnv(opts: MockEnvOptions = {}) {
 	const {
 		resendApiKey,
-		globalApiKey = "re_global_key",
 		emailAddresses = [],
 		mailboxExists = true,
 	} = opts;
@@ -161,7 +159,6 @@ function createMockEnv(opts: MockEnvOptions = {}) {
 		AI: null as any,
 		POLICY_AUD: "test-aud",
 		TEAM_DOMAIN: "test.cloudflareaccess.com",
-		RESEND_API_KEY: globalApiKey,
 	} as any;
 
 	return {
@@ -233,7 +230,7 @@ describe("handleResendInbound", async () => {
 		setupGlobals();
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
-			globalApiKey: "re_test_key",
+	
 		});
 
 		const result = await handleResendInbound(
@@ -283,7 +280,7 @@ describe("handleResendInbound", async () => {
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
 			emailAddresses: ["incoming@example.com"],
-			globalApiKey: "re_test_key",
+	
 		});
 
 		const result = await handleResendInbound(
@@ -307,7 +304,7 @@ describe("handleResendInbound", async () => {
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
 			emailAddresses: ["other@example.com"], // Does NOT include incoming@example.com
-			globalApiKey: "re_test_key",
+	
 		});
 
 		const result = await handleResendInbound(
@@ -327,7 +324,7 @@ describe("handleResendInbound", async () => {
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
 			mailboxExists: false,
-			globalApiKey: "re_test_key",
+	
 		});
 
 		const result = await handleResendInbound(
@@ -346,8 +343,7 @@ describe("handleResendInbound", async () => {
 		setupGlobals();
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
-			globalApiKey: "", // No global API key
-			// No mailbox-specific key either
+				// No mailbox-specific key either
 		});
 
 		const result = await handleResendInbound(
@@ -362,11 +358,11 @@ describe("handleResendInbound", async () => {
 		teardownGlobals();
 	});
 
-	it("should use mailbox-specific resendApiKey over global env var", async () => {
+	it("should use mailbox-specific resendApiKey", async () => {
 		setupGlobals();
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
-			globalApiKey: "re_global_key",
+	
 			resendApiKey: "re_mailbox_key",
 			emailAddresses: ["incoming@example.com"],
 		});
@@ -407,7 +403,7 @@ describe("handleResendInbound", async () => {
 		});
 
 		const { env, ctx, createdEmails } = createMockEnv({
-			globalApiKey: "re_test_key",
+	
 		});
 
 		const result = await handleResendInbound(
@@ -454,7 +450,7 @@ describe("handleResendInbound", async () => {
 		});
 
 		const { env, ctx, createdEmails } = createMockEnv({
-			globalApiKey: "re_test_key",
+	
 		});
 
 		const result = await handleResendInbound(

@@ -102,25 +102,23 @@ export async function sendEmail(
 }
 
 /**
- * Read the Resend API key from mailbox settings (stored in R2),
- * then send the email via Resend.
- *
- * Falls back to `env.RESEND_API_KEY` if the mailbox settings don't have one.
+ * Read the Resend API key from mailbox settings (stored in R2).
+ * Each mailbox must have its own API key configured via Settings.
  *
  * @param bucket      - R2 bucket (c.env.BUCKET)
  * @param mailboxId   - Mailbox email address (used as the R2 key)
  * @param params      - Email parameters
- * @param fallbackKey - Optional fallback API key from env.RESEND_API_KEY
+ * @param db          - Optional D1 database (unused, kept for API compatibility)
  * @returns The send result with messageId
  */
 export async function sendEmailFromMailbox(
 	bucket: R2Bucket,
 	mailboxId: string,
 	params: SendEmailParams,
-	fallbackKey?: string,
+	_fallbackKey?: string,
 	db?: D1Database,
 ): Promise<{ messageId: string }> {
-	// Try R2 settings first (UI-configured key)
+	// Read API key from mailbox settings in R2
 	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
 	if (obj) {
 		const settings = (await obj.json()) as { resendApiKey?: string };
@@ -129,29 +127,7 @@ export async function sendEmailFromMailbox(
 		}
 	}
 
-	// Try domain-level Resend API key from the domains table
-	if (db) {
-		try {
-			const atIdx = mailboxId.indexOf("@");
-			if (atIdx !== -1) {
-				const domainName = mailboxId.substring(atIdx + 1).toLowerCase();
-				const row = await db
-					.prepare("SELECT resend_domain_id FROM domains WHERE name = ?")
-					.bind(domainName)
-					.first<{ resend_domain_id: string | null }>();
-				// Future: when per-domain API keys are supported, resolve here
-			}
-		} catch {
-			// Domains table might not exist yet — ignore
-		}
-	}
-
-	// Fallback to env secret
-	if (fallbackKey) {
-		return sendEmail(fallbackKey, params);
-	}
-
 	throw new Error(
-		"Resend API key not configured. Set it in Settings > Account, or add RESEND_API_KEY via `wrangler secret put RESEND_API_KEY`.",
+		"Resend API key not configured for this mailbox. Go to Settings > Account to add one.",
 	);
 }

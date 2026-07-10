@@ -113,7 +113,7 @@ export async function handleReplyEmail(c: AppContext) {
 				contentId: att.contentId,
 			})),
 			headers: buildThreadingHeaders(originalMsgId, references),
-		}, c.env.RESEND_API_KEY, c.env.DB);
+		});
 		await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
 		return c.json({ id: messageId, status: "sent" }, 200);
 	} catch (e) {
@@ -202,7 +202,7 @@ export async function handleForwardEmail(c: AppContext) {
 				disposition: att.disposition,
 				contentId: att.contentId,
 			})),
-		}, c.env.RESEND_API_KEY, c.env.DB);
+		});
 		await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
 		return c.json({ id: messageId, status: "sent" }, 200);
 	} catch (e) {

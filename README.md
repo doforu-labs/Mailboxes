@@ -25,10 +25,10 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
 3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Set Resend API Key** -- This fork uses **Resend** for outbound emails instead of Cloudflare's `send_email` binding, so it works on the Workers Free plan. 
+4. **Configure Resend API Key** -- This fork uses **Resend** for outbound emails. 
    - Sign up at https://resend.com (free tier: 100 emails/day) and add your domain
    - Get your API key from the Resend dashboard
-   - Set it via `wrangler secret put RESEND_API_KEY`, or enter it per-mailbox in Settings > Account after deploying
+   - After deploying, go to Settings > Account in the app and enter your API key per-mailbox
 5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
 
 ### Troubleshooting Access
@@ -128,9 +128,10 @@ The following secrets must be configured for the Worker. Use `wrangler secret pu
 |--------|----------|-------------|
 | `POLICY_AUD` | Production only | Cloudflare Access policy audience tag. Shown in the Access modal when enabling one-click Access on the Worker. |
 | `TEAM_DOMAIN` | Production only | Cloudflare Access team domain. Can be the base Access URL (e.g. `https://your-team.cloudflareaccess.com`) or the full `/cdn-cgi/access/certs` URL. |
-| `RESEND_API_KEY` | Yes (for outbound email) | Resend API key for sending emails. Sign up at https://resend.com (free tier: 100 emails/day). |
 
 For local development, these values can be placed in `.dev.vars` instead.
+
+> **Resend API Key**: Configured per-mailbox via the Settings UI (not as a Worker secret).
 
 ## Prerequisites
 

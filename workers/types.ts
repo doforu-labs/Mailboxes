@@ -26,7 +26,6 @@ export interface ToolDefinition {
 }
 
 export interface Env extends Cloudflare.Env {
-	RESEND_API_KEY?: string;
 	DB: D1Database;
 	BUCKET: R2Bucket;
 	AI: Ai;

@@ -130,7 +130,6 @@ function createMockEnv() {
 		DB: {} as any,
 		AI: mockAi,
 		BUCKET: mockBucket,
-		RESEND_API_KEY: "",
 		POLICY_AUD: "dev-placeholder",
 	} as any;
 

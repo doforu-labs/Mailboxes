@@ -108,7 +108,19 @@ async function getResendApiKey(
 	env: Env,
 	mailboxId: string,
 ): Promise<string | null> {
-	return dbService.resolveResendApiKey(env, mailboxId);
+	// Read API key from per-mailbox R2 settings
+	try {
+		const obj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		if (obj) {
+			const settings = await obj.json<Record<string, unknown>>();
+			if (typeof settings.resendApiKey === "string" && settings.resendApiKey) {
+				return settings.resendApiKey;
+			}
+		}
+	} catch {
+		// Ignore read errors
+	}
+	return null;
 }
 
 // ── Main Handler ───────────────────────────────────────────────────
@@ -160,7 +172,7 @@ export async function handleResendInbound(
 	const apiKey = await getResendApiKey(env, mailboxId);
 	if (!apiKey) {
 		console.error(
-			`Cannot process Resend inbound for ${mailboxId}: no RESEND_API_KEY configured`,
+			`Cannot process Resend inbound for ${mailboxId}: no Resend API key configured in mailbox settings`,
 		);
 		return { ok: false };
 	}

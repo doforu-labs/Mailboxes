@@ -1242,27 +1242,13 @@ export async function getMailboxDomain(
 
 /**
  * Resolve the Resend API key for a given mailbox.
- * Priority: 1) domains table (by email domain)  2) per-mailbox R2 settings  3) global env var
+ * Priority: 1) per-mailbox R2 settings
  */
 export async function resolveResendApiKey(
-	env: { DB: D1Database; BUCKET: R2Bucket; RESEND_API_KEY?: string },
+	env: { DB: D1Database; BUCKET: R2Bucket },
 	mailboxId: string,
 ): Promise<string | null> {
-	// 1. Check domains table — look up by the mailbox's domain
-	try {
-		const domain = await getMailboxDomain(env.DB, mailboxId);
-		if (domain?.resend_domain_id) {
-			// If we have a resend_domain_id, we still need the API key.
-			// The domain record confirms domain setup, but the key comes from
-			// per-mailbox settings or env. (Resend API keys are account-level,
-			// not per-domain.) This function exists as a hook for future
-			// per-domain key storage.
-		}
-	} catch {
-		// Domains table might not exist yet — ignore
-	}
-
-	// 2. Check per-mailbox R2 settings
+	// Check per-mailbox R2 settings
 	try {
 		const obj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
 		if (obj) {
@@ -1272,9 +1258,8 @@ export async function resolveResendApiKey(
 			}
 		}
 	} catch {
-		// Ignore read errors — fall through to env var
+		// Ignore read errors
 	}
 
-	// 3. Fall back to global env variable
-	return env.RESEND_API_KEY ?? null;
+	return null;
 }

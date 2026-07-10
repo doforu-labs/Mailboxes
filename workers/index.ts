@@ -338,7 +338,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			to, cc, bcc, from, subject, html, text,
 			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-		}, c.env.RESEND_API_KEY, c.env.DB);
+		});
 		await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "sent");
 		return c.json({ id: messageId, status: "sent" }, 200);
 	} catch (e) {
@@ -760,7 +760,7 @@ async function executeToolCall(
 			case "send_email":
 				return await toolSendEmail(db, mailboxId, ai, bucket, args);
 			case "list_mailboxes":
-				return await toolListMailboxes({ BUCKET: bucket, DB: db, RESEND_API_KEY: "" } as any);
+				return await toolListMailboxes({ BUCKET: bucket, DB: db } as any);
 			default:
 				return { error: `Unknown tool: ${name}` };
 		}
