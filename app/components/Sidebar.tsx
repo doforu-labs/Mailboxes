@@ -51,14 +51,15 @@ function FolderLink({
 	label,
 	unreadCount,
 	onClick,
-}: FolderLinkProps) {
+	isHighlighted,
+}: FolderLinkProps & { isHighlighted?: boolean }) {
 	return (
 		<NavLink
 			to={to}
 			onClick={onClick}
 			className={({ isActive }) =>
 				`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${
-					isActive
+					(isHighlighted ?? isActive)
 						? "bg-kumo-fill font-semibold text-kumo-default"
 						: "text-kumo-strong hover:bg-kumo-tint"
 				}`
@@ -78,7 +79,7 @@ export default function Sidebar() {
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const createFolderMutation = useCreateFolder();
-	const { startCompose, closeSidebar } = useUIStore();
+	const { startCompose, closeSidebar, isComposing } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
@@ -168,6 +169,7 @@ export default function Sidebar() {
 						label={folder.label}
 						unreadCount={getUnreadCount(folder.id)}
 						onClick={handleNavClick}
+						isHighlighted={isComposing ? false : undefined}
 					/>
 				))}
 
@@ -197,6 +199,7 @@ export default function Sidebar() {
 								label={folder.name}
 								unreadCount={folder.unreadCount}
 								onClick={handleNavClick}
+								isHighlighted={isComposing ? false : undefined}
 							/>
 						))}
 					</div>
