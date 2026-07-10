@@ -14,6 +14,7 @@ import {
 	CheckCircleIcon,
 	DotsThreeVerticalIcon,
 	EnvelopeIcon,
+	GearSixIcon,
 	GlobeIcon,
 	KeyIcon,
 	Spinner,
@@ -276,6 +277,13 @@ export default function HomeRoute() {
 							Mailboxes
 						</h1>
 						<div className="flex items-center gap-2">
+							<RouterLink
+								to="/settings"
+								className="inline-flex items-center justify-center rounded-lg border border-kumo-line bg-kumo-base p-2 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
+								aria-label="Settings"
+							>
+								<GearSixIcon size={18} />
+							</RouterLink>
 							<Button
 								variant="primary"
 								icon={<PlusIcon size={16} />}
