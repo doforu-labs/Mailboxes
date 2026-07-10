@@ -54,16 +54,19 @@ function FolderLink({
 	isHighlighted,
 }: FolderLinkProps & { isHighlighted?: boolean }) {
 	const match = useMatch(to);
-	const active = isHighlighted !== undefined ? isHighlighted : !!match;
+	const baseActive = !!match;
 	return (
 		<NavLink
 			to={to}
 			onClick={onClick}
-			className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${
-				active
-					? "bg-kumo-fill font-semibold text-kumo-default"
-					: "text-kumo-strong hover:bg-kumo-tint"
-			}`}
+			className={() => {
+				const active = isHighlighted !== undefined ? isHighlighted : baseActive;
+				return `flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${
+					active
+						? "bg-kumo-fill font-semibold text-kumo-default"
+						: "text-kumo-strong hover:bg-kumo-tint"
+				}`;
+			}}
 		>
 			<span className="shrink-0">{icon}</span>
 			<span className="truncate flex-1">{label}</span>
