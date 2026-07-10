@@ -676,14 +676,16 @@ function DomainsSection() {
 			</Dialog.Root>
 
 			{/* Catch-all Dialog */}
-			<CatchAllDialog
-				domain={catchAllDomain}
-				open={isCatchAllOpen}
-				onClose={() => {
-					setIsCatchAllOpen(false);
-					setCatchAllDomain(null);
-				}}
-			/>
+			{catchAllDomain && (
+				<CatchAllDialog
+					domain={catchAllDomain}
+					open={isCatchAllOpen}
+					onClose={() => {
+						setIsCatchAllOpen(false);
+						setCatchAllDomain(null);
+					}}
+				/>
+			)}
 		</div>
 	);
 }
