@@ -21,6 +21,7 @@ import {
 	TrashIcon,
 	WarningIcon,
 } from "@phosphor-icons/react";
+import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import {
@@ -61,6 +62,7 @@ export default function HomeRoute() {
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [openMenu, setOpenMenu] = useState<string | null>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
+	const [isAddDomainOpen, setIsAddDomainOpen] = useState(false);
 
 	// Domain API Key dialog state
 	const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
@@ -276,13 +278,13 @@ export default function HomeRoute() {
 							Mailboxes
 						</h1>
 						<div className="flex items-center gap-2">
-							<RouterLink
-								to="/setup"
-								className="inline-flex items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-3 py-1.5 text-sm font-medium text-kumo-default transition-colors hover:bg-kumo-tint"
+							<Button
+								variant="secondary"
+								icon={<PlusIcon size={14} />}
+								onClick={() => setIsAddDomainOpen(true)}
 							>
-								<PlusIcon size={14} />
 								Add Domain
-							</RouterLink>
+							</Button>
 							<Button
 								variant="primary"
 								icon={<PlusIcon size={16} />}
@@ -433,13 +435,13 @@ export default function HomeRoute() {
 								Get started by adding a domain to create your first
 								mailbox.
 							</p>
-							<RouterLink
-								to="/setup"
-								className="inline-flex items-center gap-1.5 rounded-lg bg-kumo-accent px-4 py-2 text-sm font-medium text-white no-underline transition-colors hover:opacity-90"
+							<Button
+								variant="primary"
+								icon={<PlusIcon size={16} />}
+								onClick={() => setIsAddDomainOpen(true)}
 							>
-								<PlusIcon size={16} />
 								Add Domain
-							</RouterLink>
+							</Button>
 						</div>
 					</div>
 				)}
@@ -492,7 +494,7 @@ export default function HomeRoute() {
 								) : (
 									<p className="text-xs text-kumo-subtle">
 										No domains configured yet.{" "}
-										<RouterLink to="/setup" className="underline">
+										<RouterLink to="/domains" className="underline">
 											Add a domain
 										</RouterLink>{" "}
 										first.
@@ -698,6 +700,16 @@ export default function HomeRoute() {
 					</div>
 				</Dialog>
 			</Dialog.Root>
+
+			{/* Add Domain Wizard */}
+			{isAddDomainOpen && (
+				<AddDomainWizard
+					onClose={() => setIsAddDomainOpen(false)}
+					onSuccess={() => {
+					setIsAddDomainOpen(false);
+				}}
+				/>
+			)}
 		</div>
 	);
 }
