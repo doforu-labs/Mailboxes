@@ -199,12 +199,12 @@ export default function HomeRoute() {
 				domainId: apiKeyDomain.id,
 				apiKey: apiKeyValue.trim(),
 			});
-			toastManager.add({ title: `API Key updated for ${apiKeyDomain.name}` });
+			toastManager.add({ title: `Resend API Key updated for ${apiKeyDomain.name}` });
 			setIsApiKeyOpen(false);
 			setApiKeyDomain(null);
 		} catch {
 			toastManager.add({
-				title: "Failed to update API Key",
+				title: "Failed to update Resend API Key",
 				variant: "error",
 			});
 		} finally {
@@ -320,7 +320,7 @@ export default function HomeRoute() {
 																onClick={() => handleApiKeyOpen(domain)}
 															>
 																<KeyIcon size={14} />
-																API Key
+																Resend API Key
 															</button>
 															{domain.catch_all_mailbox && (
 																<div className="px-3 py-2 text-xs text-kumo-subtle">
@@ -532,7 +532,7 @@ export default function HomeRoute() {
 			<Dialog.Root open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen}>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-1">
-						API Key — {apiKeyDomain?.name}
+						Resend API Key — {apiKeyDomain?.name}
 					</Dialog.Title>
 					<p className="text-sm text-kumo-subtle mb-5">
 						Configure the Resend API key for this domain.
