@@ -149,11 +149,12 @@ export default function Sidebar() {
 			<div className="px-3 py-3">
 				<Button
 					variant="primary"
-					icon={<PencilSimpleIcon size={16} />}
+					size="sm"
+					icon={<PencilSimpleIcon size={14} />}
 					onClick={() => startCompose()}
 					className="w-full"
 				>
-					Compose
+					New
 				</Button>
 			</div>
 
