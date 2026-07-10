@@ -523,7 +523,7 @@ export function AddDomainWizard({
 						<div className="space-y-3 mb-5">
 							{receiveStatus === "loading" && (
 								<div className="flex flex-col items-center gap-3 py-4">
-									<Loader size="md" />
+									<Loader size="base" />
 									<p className="text-sm text-kumo-subtle">
 										Configuring catch-all email routing…
 									</p>

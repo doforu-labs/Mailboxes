@@ -459,7 +459,7 @@ function DomainsSection() {
 			{/* Domain list */}
 			{isLoading ? (
 				<div className="flex items-center justify-center py-8">
-					<Loader size="md" />
+					<Loader size="base" />
 				</div>
 			) : domains.length === 0 ? (
 				<div className="px-5 py-8 text-center">
