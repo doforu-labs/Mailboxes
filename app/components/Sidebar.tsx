@@ -15,7 +15,7 @@ import {
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
-import { NavLink, useNavigate, useParams } from "react-router";
+import { NavLink, useMatch, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
@@ -53,17 +53,17 @@ function FolderLink({
 	onClick,
 	isHighlighted,
 }: FolderLinkProps & { isHighlighted?: boolean }) {
+	const match = useMatch(to);
+	const active = isHighlighted !== undefined ? isHighlighted : !!match;
 	return (
 		<NavLink
 			to={to}
 			onClick={onClick}
-			className={({ isActive }) =>
-				`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${
-					(isHighlighted ?? isActive)
-						? "bg-kumo-fill font-semibold text-kumo-default"
-						: "text-kumo-strong hover:bg-kumo-tint"
-				}`
-			}
+			className={`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${
+				active
+					? "bg-kumo-fill font-semibold text-kumo-default"
+					: "text-kumo-strong hover:bg-kumo-tint"
+			}`}
 		>
 			<span className="shrink-0">{icon}</span>
 			<span className="truncate flex-1">{label}</span>
