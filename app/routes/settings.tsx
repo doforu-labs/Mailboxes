@@ -3,16 +3,14 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Badge, Button, Input, Loader, Switch, useKumoToastManager } from "@cloudflare/kumo";
-import { RobotIcon, ArrowCounterClockwiseIcon, EyeIcon, GearSixIcon, CheckCircleIcon, WarningCircleIcon, CircleNotchIcon, XCircleIcon } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { RobotIcon, ArrowCounterClockwiseIcon, GearSixIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
-import api, { type VerifyResendResult } from "~/services/api";
-import { AddDomainWizard } from "~/components/AddDomainWizard";
 import type { AiProviderSettings } from "~/types";
 
 // Placeholder shown in the textarea when no custom prompt is set.
-// The authoritative default prompt lives in workers/agent/index.ts (DEFAULT_SYSTEM_PROMPT).
+// The authoritative default prompt lives in workers/agent/index.ts (DEFAULT_SYSTEM_PROMROMPT).
 const PROMPT_PLACEHOLDER = `You are an email assistant that helps manage this inbox. You read emails, draft replies, and help organize conversations.\n\nWrite like a real person. Short, direct, flowing prose. Plain text only.\n\n(Leave empty to use the full built-in default prompt)`;
 
 export default function SettingsRoute() {
@@ -22,8 +20,6 @@ export default function SettingsRoute() {
 	const updateMailboxMutation = useUpdateMailbox();
 
 	const [displayName, setDisplayName] = useState("");
-	const [resendApiKey, setResendApiKey] = useState("");
-	const [showResendKey, setShowResendKey] = useState(false);
 	const [agentPrompt, setAgentPrompt] = useState("");
 
 	// AI Provider state
@@ -35,65 +31,9 @@ export default function SettingsRoute() {
 
 	const [isSaving, setIsSaving] = useState(false);
 
-	// Resend verification state
-	type VerifyStatus = "idle" | "verifying" | "valid" | "invalid" | "error";
-	const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
-	const [verifyResult, setVerifyResult] = useState<VerifyResendResult | null>(null);
-	const verifyTimerRef = useRef<ReturnType<typeof setTimeout>>();
-	const lastVerifiedKeyRef = useRef("");
-
-	const doVerify = useCallback(
-		async (key: string) => {
-			if (!mailboxId) return;
-			const trimmed = key.trim();
-			if (!trimmed || !trimmed.startsWith("re_")) {
-				setVerifyStatus("idle");
-				setVerifyResult(null);
-				lastVerifiedKeyRef.current = "";
-				return;
-			}
-			// Skip if already verified for this key
-			if (trimmed === lastVerifiedKeyRef.current && verifyStatus === "valid") return;
-			setVerifyStatus("verifying");
-			try {
-				const result = await api.verifyResendKey(mailboxId, trimmed);
-				setVerifyResult(result);
-				lastVerifiedKeyRef.current = trimmed;
-				if (!result.valid) {
-					setVerifyStatus("invalid");
-				} else {
-					// Use "valid" for both ready and not-ready — JSX checks sendingReady to show details
-					setVerifyStatus("valid");
-				}
-			} catch {
-				setVerifyStatus("error");
-				setVerifyResult(null);
-			}
-		},
-		[mailboxId, verifyStatus],
-	);
-
-	const doVerifyRef = useRef(doVerify);
-	doVerifyRef.current = doVerify;
-
-	// Debounced auto-verify on key change
-	useEffect(() => {
-		if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current);
-		const trimmed = resendApiKey.trim();
-		if (!trimmed || !trimmed.startsWith("re_")) {
-			setVerifyStatus("idle");
-			setVerifyResult(null);
-			lastVerifiedKeyRef.current = "";
-			return;
-		}
-		verifyTimerRef.current = setTimeout(() => doVerifyRef.current(trimmed), 600);
-		return () => { if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current); };
-	}, [resendApiKey]);
-
 	useEffect(() => {
 		if (mailbox) {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
-			setResendApiKey(mailbox.settings?.resendApiKey || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
 			const ap = mailbox.settings?.aiProvider;
 			setUseCustomAi(ap?.provider === "openai-compatible" && !!ap?.baseUrl);
@@ -103,26 +43,8 @@ export default function SettingsRoute() {
 		}
 	}, [mailbox]);
 
-	// Domain wizard state
-	const [isDomainWizardOpen, setIsDomainWizardOpen] = useState(false);
-
-	const canSave = !resendApiKey.trim() || verifyStatus === "valid" || verifyStatus === "idle";
-
 	const handleSave = async () => {
 		if (!mailbox || !mailboxId) return;
-
-		// If key is entered but not yet verified, verify first
-		const trimmedKey = resendApiKey.trim();
-		if (trimmedKey && trimmedKey.startsWith("re_") && verifyStatus !== "valid") {
-			await doVerify(trimmedKey);
-			if (lastVerifiedKeyRef.current !== trimmedKey) {
-				toastManager.add({
-					title: "Cannot save: Resend API key verification failed",
-					variant: "error",
-				});
-				return;
-			}
-		}
 
 		setIsSaving(true);
 
@@ -139,7 +61,6 @@ export default function SettingsRoute() {
 		const settings = {
 			...mailbox.settings,
 			fromName: displayName,
-			resendApiKey: trimmedKey || undefined,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
 			aiProvider: aiProviderSettings,
 		};
@@ -156,9 +77,9 @@ export default function SettingsRoute() {
 		}
 	};
 
-	const handleResetPrompt = () => {
+	const handleResetPrompt = useCallback(() => {
 		setAgentPrompt("");
-	};
+	}, []);
 
 	if (!mailbox) {
 		return (
@@ -172,15 +93,14 @@ export default function SettingsRoute() {
 	const isCustomAi = useCustomAi && aiBaseUrl.trim().length > 0;
 
 	return (
-		<>
 		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
 			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
 
 			<div className="space-y-6">
-				{/* Account */}
+				{/* General */}
 				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
 					<div className="text-sm font-medium text-kumo-default mb-4">
-						Account
+						General
 					</div>
 					<div className="space-y-3">
 						<Input
@@ -189,66 +109,6 @@ export default function SettingsRoute() {
 							onChange={(e) => setDisplayName(e.target.value)}
 						/>
 						<Input label="Email" type="email" value={mailbox.email} disabled />
-						<div className="relative">
-							<Input
-								label="Resend API Key"
-								type={showResendKey ? "text" : "password"}
-								placeholder="re_..."
-								value={resendApiKey}
-								onChange={(e) => setResendApiKey(e.target.value)}
-							/>
-							<button
-								type="button"
-								onClick={() => setShowResendKey(!showResendKey)}
-								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
-								title={showResendKey ? "Hide key" : "Show key"}
-							>
-								<EyeIcon size={16} weight={showResendKey ? "fill" : "regular"} />
-							</button>
-						</div>
-						{/* Resend API Key verification status */}
-						{resendApiKey.trim() && !resendApiKey.startsWith("re_") && (
-							<Badge variant="warning">Invalid format (should start with re_)</Badge>
-						)}
-						{verifyStatus === "verifying" && resendApiKey.startsWith("re_") && (
-							<div className="flex items-center gap-1.5 text-xs text-kumo-subtle">
-								<CircleNotchIcon size={14} weight="bold" className="animate-spin" />
-								<span>Verifying key with Resend...</span>
-							</div>
-						)}
-						{verifyStatus === "valid" && verifyResult?.sendingReady && (
-							<div className="space-y-1.5">
-								<Badge variant="success"><CheckCircleIcon size={12} weight="fill" /> API key verified</Badge>
-								<Badge variant="success">Domain verified & ready to send</Badge>
-							</div>
-						)}
-						{verifyStatus === "valid" && verifyResult && !verifyResult.sendingReady && (
-							<div className="space-y-1.5">
-								<Badge variant="success"><CheckCircleIcon size={12} weight="fill" /> API key verified</Badge>
-								{verifyResult.matchingDomain ? (
-									<Badge variant="warning"><WarningCircleIcon size={12} weight="fill" /> Domain "{verifyResult.matchingDomain.domain}" is "{verifyResult.matchingDomain.status}" — <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-kumo-default">verify DNS records in Resend</a></Badge>
-								) : (
-									<Badge variant="warning"><WarningCircleIcon size={12} weight="fill" /> No matching domain for {mailbox.email.split("@")[1]} in Resend — <button type="button" onClick={() => setIsDomainWizardOpen(true)} className="underline font-medium hover:text-kumo-default">Set up domain in app</button></Badge>
-								)}
-								<details className="text-xs text-kumo-subtle">
-									<summary className="cursor-pointer hover:text-kumo-default">View all Resend domains</summary>
-									<ul className="mt-1 ml-3 list-disc space-y-0.5">
-										{verifyResult.domains?.map((d) => (
-											<li key={d.id}>
-												{d.domain} — <span className={d.status === "valid" ? "text-green-500" : "text-yellow-500"}>{d.status}</span>
-											</li>
-										))}
-										{verifyResult.domains?.length === 0 && <li>No domains configured</li>}
-									</ul>
-								</details>
-							</div>
-						)}
-						{verifyStatus === "invalid" && (
-							<Badge variant="error"><XCircleIcon size={12} weight="fill" /> {verifyResult?.error || "Invalid API key"}</Badge>
-						)}
-						{verifyStatus === "error" && (
-							<Badge variant="error">Verification failed — try again</Badge>
-						)}
 					</div>
 				</div>
 
@@ -301,7 +161,7 @@ export default function SettingsRoute() {
 									className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
 									title={showAiApiKey ? "Hide key" : "Show key"}
 								>
-									<EyeIcon size={16} weight={showAiApiKey ? "fill" : "regular"} />
+									{showAiApiKey ? "●" : "○"}
 								</button>
 							</div>
 							<p className="text-xs text-kumo-subtle">
@@ -360,29 +220,11 @@ export default function SettingsRoute() {
 
 				{/* Save */}
 				<div className="flex justify-end">
-					<Button variant="primary" onClick={handleSave} loading={isSaving} disabled={!canSave}>
+					<Button variant="primary" onClick={handleSave} loading={isSaving}>
 						Save Changes
 					</Button>
 				</div>
 			</div>
 		</div>
-
-		{isDomainWizardOpen && mailbox && (
-			<AddDomainWizard
-				onClose={() => setIsDomainWizardOpen(false)}
-				onSuccess={() => {
-				setIsDomainWizardOpen(false);
-				// Re-trigger verification to pick up the new domain
-				const trimmed = resendApiKey.trim();
-				if (trimmed && trimmed.startsWith("re_")) {
-					lastVerifiedKeyRef.current = "";
-					doVerify(trimmed);
-				}
-			}}
-				defaultDomain={mailbox.email.split("@")[1]}
-				defaultApiKey={resendApiKey.trim() || undefined}
-			/>
-		)}
-		</>
 	);
 }
