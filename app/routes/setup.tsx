@@ -22,12 +22,13 @@ import {
 import { type FormEvent, useState } from "react";
 
 // Cloudflare API Token Template URL — pre-fills the token creation page
-// with DNS Edit permission. Email Routing is NOT supported by template URLs,
-// so users must add it manually after the page opens.
+// with DNS Edit + Zone Settings Edit permissions.
+// Email Routing Rules is NOT supported by template URLs, must be added manually.
 // Ref: https://developers.cloudflare.com/fundamentals/api/how-to/account-owned-token-template/
 const CF_TOKEN_TEMPLATE_URL = (() => {
 	const permissions = [
 		{ key: "dns", type: "edit" },
+		{ key: "zone_settings", type: "edit" },
 	];
 	return `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
 		JSON.stringify(permissions)
@@ -503,11 +504,14 @@ const [mailboxEmail, setMailboxEmail] = useState("");
 										Zone: DNS Edit / 区域: DNS 编辑
 									</li>
 									<li>
+										Zone: Zone Settings Edit / 区域: 区域设置 编辑
+									</li>
+									<li>
 										Zone: Email Routing Rules Edit / 区域: 电子邮件路由规则 编辑
 									</li>
 								</ul>
 								<p className="text-xs text-kumo-subtle mt-1.5">
-									The link above pre-fills DNS permission. Click "Add more" / "添加更多" to add Email Routing Rules, then copy the token here.
+									The link above pre-fills DNS + Zone Settings permissions. Click "Add more" / "添加更多" to also add Email Routing Rules, then copy the token here.
 								</p>
 							</div>
 

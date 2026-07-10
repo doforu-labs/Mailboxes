@@ -267,14 +267,13 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 
 		// 2. Enable Email Routing
 		const enableRes = await fetch(
-			`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/settings`,
+			`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/enable`,
 			{
-				method: "PUT",
+				method: "POST",
 				headers: {
 					Authorization: `Bearer ${cfApiToken}`,
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ enabled: true }),
 			},
 		);
 
@@ -288,7 +287,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 
 		// 3. Set up catch-all rule → forward to Worker "mailboxes"
 		const catchAllRes = await fetch(
-			`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/rules/catch-all`,
+			`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/rules/catch_all`,
 			{
 				method: "PUT",
 				headers: {
