@@ -18,6 +18,19 @@ import {
 	WarningIcon,
 } from "@phosphor-icons/react";
 import { type FormEvent, useState } from "react";
+
+// Cloudflare API Token Template URL — pre-fills the token creation page
+// with required permissions: Zone:DNS:Edit + Zone:Email Routing:Edit
+// Ref: https://developers.cloudflare.com/fundamentals/api/how-to/account-owned-token-template/
+const CF_TOKEN_TEMPLATE_URL = (() => {
+	const permissions = [
+		{ key: "dns", type: "edit" },
+		{ key: "email_routing", type: "edit" },
+	];
+	return `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
+		JSON.stringify(permissions)
+	)}&accountId=*&zoneId=all&name=Mailboxes%20Token`;
+})();
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
 import type { VerifyResult } from "~/services/api";
@@ -447,10 +460,17 @@ export default function SetupRoute() {
 							/>
 							<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
 								<p className="text-xs text-kumo-subtle">
-									<strong className="text-blue-700">
-										Required permissions:
-									</strong>{" "}
-									Zone:DNS:Edit + Zone:Email Routing:Edit
+									<a
+										href={CF_TOKEN_TEMPLATE_URL}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-blue-600 underline font-medium"
+									>
+										Create a pre-configured token →
+									</a>
+									{" — "}Opens the Cloudflare Dashboard with DNS + Email Routing
+									permissions already selected. Copy the token and paste it
+									here.
 								</p>
 							</div>
 
