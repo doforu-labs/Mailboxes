@@ -68,6 +68,16 @@ export interface Attachment {
 	disposition?: string;
 }
 
+export interface Domain {
+	id: string;
+	name: string;
+	resend_domain_id?: string;
+	cf_zone_id?: string;
+	cf_account_id?: string;
+	status: 'pending' | 'verified' | 'failed';
+	created_at: string;
+}
+
 export interface Folder {
 	id: string;
 	name: string;

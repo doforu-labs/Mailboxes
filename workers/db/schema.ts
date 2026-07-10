@@ -55,3 +55,13 @@ export const aiChatMessages = sqliteTable("ai_chat_messages", {
 	content: text("content").notNull(),
 	created_at: text("created_at").notNull(),
 });
+
+export const domains = sqliteTable("domains", {
+	id: text("id").primaryKey(),
+	name: text("name").notNull(),
+	resend_domain_id: text("resend_domain_id"),
+	cf_zone_id: text("cf_zone_id"),
+	cf_account_id: text("cf_account_id"),
+	status: text("status").notNull().default("pending"),
+	created_at: text("created_at").notNull(),
+});

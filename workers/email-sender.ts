@@ -118,6 +118,7 @@ export async function sendEmailFromMailbox(
 	mailboxId: string,
 	params: SendEmailParams,
 	fallbackKey?: string,
+	db?: D1Database,
 ): Promise<{ messageId: string }> {
 	// Try R2 settings first (UI-configured key)
 	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
@@ -125,6 +126,23 @@ export async function sendEmailFromMailbox(
 		const settings = (await obj.json()) as { resendApiKey?: string };
 		if (settings.resendApiKey) {
 			return sendEmail(settings.resendApiKey, params);
+		}
+	}
+
+	// Try domain-level Resend API key from the domains table
+	if (db) {
+		try {
+			const atIdx = mailboxId.indexOf("@");
+			if (atIdx !== -1) {
+				const domainName = mailboxId.substring(atIdx + 1).toLowerCase();
+				const row = await db
+					.prepare("SELECT resend_domain_id FROM domains WHERE name = ?")
+					.bind(domainName)
+					.first<{ resend_domain_id: string | null }>();
+				// Future: when per-domain API keys are supported, resolve here
+			}
+		} catch {
+			// Domains table might not exist yet — ignore
 		}
 	}
 

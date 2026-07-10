@@ -5,72 +5,82 @@
 import {
 	Button,
 	Dialog,
-	Empty,
 	Input,
 	Loader,
 	Text,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
-import { EnvelopeIcon, GlobeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
-import { type FormEvent, useEffect, useState } from "react";
+import { GlobeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { type FormEvent, useState } from "react";
 import { Link as RouterLink } from "react-router";
-import api from "~/services/api";
 import {
-	useCreateMailbox,
-	useDeleteMailbox,
-	useMailboxes,
-} from "~/queries/mailboxes";
+	useCreateDomain,
+	useDeleteDomain,
+	useDomains,
+} from "~/queries/domains";
+import type { Domain } from "~/types";
 
-export function meta() {
-	return [{ title: "Mailboxes" }];
+function StatusBadge({ status }: { status: Domain["status"] }) {
+	const styles: Record<Domain["status"], string> = {
+		verified: "bg-green-100 text-green-800",
+		pending: "bg-yellow-100 text-yellow-800",
+		failed: "bg-red-100 text-red-800",
+	};
+
+	const labels: Record<Domain["status"], string> = {
+		verified: "Verified",
+		pending: "Pending",
+		failed: "Failed",
+	};
+
+	return (
+		<span
+			className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status]}`}
+		>
+			{labels[status]}
+		</span>
+	);
 }
 
-export default function HomeRoute() {
+export function meta() {
+	return [{ title: "Domains — Mailboxes" }];
+}
+
+export default function DomainsRoute() {
 	const toastManager = useKumoToastManager();
-	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
-	const createMailbox = useCreateMailbox();
-	const deleteMailbox = useDeleteMailbox();
+	const { data: domains = [], isFetched: domainsFetched } = useDomains();
+	const createDomain = useCreateDomain();
+	const deleteDomain = useDeleteDomain();
 
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
-	const [newEmail, setNewEmail] = useState("");
-	const [newName, setNewName] = useState("");
+	const [newDomainName, setNewDomainName] = useState("");
 	const [isCreating, setIsCreating] = useState(false);
 	const [createError, setCreateError] = useState<string | null>(null);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-	const [mailboxToDelete, setMailboxToDelete] = useState<{
-		id: string;
-		email: string;
-	} | null>(null);
+	const [domainToDelete, setDomainToDelete] = useState<Domain | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
-
-	// Redirect to /setup on first launch if no mailboxes exist
-	useEffect(() => {
-		if (mailboxesFetched && mailboxes.length === 0) {
-			window.location.href = "/setup";
-		}
-	}, [mailboxesFetched, mailboxes]);
 
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
 		setCreateError(null);
-		if (!newEmail) {
-			setCreateError("Please enter an email address");
+		if (!newDomainName.trim()) {
+			setCreateError("Please enter a domain name");
 			return;
 		}
-		if (!newEmail.includes("@")) {
-			setCreateError("Please enter a valid email address (e.g. hello@example.com)");
+		// Basic validation: must contain a dot
+		if (!newDomainName.includes(".")) {
+			setCreateError("Please enter a valid domain (e.g. example.com)");
 			return;
 		}
-		const name = newName || newEmail.split("@")[0];
 		setIsCreating(true);
 		try {
-			await createMailbox.mutateAsync({ email: newEmail, name });
-			toastManager.add({ title: "Mailbox created successfully!" });
+			await createDomain.mutateAsync({ name: newDomainName.trim() });
+			toastManager.add({ title: "Domain added successfully!" });
 			setIsCreateOpen(false);
-			setNewEmail("");
-			setNewName("");
+			setNewDomainName("");
 		} catch (err: unknown) {
-			const message = (err instanceof Error ? err.message : null) || "Failed to create mailbox";
+			const message =
+				(err instanceof Error ? err.message : null) || "Failed to add domain";
 			setCreateError(message);
 		} finally {
 			setIsCreating(false);
@@ -78,15 +88,18 @@ export default function HomeRoute() {
 	};
 
 	const handleDelete = async () => {
-		if (!mailboxToDelete) return;
+		if (!domainToDelete) return;
 		setIsDeleting(true);
 		try {
-			await deleteMailbox.mutateAsync(mailboxToDelete.id);
-			toastManager.add({ title: "Mailbox deleted" });
+			await deleteDomain.mutateAsync(domainToDelete.id);
+			toastManager.add({ title: "Domain deleted" });
 			setIsDeleteOpen(false);
-			setMailboxToDelete(null);
+			setDomainToDelete(null);
 		} catch {
-			toastManager.add({ title: "Failed to delete mailbox", variant: "error" });
+			toastManager.add({
+				title: "Failed to delete domain",
+				variant: "error",
+			});
 		} finally {
 			setIsDeleting(false);
 		}
@@ -95,47 +108,63 @@ export default function HomeRoute() {
 	return (
 		<div className="min-h-screen bg-kumo-recessed">
 			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
+				{/* Header */}
 				<div className="mb-8">
-				<div className="flex items-center justify-between">
-					<h1 className="text-2xl font-bold text-kumo-default">Mailboxes</h1>
-					<div className="flex items-center gap-2">
-						<RouterLink
-							to="/domains"
-							className="inline-flex items-center gap-1.5 rounded-lg border border-kumo-line bg-kumo-base px-3 py-1.5 text-sm font-medium text-kumo-default transition-colors hover:bg-kumo-tint"
-						>
-							<GlobeIcon size={14} />
-							Domains
-						</RouterLink>
+					<div className="flex items-center justify-between">
+						<div>
+							<div className="mb-2">
+								<RouterLink
+									to="/"
+									className="text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
+								>
+									← Back to Mailboxes
+								</RouterLink>
+							</div>
+							<h1 className="text-2xl font-bold text-kumo-default">
+								Domains
+							</h1>
+						</div>
 						<Button
 							variant="primary"
 							icon={<PlusIcon size={16} />}
 							onClick={() => setIsCreateOpen(true)}
 						>
-							New Mailbox
+							Add Domain
 						</Button>
 					</div>
 				</div>
-				</div>
 
-				{mailboxes.length > 0 ? (
+				{/* Domain List */}
+				{!domainsFetched ? (
+					<div className="flex justify-center py-16">
+						<Loader size="lg" />
+					</div>
+				) : domains.length > 0 ? (
 					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-						{mailboxes.map((account, idx) => (
-							<RouterLink
-								key={account.id}
-								to={`/mailbox/${account.id}`}
-								className={`group flex items-center gap-4 px-5 py-4 no-underline transition-colors hover:bg-kumo-tint ${
+						{domains.map((domain, idx) => (
+							<div
+								key={domain.id}
+								className={`group flex items-center gap-4 px-5 py-4 transition-colors ${
 									idx > 0 ? "border-t border-kumo-line" : ""
 								}`}
 							>
 								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
-									{account.name.charAt(0).toUpperCase()}
+									<GlobeIcon size={18} />
 								</div>
 								<div className="min-w-0 flex-1">
-									<div className="text-sm font-medium text-kumo-default truncate">
-										{account.name}
+									<div className="flex items-center gap-2">
+										<span className="text-sm font-medium text-kumo-default truncate">
+											{domain.name}
+										</span>
+										<StatusBadge status={domain.status} />
 									</div>
-									<div className="text-sm text-kumo-subtle">
-										{account.email}
+									<div className="text-xs text-kumo-subtle mt-0.5">
+										Added{" "}
+										{new Date(domain.created_at).toLocaleDateString(undefined, {
+											year: "numeric",
+											month: "short",
+											day: "numeric",
+										})}
 									</div>
 								</div>
 								<Button
@@ -143,53 +172,49 @@ export default function HomeRoute() {
 									size="sm"
 									shape="square"
 									icon={<TrashIcon size={16} />}
-									aria-label={`Delete mailbox ${account.email}`}
-									onClick={(e) => {
-										e.preventDefault();
-										e.stopPropagation();
-										setMailboxToDelete({
-											id: account.id,
-											email: account.email,
-										});
+									aria-label={`Delete domain ${domain.name}`}
+									onClick={() => {
+										setDomainToDelete(domain);
 										setIsDeleteOpen(true);
 									}}
 								/>
-							</RouterLink>
+							</div>
 						))}
 					</div>
 				) : (
 					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
 						<div className="flex flex-col items-center text-center">
 							<div className="mb-4">
-								<EnvelopeIcon
+								<GlobeIcon
 									size={48}
 									weight="thin"
 									className="text-kumo-subtle"
 								/>
 							</div>
 							<h3 className="text-base font-semibold text-kumo-default mb-1.5">
-								No mailboxes yet
+								No domains yet
 							</h3>
 							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
-								Create a mailbox to start sending and receiving emails with your domain.
+								Add a domain to start sending and receiving emails with
+								custom addresses.
 							</p>
 							<Button
 								variant="primary"
 								icon={<PlusIcon size={16} />}
 								onClick={() => setIsCreateOpen(true)}
 							>
-								Create Mailbox
+								Add Domain
 							</Button>
 						</div>
 					</div>
 				)}
 			</div>
 
-			{/* Create Dialog */}
+			{/* Create Domain Dialog */}
 			<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-5">
-						Create New Mailbox
+						Add Domain
 					</Dialog.Title>
 					<form onSubmit={handleCreate} className="space-y-4">
 						{createError && (
@@ -198,19 +223,12 @@ export default function HomeRoute() {
 							</Text>
 						)}
 						<Input
-							label="Email Address"
-							placeholder="hello@example.com"
+							label="Domain Name"
+							placeholder="example.com"
 							size="sm"
-							value={newEmail}
-							onChange={(e) => setNewEmail(e.target.value)}
+							value={newDomainName}
+							onChange={(e) => setNewDomainName(e.target.value)}
 							required
-						/>
-						<Input
-							label="Display Name (optional)"
-							placeholder="Info"
-							size="sm"
-							value={newName}
-							onChange={(e) => setNewName(e.target.value)}
 						/>
 						<div className="flex justify-end gap-2 pt-2">
 							<Dialog.Close
@@ -226,32 +244,32 @@ export default function HomeRoute() {
 								size="sm"
 								loading={isCreating}
 							>
-								Create
+								Add Domain
 							</Button>
 						</div>
 					</form>
 				</Dialog>
 			</Dialog.Root>
 
-			{/* Delete Dialog */}
+			{/* Delete Domain Dialog */}
 			<Dialog.Root
 				open={isDeleteOpen}
 				onOpenChange={(open) => {
 					setIsDeleteOpen(open);
-					if (!open) setMailboxToDelete(null);
+					if (!open) setDomainToDelete(null);
 				}}
 			>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-2">
-						Delete Mailbox
+						Delete Domain
 					</Dialog.Title>
-					<Dialog.Description className="text-kumo-subtle text-sm mb-5">
+					<p className="text-kumo-subtle text-sm mb-5">
 						Are you sure you want to delete{" "}
 						<strong className="text-kumo-default">
-							{mailboxToDelete?.email}
+							{domainToDelete?.name}
 						</strong>
-						? This action cannot be undone.
-					</Dialog.Description>
+						? This will remove all DNS records and cannot be undone.
+					</p>
 					<div className="flex justify-end gap-2">
 						<Dialog.Close
 							render={(props) => (

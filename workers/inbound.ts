@@ -101,28 +101,14 @@ function findHeader(
 }
 
 /**
- * Get the Resend API key, checking mailbox-specific settings first,
- * then falling back to the global env variable.
+ * Get the Resend API key, checking the domains table first,
+ * then per-mailbox R2 settings, then the global env variable.
  */
 async function getResendApiKey(
 	env: Env,
 	mailboxId: string,
 ): Promise<string | null> {
-	// Check mailbox-specific settings
-	try {
-		const obj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
-		if (obj) {
-			const settings = await obj.json<Record<string, unknown>>();
-			if (typeof settings.resendApiKey === "string" && settings.resendApiKey) {
-				return settings.resendApiKey;
-			}
-		}
-	} catch {
-		// Ignore read errors — fall through to env var
-	}
-
-	// Fall back to global env variable
-	return env.RESEND_API_KEY ?? null;
+	return dbService.resolveResendApiKey(env, mailboxId);
 }
 
 // ── Main Handler ───────────────────────────────────────────────────

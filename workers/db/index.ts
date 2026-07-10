@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and, or, asc, desc, sql } from "drizzle-orm";
+import { eq, and, or, asc, desc, sql, ne } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "./schema";
 import { Folders } from "../../shared/folders";
@@ -1090,4 +1090,168 @@ export async function clearAiChatHistory(
 	await db.prepare(
 		`DELETE FROM ai_chat_messages WHERE mailbox_id = ?`,
 	).bind(mailboxId).run();
+}
+
+// ── 25. Domain CRUD ─────────────────────────────────────────────
+
+export interface DomainData {
+	id: string;
+	name: string;
+	resend_domain_id?: string | null;
+	cf_zone_id?: string | null;
+	cf_account_id?: string | null;
+	status: string;
+	created_at: string;
+}
+
+export interface DomainUpdate {
+	resend_domain_id?: string | null;
+	cf_zone_id?: string | null;
+	cf_account_id?: string | null;
+	status?: string;
+}
+
+export async function createDomain(
+	db: D1Database,
+	data: DomainData,
+): Promise<void> {
+	await db.prepare(
+		`INSERT INTO domains (id, name, resend_domain_id, cf_zone_id, cf_account_id, status, created_at)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+	).bind(
+		data.id,
+		data.name,
+		data.resend_domain_id ?? null,
+		data.cf_zone_id ?? null,
+		data.cf_account_id ?? null,
+		data.status,
+		data.created_at,
+	).run();
+}
+
+export async function getDomain(
+	db: D1Database,
+	id: string,
+): Promise<DomainData | null> {
+	const orm = drizzle(db, { schema });
+	const result = await orm
+		.select()
+		.from(schema.domains)
+		.where(eq(schema.domains.id, id))
+		.get();
+	return result ?? null;
+}
+
+export async function getDomainByName(
+	db: D1Database,
+	name: string,
+): Promise<DomainData | null> {
+	const orm = drizzle(db, { schema });
+	const result = await orm
+		.select()
+		.from(schema.domains)
+		.where(eq(schema.domains.name, name))
+		.get();
+	return result ?? null;
+}
+
+export async function listDomains(
+	db: D1Database,
+): Promise<DomainData[]> {
+	const orm = drizzle(db, { schema });
+	const results = await orm
+		.select()
+		.from(schema.domains)
+		.orderBy(desc(schema.domains.created_at))
+		.all();
+	return results;
+}
+
+export async function updateDomain(
+	db: D1Database,
+	id: string,
+	updates: DomainUpdate,
+): Promise<DomainData | null> {
+	const orm = drizzle(db, { schema });
+	const setClause: Record<string, string | null> = {};
+	if (updates.resend_domain_id !== undefined) setClause.resend_domain_id = updates.resend_domain_id ?? null;
+	if (updates.cf_zone_id !== undefined) setClause.cf_zone_id = updates.cf_zone_id ?? null;
+	if (updates.cf_account_id !== undefined) setClause.cf_account_id = updates.cf_account_id ?? null;
+	if (updates.status !== undefined) setClause.status = updates.status;
+
+	if (Object.keys(setClause).length === 0) {
+		return getDomain(db, id);
+	}
+
+	await orm
+		.update(schema.domains)
+		.set(setClause)
+		.where(eq(schema.domains.id, id))
+		.run();
+
+	return getDomain(db, id);
+}
+
+export async function deleteDomain(
+	db: D1Database,
+	id: string,
+): Promise<boolean> {
+	const orm = drizzle(db, { schema });
+	const result = await orm
+		.delete(schema.domains)
+		.where(eq(schema.domains.id, id))
+		.run();
+	return true;
+}
+
+/** Extract domain from a mailbox email address and look it up in the domains table. */
+export async function getMailboxDomain(
+	db: D1Database,
+	mailboxId: string,
+): Promise<DomainData | null> {
+	const atIdx = mailboxId.indexOf("@");
+	if (atIdx === -1) return null;
+	const domainName = mailboxId.substring(atIdx + 1).toLowerCase();
+	return getDomainByName(db, domainName);
+}
+
+// ── 26. Domain-aware Resend API key resolution ───────────────────
+
+/**
+ * Resolve the Resend API key for a given mailbox.
+ * Priority: 1) domains table (by email domain)  2) per-mailbox R2 settings  3) global env var
+ */
+export async function resolveResendApiKey(
+	env: { DB: D1Database; BUCKET: R2Bucket; RESEND_API_KEY?: string },
+	mailboxId: string,
+): Promise<string | null> {
+	// 1. Check domains table — look up by the mailbox's domain
+	try {
+		const domain = await getMailboxDomain(env.DB, mailboxId);
+		if (domain?.resend_domain_id) {
+			// If we have a resend_domain_id, we still need the API key.
+			// The domain record confirms domain setup, but the key comes from
+			// per-mailbox settings or env. (Resend API keys are account-level,
+			// not per-domain.) This function exists as a hook for future
+			// per-domain key storage.
+		}
+	} catch {
+		// Domains table might not exist yet — ignore
+	}
+
+	// 2. Check per-mailbox R2 settings
+	try {
+		const obj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+		if (obj) {
+			const settings = await obj.json<Record<string, unknown>>();
+			if (typeof settings.resendApiKey === "string" && settings.resendApiKey) {
+				return settings.resendApiKey;
+			}
+		}
+	} catch {
+		// Ignore read errors — fall through to env var
+	}
+
+	// 3. Fall back to global env variable
+	return env.RESEND_API_KEY ?? null;
 }

@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import { listMailboxes } from "./lib/email-helpers";
 import type { Env } from "./types";
+import * as dbService from "./db";
 
 const setup = new Hono<{ Bindings: Env }>();
 
@@ -199,6 +200,28 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			status: string;
 		};
 
+		// 5. Persist domain to the domains table
+		try {
+			const existingDomain = await dbService.getDomainByName(c.env.DB, domain.toLowerCase());
+			if (existingDomain) {
+				await dbService.updateDomain(c.env.DB, existingDomain.id, {
+					resend_domain_id: domainId,
+					status: verifyData.status || "pending",
+				});
+			} else {
+				await dbService.createDomain(c.env.DB, {
+					id: crypto.randomUUID(),
+					name: domain.toLowerCase(),
+					resend_domain_id: domainId,
+					status: verifyData.status || "pending",
+					created_at: new Date().toISOString(),
+				});
+			}
+		} catch (dbErr) {
+			console.error("Failed to persist domain to DB:", dbErr);
+			// Non-fatal — DNS records are still created
+		}
+
 		return c.json({
 			domainId,
 			status: verifyData.status || "pending",
@@ -221,7 +244,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			cfAccountId: string;
 		}>();
 
-		const { domain, cfApiToken, cfAccountId: _cfAccountId } = body;
+		const { domain, cfApiToken, cfAccountId } = body;
 
 		if (!domain || !cfApiToken) {
 			return c.json(
@@ -320,10 +343,257 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			return c.json({ error: msg }, 400);
 		}
 
+		// 4. Save cf_zone_id and cf_account_id to domains table
+		try {
+			const existingDomain = await dbService.getDomainByName(c.env.DB, domain.toLowerCase());
+			if (existingDomain) {
+				await dbService.updateDomain(c.env.DB, existingDomain.id, {
+					cf_zone_id: zoneId,
+					cf_account_id: cfAccountId,
+				});
+			} else {
+				await dbService.createDomain(c.env.DB, {
+					id: crypto.randomUUID(),
+					name: domain.toLowerCase(),
+					cf_zone_id: zoneId,
+					cf_account_id: cfAccountId,
+					status: "active",
+					created_at: new Date().toISOString(),
+				});
+			}
+		} catch (dbErr) {
+			console.error("Failed to persist domain routing info to DB:", dbErr);
+			// Non-fatal — email routing is still configured
+		}
+
 		return c.json({ success: true });
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ error: `Email routing setup failed: ${msg}` }, 500);
+	}
+});
+
+// ── Domain management routes ───────────────────────────────────
+
+// GET /api/v1/domains — list all domains
+setup.get("/api/v1/domains", async (c) => {
+	try {
+		const domains = await dbService.listDomains(c.env.DB);
+		return c.json(domains);
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `Failed to list domains: ${msg}` }, 500);
+	}
+});
+
+// POST /api/v1/domains — add a new domain (triggers Resend + CF DNS setup)
+setup.post("/api/v1/domains", async (c) => {
+	try {
+		const body = await c.req.json<{
+			domain: string;
+			resendApiKey?: string;
+			cfApiToken?: string;
+			cfAccountId?: string;
+		}>();
+
+		const { domain, resendApiKey, cfApiToken, cfAccountId } = body;
+
+		if (!domain) {
+			return c.json({ error: "Missing required field: domain" }, 400);
+		}
+
+		// Check if domain already exists
+		const existingDomain = await dbService.getDomainByName(c.env.DB, domain.toLowerCase());
+		if (existingDomain) {
+			return c.json({ error: "Domain already exists", domain: existingDomain }, 409);
+		}
+
+		const domainId = crypto.randomUUID();
+		const now = new Date().toISOString();
+
+		// Create domain record as pending
+		await dbService.createDomain(c.env.DB, {
+			id: domainId,
+			name: domain.toLowerCase(),
+			status: "pending",
+			created_at: now,
+		});
+
+		let resendDomainId: string | undefined;
+		const dnsResults: Array<{ name: string; type: string; status: string }> = [];
+
+		// If API keys provided, perform DNS setup automatically
+		if (resendApiKey && cfApiToken && cfAccountId) {
+			// 1. Create Resend domain
+			const resendRes = await fetch("https://api.resend.com/domains", {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${resendApiKey}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ name: domain, region: "us-east-1" }),
+			});
+
+			if (resendRes.ok) {
+				const resendData = (await resendRes.json()) as {
+					id: string;
+					records: Array<{
+						record: string;
+						name: string;
+						type: string;
+						ttl: string;
+						status: string;
+						value: string;
+						priority?: number;
+					}>;
+				};
+
+				resendDomainId = resendData.id;
+
+				// 2. Get Cloudflare zone ID
+				const zonesRes = await fetch(
+					`https://api.cloudflare.com/client/v4/zones?name=${domain}&status=active`,
+					{
+						method: "GET",
+						headers: {
+							Authorization: `Bearer ${cfApiToken}`,
+							"Content-Type": "application/json",
+						},
+					},
+				);
+
+				let zoneId: string | undefined;
+				if (zonesRes.ok) {
+					const zonesData = (await zonesRes.json()) as {
+						success: boolean;
+						result: Array<{ id: string }>;
+					};
+					if (zonesData.success && zonesData.result?.length) {
+						zoneId = zonesData.result[0].id;
+					}
+				}
+
+				// 3. Add DNS records
+				if (zoneId) {
+					for (const record of resendData.records) {
+						const dnsBody: Record<string, string | number> = {
+							type: record.type,
+							name: record.name,
+							content: record.value,
+							ttl: record.ttl ? Number(record.ttl) : 1,
+						};
+						if (record.priority !== undefined) {
+							dnsBody.priority = record.priority;
+						}
+
+						const dnsRes = await fetch(
+							`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
+							{
+								method: "POST",
+								headers: {
+									Authorization: `Bearer ${cfApiToken}`,
+									"Content-Type": "application/json",
+								},
+								body: JSON.stringify({ ...dnsBody, proxied: false }),
+							},
+						);
+
+						if (!dnsRes.ok) {
+							const errBody = await dnsRes.json().catch(() => ({}));
+							dnsResults.push({
+								name: record.name,
+								type: record.type,
+								status: `error: ${(errBody as any)?.errors?.[0]?.message || "unknown"}`,
+							});
+						} else {
+							dnsResults.push({ name: record.name, type: record.type, status: "created" });
+						}
+					}
+
+					// 4. Enable Email Routing and set catch-all
+					await fetch(
+						`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/enable`,
+						{
+							method: "POST",
+							headers: {
+								Authorization: `Bearer ${cfApiToken}`,
+								"Content-Type": "application/json",
+							},
+						},
+					);
+
+					await fetch(
+						`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/rules/catch_all`,
+						{
+							method: "PUT",
+							headers: {
+								Authorization: `Bearer ${cfApiToken}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								name: "Catch-all to Worker",
+								actions: [{ type: "worker", value: ["mailboxes"] }],
+								matchers: [{ type: "all" }],
+								enabled: true,
+							}),
+						},
+					);
+
+					// Update domain with CF info
+					await dbService.updateDomain(c.env.DB, domainId, {
+						cf_zone_id: zoneId,
+						cf_account_id: cfAccountId,
+					});
+				}
+
+				// 5. Verify Resend domain
+				await new Promise((r) => setTimeout(r, 2000));
+				const verifyRes = await fetch(
+					`https://api.resend.com/domains/${resendDomainId}/verify`,
+					{
+						method: "POST",
+						headers: {
+							Authorization: `Bearer ${resendApiKey}`,
+							"Content-Type": "application/json",
+						},
+					},
+				);
+
+				const verifyData = (await verifyRes.json()) as { status: string };
+
+				// Update domain with final status
+				await dbService.updateDomain(c.env.DB, domainId, {
+					resend_domain_id: resendDomainId,
+					status: verifyData.status || "pending",
+				});
+			} else {
+				const errBody = await resendRes.json().catch(() => ({}));
+				// Domain record created but Resend setup failed — leave as pending
+			}
+		}
+
+		const updatedDomain = await dbService.getDomain(c.env.DB, domainId);
+		return c.json({ domain: updatedDomain, dnsRecords: dnsResults }, 201);
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `Failed to add domain: ${msg}` }, 500);
+	}
+});
+
+// DELETE /api/v1/domains/:id — remove a domain
+setup.delete("/api/v1/domains/:id", async (c) => {
+	try {
+		const id = c.req.param("id");
+		const domain = await dbService.getDomain(c.env.DB, id);
+		if (!domain) {
+			return c.json({ error: "Domain not found" }, 404);
+		}
+
+		await dbService.deleteDomain(c.env.DB, id);
+		return c.body(null, 204);
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `Failed to delete domain: ${msg}` }, 500);
 	}
 });
 
