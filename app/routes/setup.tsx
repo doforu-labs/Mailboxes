@@ -200,19 +200,23 @@ export default function SetupRoute() {
 		}
 
 		setIsProcessing(true);
-		setDomainVerifyStatus("loading");
 		setEmailRoutingStatus("pending");
 
 		try {
-			// Step A: Create Resend domain + add DNS records via CF
-			const result = await api.verifyDomain({
-				domain: domain.trim(),
-				resendApiKey: resendApiKey.trim(),
-				cfApiToken: cfApiToken.trim(),
-				cfAccountId: cfAccountId.trim(),
-			});
-			setVerifyResult(result);
-			setDomainVerifyStatus("success");
+			// Step A: Create Resend domain + add DNS records via CF (only if Resend key provided)
+			if (resendApiKey.trim()) {
+				setDomainVerifyStatus("loading");
+				const result = await api.verifyDomain({
+					domain: domain.trim(),
+					resendApiKey: resendApiKey.trim(),
+					cfApiToken: cfApiToken.trim(),
+					cfAccountId: cfAccountId.trim(),
+				});
+				setVerifyResult(result);
+				setDomainVerifyStatus("success");
+			} else {
+				setDomainVerifyStatus("success");
+			}
 
 			// Step B: Configure email routing
 			setEmailRoutingStatus("loading");
@@ -353,8 +357,8 @@ export default function SetupRoute() {
 							Resend API Key
 						</h2>
 						<p className="text-sm text-kumo-subtle mb-6">
-							Enter your Resend API key to create and verify your sending
-							domain.
+							Enter your Resend API key to enable email sending.
+							You can skip this step and add it later in Settings.
 						</p>
 						<form onSubmit={handleResendSubmit} className="space-y-4">
 							{error && <ErrorBanner message={error} />}
@@ -382,19 +386,29 @@ export default function SetupRoute() {
 									. Free plan includes 100 emails/day.
 								</p>
 							</div>
-							<div className="flex justify-end gap-2 pt-2">
+							<div className="flex justify-between gap-2 pt-2">
 								<Button
 									variant="secondary"
 									size="sm"
 									type="button"
-									onClick={goBack}
+									onClick={() => { setResendApiKey(""); goNext(); }}
 								>
-									Back
+									Skip for now
 								</Button>
-								<Button variant="primary" size="sm" type="submit">
-									Continue
-									<CaretRightIcon size={14} />
-								</Button>
+								<div className="flex gap-2">
+									<Button
+										variant="secondary"
+										size="sm"
+										type="button"
+										onClick={goBack}
+									>
+										Back
+									</Button>
+									<Button variant="primary" size="sm" type="submit">
+										Continue
+										<CaretRightIcon size={14} />
+									</Button>
+								</div>
 							</div>
 						</form>
 					</div>
@@ -407,8 +421,8 @@ export default function SetupRoute() {
 							Cloudflare Configuration
 						</h2>
 						<p className="text-sm text-kumo-subtle mb-6">
-							Provide your Cloudflare credentials to configure DNS records
-							and email routing automatically.
+							Provide your Cloudflare credentials to set up Email
+							Routing automatically.
 						</p>
 						<form onSubmit={handleCloudflareSubmit} className="space-y-4">
 							{error && <ErrorBanner message={error} />}
@@ -447,13 +461,15 @@ export default function SetupRoute() {
 									<StatusBadge
 										status={domainVerifyStatus}
 										label={
-											domainVerifyStatus === "loading"
-												? "Creating Resend domain & DNS records…"
-												: domainVerifyStatus === "success"
-													? "Domain verified & DNS configured"
-													: domainVerifyStatus === "error"
-														? "Domain verification failed"
-														: "Domain verification"
+											!resendApiKey.trim()
+												? "Resend skipped"
+												: domainVerifyStatus === "loading"
+													? "Creating Resend domain & DNS records…"
+													: domainVerifyStatus === "success"
+														? "Domain verified & DNS configured"
+														: domainVerifyStatus === "error"
+															? "Domain verification failed"
+															: "Domain verification"
 										}
 									/>
 									<StatusBadge
