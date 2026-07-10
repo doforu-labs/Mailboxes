@@ -9,6 +9,15 @@ import * as dbService from "./db";
 
 const setup = new Hono<{ Bindings: Env }>();
 
+// Normalize Resend domain status to our three standard values.
+// Resend may return statuses like "not_started", "dns_verification_in_progress",
+// "temporary_failure", etc. — map them all to "pending".
+function normalizeDomainStatus(status: string | undefined): "pending" | "verified" | "failed" {
+	if (status === "verified") return "verified";
+	if (status === "failed") return "failed";
+	return "pending";
+}
+
 // ── POST /api/v1/setup/detect-cf-domains ───────────────────────────
 // Given a CF API Token + Account ID, return all zones in the account.
 setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
@@ -276,14 +285,14 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			if (existingDomain) {
 				await dbService.updateDomain(c.env.DB, existingDomain.id, {
 					resend_domain_id: domainId,
-					status: verifyData.status || "pending",
+					status: normalizeDomainStatus(verifyData.status),
 				});
 			} else {
 				await dbService.createDomain(c.env.DB, {
 					id: crypto.randomUUID(),
 					name: domain.toLowerCase(),
 					resend_domain_id: domainId,
-					status: verifyData.status || "pending",
+					status: normalizeDomainStatus(verifyData.status),
 					created_at: new Date().toISOString(),
 				});
 			}
@@ -294,7 +303,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 
 		return c.json({
 			domainId,
-			status: verifyData.status || "pending",
+			status: normalizeDomainStatus(verifyData.status),
 			dnsRecords: dnsResults,
 		});
 	} catch (e: unknown) {
@@ -634,7 +643,7 @@ setup.post("/api/v1/domains", async (c) => {
 				// Update domain with final status
 				await dbService.updateDomain(c.env.DB, domainId, {
 					resend_domain_id: resendDomainId,
-					status: verifyData.status || "pending",
+					status: normalizeDomainStatus(verifyData.status),
 				});
 			} else {
 				const errBody = await resendRes.json().catch(() => ({}));

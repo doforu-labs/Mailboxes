@@ -5,6 +5,15 @@
 import { Badge } from "@cloudflare/kumo";
 import type { Domain } from "~/types";
 
+const knownStatuses = new Set<Domain["status"]>(["verified", "pending", "failed"]);
+
+function normalize(status: string): Domain["status"] {
+	if (knownStatuses.has(status as Domain["status"])) return status as Domain["status"];
+	// Resend may return non-standard statuses like "not_started",
+	// "dns_verification_in_progress", etc. — treat them all as pending.
+	return "pending";
+}
+
 const variants: Record<Domain["status"], "success" | "warning" | "error"> = {
 	verified: "success",
 	pending: "warning",
@@ -18,7 +27,8 @@ const labels: Record<Domain["status"], string> = {
 };
 
 export function StatusBadge({ status }: { status: Domain["status"] }) {
+	const normalized = normalize(status);
 	return (
-		<Badge variant={variants[status]}>{labels[status]}</Badge>
+		<Badge variant={variants[normalized]}>{labels[normalized]}</Badge>
 	);
 }
