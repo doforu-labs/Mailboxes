@@ -2,12 +2,13 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import { Badge } from "@cloudflare/kumo";
 import type { Domain } from "~/types";
 
-const styles: Record<Domain["status"], string> = {
-	verified: "bg-green-100 text-green-800",
-	pending: "bg-yellow-100 text-yellow-800",
-	failed: "bg-red-100 text-red-800",
+const variants: Record<Domain["status"], "success" | "warning" | "error"> = {
+	verified: "success",
+	pending: "warning",
+	failed: "error",
 };
 
 const labels: Record<Domain["status"], string> = {
@@ -18,10 +19,6 @@ const labels: Record<Domain["status"], string> = {
 
 export function StatusBadge({ status }: { status: Domain["status"] }) {
 	return (
-		<span
-			className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status]}`}
-		>
-			{labels[status]}
-		</span>
+		<Badge variant={variants[status]}>{labels[status]}</Badge>
 	);
 }
