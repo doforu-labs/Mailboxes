@@ -17,16 +17,37 @@ export interface CfCredentials {
 	cfAccountId: string;
 }
 
+const LOCAL_STORAGE_KEY = "mailboxes_cf_credentials";
+
 export async function loadCfCredentials(): Promise<CfCredentials> {
 	try {
 		const [tokenRes, accountRes] = await Promise.all([
 			api.getPlatformSetting(CF_API_TOKEN_KEY),
 			api.getPlatformSetting(CF_ACCOUNT_ID_KEY),
 		]);
-		return {
+		const creds = {
 			cfApiToken: tokenRes.value ?? "",
 			cfAccountId: accountRes.value ?? "",
 		};
+
+		// One-time migration: if D1 is empty but localStorage has old data, migrate it
+		if (!creds.cfApiToken && !creds.cfAccountId) {
+			try {
+				const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+				if (raw) {
+					const parsed = JSON.parse(raw) as CfCredentials;
+					if (parsed.cfApiToken && parsed.cfAccountId) {
+						await saveCfCredentials(parsed);
+						localStorage.removeItem(LOCAL_STORAGE_KEY);
+						return parsed;
+					}
+				}
+			} catch {
+				// Ignore localStorage errors
+			}
+		}
+
+		return creds;
 	} catch {
 		return { cfApiToken: "", cfAccountId: "" };
 	}

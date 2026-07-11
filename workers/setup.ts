@@ -3,6 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Hono } from "hono";
+import dns from "node:dns";
 import { listMailboxes } from "./lib/email-helpers";
 import type { Env } from "./types";
 import * as dbService from "./db";
@@ -90,6 +91,73 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ error: `Failed to detect CF domains: ${msg}` }, 500);
+	}
+});
+
+// ── DNS Provider Detection ───────────────────────────────────────
+const DNS_PROVIDERS: Array<{ pattern: RegExp; name: string }> = [
+	{ pattern: /ns\d*\.cloudflare\.com/i, name: "Cloudflare" },
+	{ pattern: /awsdns-\d+\.(com|net|org|co\.uk)$/i, name: "AWS Route 53" },
+	{ pattern: /googledomains\.com/i, name: "Google Cloud DNS" },
+	{ pattern: /ns\d*\.google\.com/i, name: "Google Cloud DNS" },
+	{ pattern: /vercel-dns\.com/i, name: "Vercel" },
+	{ pattern: /digitalocean\.com/i, name: "DigitalOcean" },
+	{ pattern: /domaincontrol\.com/i, name: "GoDaddy" },
+	{ pattern: /godaddy\.com/i, name: "GoDaddy" },
+	{ pattern: /registrar-servers\.com/i, name: "Namecheap" },
+	{ pattern: /ns\d*\.hetzner\.com/i, name: "Hetzner" },
+	{ pattern: /dnsimple-edge\.(com|net|io|org)/i, name: "DNSimple" },
+	{ pattern: /dnsmadeeasy\.com/i, name: "DNS Made Easy" },
+	{ pattern: /dns\.netlify\.com|netlify\.com/i, name: "Netlify" },
+	{ pattern: /squarespace\.com/i, name: "Squarespace" },
+	{ pattern: /gandi\.net/i, name: "Gandi" },
+	{ pattern: /name\.com/i, name: "Name.com" },
+	{ pattern: /porkbun\.com/i, name: "Porkbun" },
+	{ pattern: /dynadot\.com/i, name: "Dynadot" },
+	{ pattern: /ultradns\.(com|net)/i, name: "UltraDNS" },
+	{ pattern: /easydns\.com/i, name: "easyDNS" },
+	{ pattern: /hover\.com/i, name: "Hover" },
+	{ pattern: /dreamhost\.com/i, name: "DreamHost" },
+	{ pattern: /ionos\.(com|dev)/i, name: "IONOS" },
+	{ pattern: /hostgator\.com/i, name: "HostGator" },
+	{ pattern: /bluehost\.com/i, name: "Bluehost" },
+	{ pattern: /namesilo\.com/i, name: "NameSilo" },
+	{ pattern: /tucows\.com/i, name: "Tucows" },
+];
+
+function detectProviderFromNameservers(nameservers: string[]): string {
+	for (const ns of nameservers) {
+		for (const { pattern, name } of DNS_PROVIDERS) {
+			if (pattern.test(ns)) return name;
+		}
+	}
+	return "Other";
+}
+
+// ── POST /api/v1/setup/detect-dns-provider ────────────────────────
+// Query NS records for a domain and detect the DNS provider.
+setup.post("/api/v1/setup/detect-dns-provider", async (c) => {
+	try {
+		const body = await c.req.json<{ domain: string }>();
+		const { domain } = body;
+
+		if (!domain) {
+			return c.json({ error: "Missing required field: domain" }, 400);
+		}
+
+		let nameservers: string[] = [];
+		try {
+			nameservers = await dns.promises.resolveNs(domain);
+		} catch {
+			// DNS lookup failed (NXDOMAIN, timeout, etc.) — return Other
+		}
+
+		const provider = detectProviderFromNameservers(nameservers);
+
+		return c.json({ provider, nameservers });
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `DNS provider detection failed: ${msg}` }, 500);
 	}
 });
 

@@ -91,7 +91,7 @@ function getDomainStatus(domain: Domain): {
 		return {
 			status: "sending_only",
 			badge: { label: "Sending Only", variant: "warning" },
-			subtitle: "Connect Cloudflare zone to enable receiving",
+			subtitle: "Configure MX records at your DNS provider to enable receiving",
 		};
 	}
 

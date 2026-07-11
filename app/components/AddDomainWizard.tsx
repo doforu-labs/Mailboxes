@@ -26,6 +26,7 @@ import { useCreateDomain } from "~/queries/domains";
 import api from "~/services/api";
 import { ApiError } from "~/services/api";
 import { loadCfCredentials } from "~/components/PlatformSettingsSection";
+import type { DnsProviderDetection } from "~/services/api";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -74,6 +75,19 @@ const STEP_LABELS: Record<StepPosition, string> = {
 	sending: "Sending",
 	done: "Done",
 };
+
+// ── DNS Provider Guide Links ─────────────────────────────────────
+
+function getDnsProviderGuide(provider: string): string | null {
+	const guides: Record<string, string> = {
+		Cloudflare: "https://developers.cloudflare.com/email-routing/get-started/",
+		Vercel: "https://vercel.com/docs/domains/manage-a-domain#configuring-dns-records",
+		GoDaddy: "https://www.godaddy.com/help/add-or-edit-mx-records-19238",
+		Namecheap: "https://www.namecheap.com/support/knowledgebase/article.aspx/223/22/how-do-i-set-up-mail-forwarding-for-my-domain/",
+		DigitalOcean: "https://docs.digitalocean.com/products/networking/dns/how-to/manage-records/",
+	};
+	return guides[provider] ?? null;
+}
 
 // ── Step Indicator ────────────────────────────────────────────────
 
@@ -164,6 +178,7 @@ export function AddDomainWizard({
 	const [isCfManaged, setIsCfManaged] = useState<boolean | null>(null);
 	const [cfZoneName, setCfZoneName] = useState<string | null>(null);
 	const [detecting, setDetecting] = useState(false);
+	const [detectedDnsProvider, setDetectedDnsProvider] = useState<DnsProviderDetection | null>(null);
 
 	// Receiving setup
 	const [receiveStatus, setReceiveStatus] = useState<
@@ -217,14 +232,28 @@ export function AddDomainWizard({
 				if (match) {
 					setIsCfManaged(true);
 					setCfZoneName(match.name);
+					setDetectedDnsProvider(null);
 				} else {
 					setIsCfManaged(false);
+					try {
+						const dnsResult = await api.detectDnsProvider(trimmed);
+						setDetectedDnsProvider(dnsResult);
+					} catch {
+						setDetectedDnsProvider({ provider: "Other", nameservers: [] });
+					}
 				}
 			} else {
 				setIsCfManaged(false);
+				try {
+					const dnsResult = await api.detectDnsProvider(domainName.trim());
+					setDetectedDnsProvider(dnsResult);
+				} catch {
+					setDetectedDnsProvider({ provider: "Other", nameservers: [] });
+				}
 			}
 		} catch {
 			setIsCfManaged(false);
+			setDetectedDnsProvider(null);
 		} finally {
 			setDetecting(false);
 			setStep("domain-type");
@@ -462,6 +491,11 @@ export function AddDomainWizard({
 								? `is managed by Cloudflare${cfZoneName ? ` (${cfZoneName})` : ""}.`
 								: "is not managed by Cloudflare."}
 						</p>
+						{!isCfManaged && detectedDnsProvider?.provider && detectedDnsProvider.provider !== "Other" && (
+							<p className="text-xs text-kumo-subtle text-center mb-2">
+								Managed by <strong className="text-kumo-default">{detectedDnsProvider.provider}</strong>
+							</p>
+						)}
 						<div className="rounded-lg bg-kumo-fill px-3 py-2.5 mb-5">
 							{isCfManaged ? (
 								<p className="text-xs text-kumo-subtle">
@@ -655,6 +689,29 @@ export function AddDomainWizard({
 						</p>
 
 						<div className="space-y-3 mb-4">
+							{detectedDnsProvider?.provider && detectedDnsProvider.provider !== "Other" && (
+								<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+									<p className="text-xs text-kumo-subtle">
+										Your domain's DNS is managed by <strong className="text-kumo-default">{detectedDnsProvider.provider}</strong>.{' '}
+										{(() => {
+										const guideUrl = getDnsProviderGuide(detectedDnsProvider.provider);
+										if (guideUrl) {
+											return (
+												<a
+													href={guideUrl}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="text-blue-600 underline"
+												>
+													View {detectedDnsProvider.provider} DNS setup guide
+													</a>
+											);
+										}
+										return null;
+									})()}
+									</p>
+								</div>
+							)}
 							<div className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
 								<div className="flex items-center gap-2 mb-2">
 									<span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">

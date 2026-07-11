@@ -158,6 +158,11 @@ export interface DetectCfDomainsResult {
 	accountName?: string;
 }
 
+export interface DnsProviderDetection {
+	provider: string;
+	nameservers: string[];
+}
+
 // ---------- API client ----------
 
 export interface CreateDomainResponse {
@@ -247,6 +252,10 @@ const api = {
 
 	verifyResendKey: (mailboxId: string, apiKey: string) =>
 		post<VerifyResendResult>(`/api/v1/mailboxes/${mailboxId}/verify-resend`, { apiKey }),
+
+	// DNS Provider Detection
+	detectDnsProvider: (domain: string) =>
+		post<DnsProviderDetection>("/api/v1/setup/detect-dns-provider", { domain }),
 
 	// Setup
 	getSetupStatus: () => get<SetupStatus>("/api/v1/setup/status"),
