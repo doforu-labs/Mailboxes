@@ -869,13 +869,6 @@ export function AddDomainWizard({
 								Back
 							</Button>
 							<Button
-								variant="secondary"
-								size="sm"
-								onClick={handleSkipSending}
-							>
-								Skip for now
-							</Button>
-							<Button
 								variant="primary"
 								size="sm"
 								onClick={() => setStep("sending")}
