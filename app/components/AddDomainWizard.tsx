@@ -291,7 +291,7 @@ export function AddDomainWizard({
 		setIsProcessing(true);
 		try {
 			const result = await createDomain.mutateAsync({
-				name: domainName.trim(),
+				domain: domainName.trim(),
 				resendApiKey: resendApiKey.trim() || undefined,
 			});
 			setDnsRecords(result.dnsRecords);
@@ -360,7 +360,7 @@ export function AddDomainWizard({
 		setIsProcessing(true);
 		try {
 			await createDomain.mutateAsync({
-				name: domainName.trim(),
+				domain: domainName.trim(),
 			});
 			setSummary({
 				receiving: isCfManaged ? "configured" : "skipped",

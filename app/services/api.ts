@@ -233,7 +233,7 @@ const api = {
 	// Domains
 	domains: {
 		list: () => get<Domain[]>("/api/v1/domains"),
-		create: (data: { name: string; resendApiKey?: string }) =>
+		create: (data: { domain: string; resendApiKey?: string }) =>
 			post<CreateDomainResponse>("/api/v1/domains", data),
 		delete: (id: string) => del<void>(`/api/v1/domains/${id}`),
 		setCatchAll: (domainId: string, catchAllMailbox: string | null) =>
