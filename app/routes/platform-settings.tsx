@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
+import { CredentialsSection } from "~/components/CredentialsSection";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { PlatformSettingsSection } from "~/components/PlatformSettingsSection";
 import { useDomains } from "~/queries/domains";
@@ -124,7 +125,7 @@ function DomainsSection() {
 // ── Page ───────────────────────────────────────────────────────────
 
 export function meta() {
-	return [{ title: "Platform Settings — Mailboxes" }];
+	return [{ title: "Settings — Mailboxes" }];
 }
 
 export default function SettingsRoute() {
@@ -143,15 +144,25 @@ export default function SettingsRoute() {
 						</RouterLink>
 					</div>
 					<h1 className="text-2xl font-bold text-kumo-default">
-						Platform Settings
+						Settings
 					</h1>
 				</div>
 
 				{/* Platform Settings */}
-				<PlatformSettingsSection />
+				<div className="mb-6">
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">Platform Settings</h2>
+					<PlatformSettingsSection />
+				</div>
+
+				{/* Credentials */}
+				<div className="mb-6">
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">Credentials</h2>
+					<CredentialsSection />
+				</div>
 
 				{/* Domain Management */}
-				<div className="mt-6">
+				<div>
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">Domains</h2>
 					<DomainsSection />
 				</div>
 			</div>
