@@ -11,6 +11,7 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
+	ArrowClockwiseIcon,
 	CheckCircleIcon,
 	DotsThreeVerticalIcon,
 	EnvelopeIcon,
@@ -434,25 +435,36 @@ export default function HomeRoute() {
 												}}
 											/>
 										</RouterLink>
-									))}
+										))}
 
 									{/* Empty domain: prompt to create mailbox */}
 									{!isOther && hasNoMailboxes && (
-										<div className="px-5 py-4 border-t border-kumo-line">
-											<p className="text-sm text-kumo-subtle mb-3">
+										<div className="px-5 py-4 border-t border-kumo-line space-y-3">
+											<p className="text-sm text-kumo-subtle">
 												No mailboxes on this domain yet.
 											</p>
-											<Button
-												variant="primary"
-												size="sm"
-												icon={<PlusIcon size={14} />}
-												onClick={() => {
-													setSelectedDomain(domain.name);
-													setIsCreateOpen(true);
-												}}
-											>
-												Create Mailbox
-											</Button>
+											<div className="flex gap-2">
+												<Button
+													variant="primary"
+													size="sm"
+													icon={<PlusIcon size={14} />}
+													onClick={() => {
+														setSelectedDomain(domain.name);
+														setIsCreateOpen(true);
+													}}
+												>
+													Create Mailbox
+												</Button>
+												{!domain.cf_zone_id && (
+													<RouterLink
+														to="/settings"
+														className="inline-flex items-center justify-center gap-1.5 rounded-md border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint no-underline"
+													>
+														<ArrowClockwiseIcon size={13} />
+														Setup Receiving
+													</RouterLink>
+												)}
+											</div>
 										</div>
 									)}
 								</div>
