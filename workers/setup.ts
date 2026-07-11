@@ -662,27 +662,42 @@ setup.post("/api/v1/domains", async (c) => {
 
 		// Check if domain already exists
 		const existingDomain = await dbService.getDomainByName(c.env.DB, domain.toLowerCase());
-		if (existingDomain) {
-			return c.json({ error: "Domain already exists", domain: existingDomain }, 409);
-		}
 
-		const domainId = crypto.randomUUID();
-		const now = new Date().toISOString();
-
-		// Create domain record as pending
-		await dbService.createDomain(c.env.DB, {
-			id: domainId,
-			name: domain.toLowerCase(),
-			status: "pending",
-			resend_api_key: resendApiKey || null,
-			cf_zone_id: cfZoneId || null,
-			cf_account_id: cfAccountId || null,
-			created_at: now,
-		});
-
+		let domainId: string;
+		let domainWasReused = false;
+		let originalStatus: string | undefined;
 		let resendDomainId: string | undefined;
 		const dnsResults: Array<{ name: string; type: string; status: string; value: string }> = [];
 		const warnings: string[] = [];
+
+		if (existingDomain) {
+			// If domain already has sending configured via Resend, it's a real duplicate
+			if (existingDomain.resend_domain_id) {
+				return c.json({ error: "Domain already exists", domain: existingDomain }, 409);
+			}
+			// Domain was created by the receiving step (email-routing) — reuse it
+			// and upgrade with sending configuration
+			domainId = existingDomain.id;
+			domainWasReused = true;
+			originalStatus = existingDomain.status;
+			await dbService.updateDomain(c.env.DB, domainId, {
+				status: "pending",
+				resend_api_key: resendApiKey || null,
+			});
+		} else {
+			// Create new domain record
+			domainId = crypto.randomUUID();
+			const now = new Date().toISOString();
+			await dbService.createDomain(c.env.DB, {
+				id: domainId,
+				name: domain.toLowerCase(),
+				status: "pending",
+				resend_api_key: resendApiKey || null,
+				cf_zone_id: cfZoneId || null,
+				cf_account_id: cfAccountId || null,
+				created_at: now,
+			});
+		}
 
 		// If no Resend API key provided (send-only skipped), mark domain as
 		// verified immediately so the UI shows the correct status for receive-only
@@ -692,6 +707,9 @@ setup.post("/api/v1/domains", async (c) => {
 			await dbService.updateDomain(c.env.DB, domainId, {
 				status: "verified",
 			});
+			// If we reused an existing record (from receiving), return the updated domain
+			const updatedDomain = await dbService.getDomain(c.env.DB, domainId);
+			return c.json({ domain: updatedDomain, dnsRecords: dnsResults, warnings }, 200);
 		}
 
 		// If API keys provided, perform DNS setup automatically
@@ -883,8 +901,15 @@ setup.post("/api/v1/domains", async (c) => {
 				});
 			} else {
 				const errBody = await resendRes.json().catch(() => ({}));
-				// Resend API failed — roll back the D1 record to avoid zombie
-				await dbService.deleteDomain(c.env.DB, domainId);
+				// Resend API failed — roll back the D1 record or revert to original status
+				if (domainWasReused) {
+					await dbService.updateDomain(c.env.DB, domainId, {
+						status: originalStatus,
+						resend_api_key: null,
+					});
+				} else {
+					await dbService.deleteDomain(c.env.DB, domainId);
+				}
 				return c.json({
 					error: `Failed to create domain on Resend: ${(errBody as any)?.message || resendRes.statusText || resendRes.status}`,
 				}, 400);
@@ -981,8 +1006,15 @@ setup.post("/api/v1/domains", async (c) => {
 		} else {
 			const errBody = await resendRes.json().catch(() => ({}));
 			const msg = (errBody as any).message || `Resend API error: ${resendRes.status}`;
-			// Resend API failed — roll back the D1 record to avoid zombie
-			await dbService.deleteDomain(c.env.DB, domainId);
+			// Resend API failed — roll back the D1 record or revert to original status
+			if (domainWasReused) {
+				await dbService.updateDomain(c.env.DB, domainId, {
+					status: originalStatus,
+					resend_api_key: null,
+				});
+			} else {
+				await dbService.deleteDomain(c.env.DB, domainId);
+			}
 			return c.json({ error: `Failed to create Resend domain: ${msg}` }, 400);
 		}
 	}
