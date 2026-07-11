@@ -27,7 +27,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { CatchAllDialog } from "~/components/CatchAllDialog";
-import { StatusBadge } from "~/components/DomainStatusBadge";
+import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { useDeleteDomain, useDomains, useSetCatchAll, useUpdateDomainApiKey } from "~/queries/domains";
 import api from "~/services/api";
 import type { Domain } from "~/types";
@@ -70,54 +70,6 @@ const CF_TOKEN_TEMPLATE_URL = (() => {
 		JSON.stringify(permissions)
 	)}&accountId=*&zoneId=all&name=Mailboxes%20Token`;
 })();
-
-// ── Domain Status Indicators ─────────────────────────────────────
-
-function DomainStatusIndicators({ domain }: { domain: Domain }) {
-	const isReceiving = !!domain.cf_zone_id;
-	const isSending = !!domain.resend_api_key && domain.status === "verified";
-
-	return (
-		<div className="flex items-center gap-2 mt-1">
-			<span
-				className="inline-flex items-center gap-1 text-[11px] font-medium"
-				title={
-					isReceiving
-						? "Email Routing active — CF-managed domain"
-						: "No Cloudflare zone linked — Email Routing not configured"
-				}
-			>
-				<span
-					className={`inline-block h-1.5 w-1.5 rounded-full ${
-						isReceiving ? "bg-green-500" : "bg-amber-400"
-					}`}
-				/>
-				<span className={isReceiving ? "text-green-600" : "text-amber-600"}>
-					Receiving
-				</span>
-			</span>
-			<span
-				className="inline-flex items-center gap-1 text-[11px] font-medium"
-				title={
-					isSending
-						? "Resend API key configured and DNS verified"
-						: !domain.resend_api_key
-							? "No Resend API key — sending not configured"
-							: "DNS not yet verified — sending unavailable"
-				}
-			>
-				<span
-					className={`inline-block h-1.5 w-1.5 rounded-full ${
-						isSending ? "bg-green-500" : "bg-amber-400"
-					}`}
-				/>
-				<span className={isSending ? "text-green-600" : "text-amber-600"}>
-					Sending
-				</span>
-			</span>
-		</div>
-	);
-}
 
 // ── Platform Settings ────────────────────────────────────────────
 
@@ -491,7 +443,6 @@ function DomainsSection() {
 								<span className="text-sm font-semibold text-kumo-default">
 									{domain.name}
 								</span>
-								<StatusBadge status={domain.status} />
 								<div className="ml-auto" ref={openMenu === domain.id ? menuRef : undefined}>
 									<div className="relative">
 										<button
@@ -547,10 +498,12 @@ function DomainsSection() {
 								</div>
 							</div>
 
-							{/* Row 2: Status indicators, created date, catch-all */}
+							{/* Row 2: Status + date */}
 							<div className="flex items-center gap-3 mt-1 pl-6 text-[11px]">
-								<DomainStatusIndicators domain={domain} />
-								<span className="text-kumo-subtle ml-auto">
+								<div className="flex-1">
+									<DomainFullStatus domain={domain} />
+								</div>
+								<span className="text-kumo-subtle shrink-0">
 									{domain.created_at
 										? new Date(domain.created_at).toLocaleDateString("en-US", {
 												month: "short",
