@@ -1141,4 +1141,276 @@ setup.get("/api/v1/setup/verify-domain/:domainId", async (c) => {
 	}
 });
 
+// ── POST /api/v1/setup/detect-vercel-domains ────────────────────
+// Given a Vercel API Token (+ optional Team ID), return all domains.
+setup.post("/api/v1/setup/detect-vercel-domains", async (c) => {
+	try {
+		const body = await c.req.json<{
+			vercelApiToken: string;
+			vercelTeamId?: string;
+		}>();
+
+		const { vercelApiToken, vercelTeamId } = body;
+
+		if (!vercelApiToken) {
+			return c.json(
+				{ error: "Missing required field: vercelApiToken" },
+				400,
+			);
+		}
+
+		// Build URL — include teamId query param if provided
+		const domainsUrl = new URL("https://api.vercel.com/v4/domains");
+		if (vercelTeamId) {
+			domainsUrl.searchParams.set("teamId", vercelTeamId);
+		}
+
+		const res = await fetch(domainsUrl.toString(), {
+			method: "GET",
+			headers: {
+				Authorization: `Bearer ${vercelApiToken}`,
+			},
+		});
+
+		if (res.status === 401 || res.status === 403) {
+			return c.json({ error: "Invalid Vercel API token" }, 400);
+		}
+
+		if (!res.ok) {
+			const errBody = await res.json().catch(() => ({}));
+			const msg =
+				(errBody as any)?.error?.message ||
+				`Vercel API error: ${res.status}`;
+			return c.json({ error: msg }, 400);
+		}
+
+		const data = (await res.json()) as {
+			domains: Array<{
+				name: string;
+				created: string;
+			}>;
+		};
+
+		const domains = (data.domains || []).map((d) => ({
+			name: d.name,
+			createdAt: d.created,
+		}));
+
+		// If teamId was provided, try to get team name
+		let teamName: string | null = null;
+		if (vercelTeamId) {
+			try {
+				const teamRes = await fetch(
+					`https://api.vercel.com/v2/teams/${vercelTeamId}`,
+					{
+						method: "GET",
+						headers: {
+							Authorization: `Bearer ${vercelApiToken}`,
+						},
+					},
+				);
+				if (teamRes.ok) {
+					const teamData = (await teamRes.json()) as {
+						name?: string;
+					};
+					teamName = teamData.name || null;
+				}
+			} catch {
+				// Non-fatal — team name is optional
+			}
+		}
+
+		return c.json({ domains, teamName });
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json(
+			{ error: `Failed to detect Vercel domains: ${msg}` },
+			500,
+		);
+	}
+});
+
+// ── POST /api/v1/setup/vercel-verify-domain ─────────────────────
+// Create a Resend domain, add DNS records via Vercel API, and verify.
+setup.post("/api/v1/setup/vercel-verify-domain", async (c) => {
+	try {
+		const body = await c.req.json<{
+			domain: string;
+			resendApiKey: string;
+			vercelApiToken: string;
+			vercelTeamId?: string;
+		}>();
+
+		const { domain, resendApiKey, vercelApiToken, vercelTeamId } = body;
+
+		if (!domain || !resendApiKey || !vercelApiToken) {
+			return c.json(
+				{
+					error:
+						"Missing required fields: domain, resendApiKey, vercelApiToken",
+				},
+				400,
+			);
+		}
+
+		// 1. Create domain via Resend API
+		const resendRes = await fetch("https://api.resend.com/domains", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${resendApiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ name: domain, region: "us-east-1" }),
+		});
+
+		if (!resendRes.ok) {
+			const errBody = await resendRes.json().catch(() => ({}));
+			const msg =
+				(errBody as any).message ||
+				`Resend API error: ${resendRes.status}`;
+			return c.json(
+				{ error: `Failed to create Resend domain: ${msg}` },
+				400,
+			);
+		}
+
+		const resendData = (await resendRes.json()) as {
+			id: string;
+			name: string;
+			status: string;
+			records: Array<{
+				record: string;
+				name: string;
+				type: string;
+				ttl: string;
+				status: string;
+				value: string;
+				priority?: number;
+			}>;
+		};
+
+		const domainId = resendData.id;
+
+		// 2. Add DNS records from Resend via Vercel API
+		const dnsResults: Array<{
+			name: string;
+			type: string;
+			status: string;
+			value: string;
+		}> = [];
+
+		for (const record of resendData.records) {
+			const recordBody: Record<string, string | number> = {
+				name: record.name,
+				type: record.type,
+				value: record.value,
+				ttl: record.ttl ? Number(record.ttl) : 60,
+			};
+
+			// MX records require priority
+			if (record.priority !== undefined) {
+				recordBody.priority = record.priority;
+			}
+
+			// Build Vercel DNS record creation URL
+			const recordUrl = new URL(
+				`https://api.vercel.com/v2/domains/${domain}/records`,
+			);
+			if (vercelTeamId) {
+				recordUrl.searchParams.set("teamId", vercelTeamId);
+			}
+
+			const dnsRes = await fetch(recordUrl.toString(), {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${vercelApiToken}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(recordBody),
+			});
+
+			if (!dnsRes.ok) {
+				const errBody = await dnsRes.json().catch(() => ({}));
+				const errMsg =
+					(errBody as any)?.error?.message ||
+					`DNS record creation failed: ${dnsRes.status}`;
+				dnsResults.push({
+					name: record.name,
+					type: record.type,
+					status: `error: ${errMsg}`,
+					value: record.value || "",
+				});
+			} else {
+				dnsResults.push({
+					name: record.name,
+					type: record.type,
+					status: "created",
+					value: record.value || "",
+				});
+			}
+		}
+
+		// 3. Wait 2s then verify domain via Resend
+		await new Promise((r) => setTimeout(r, 2000));
+
+		const verifyRes = await fetch(
+			`https://api.resend.com/domains/${domainId}/verify`,
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${resendApiKey}`,
+					"Content-Type": "application/json",
+				},
+			},
+		);
+
+		const verifyData = (await verifyRes.json()) as {
+			id: string;
+			status: string;
+		};
+
+		// 4. Persist domain to the domains table
+		try {
+			const existingDomain = await dbService.getDomainByName(
+				c.env.DB,
+				domain.toLowerCase(),
+			);
+			if (existingDomain) {
+				await dbService.updateDomain(c.env.DB, existingDomain.id, {
+					resend_domain_id: domainId,
+					status: normalizeDomainStatus(verifyData.status),
+					resend_api_key: resendApiKey,
+				});
+			} else {
+				await dbService.createDomain(c.env.DB, {
+					id: crypto.randomUUID(),
+					name: domain.toLowerCase(),
+					resend_domain_id: domainId,
+					status: normalizeDomainStatus(verifyData.status),
+					resend_api_key: resendApiKey,
+					created_at: new Date().toISOString(),
+				});
+			}
+		} catch (dbErr) {
+			console.error("Failed to persist domain to DB:", dbErr);
+			return c.json(
+				{ error: "Failed to save domain configuration" },
+				500,
+			);
+		}
+
+		return c.json({
+			domainId,
+			status: normalizeDomainStatus(verifyData.status),
+			dnsRecords: dnsResults,
+		});
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json(
+			{ error: `Vercel domain setup failed: ${msg}` },
+			500,
+		);
+	}
+});
+
 export default setup;

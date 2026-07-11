@@ -25,7 +25,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useCreateDomain } from "~/queries/domains";
 import api from "~/services/api";
 import { ApiError } from "~/services/api";
-import { loadCfCredentials } from "~/components/PlatformSettingsSection";
+import { loadCfCredentials, loadVercelCredentials } from "~/components/PlatformSettingsSection";
 import type { DnsProviderDetection } from "~/services/api";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ type WizardStep =
 	| "domain"
 	| "domain-type"
 	| "receive-cf"
+	| "receive-vercel"
 	| "receive-external"
 	| "sending"
 	| "dns-records"
@@ -59,6 +60,7 @@ function positionForStep(step: WizardStep): StepPosition {
 		case "domain-type":
 			return "domain";
 		case "receive-cf":
+		case "receive-vercel":
 		case "receive-external":
 			return "receive";
 		case "sending":
@@ -261,11 +263,21 @@ export function AddDomainWizard({
 	};
 
 	// ── Step 2: Domain type → proceed to receiving ──
-	const handleDomainTypeContinue = () => {
+	const handleDomainTypeContinue = async () => {
 		if (isCfManaged) {
 			setStep("receive-cf");
 		} else {
-			setStep("receive-external");
+			// Check if Vercel credentials are configured
+			try {
+				const vercelCreds = await loadVercelCredentials();
+				if (vercelCreds.vercelApiToken) {
+					setStep("receive-vercel");
+				} else {
+					setStep("receive-external");
+				}
+			} catch {
+				setStep("receive-external");
+			}
 		}
 	};
 
@@ -294,6 +306,42 @@ export function AddDomainWizard({
 		};
 		setup();
 	}, [step, receiveStatus, domainName]);
+
+	// ── Step 3c: Receiving – Vercel auto-setup ──
+	useEffect(() => {
+		if (step !== "receive-vercel" || receiveStatus !== "idle") return;
+
+		const setup = async () => {
+			setReceiveStatus("loading");
+			try {
+				const vercelCreds = await loadVercelCredentials();
+				if (!vercelCreds.vercelApiToken) {
+					throw new Error("Vercel API Token not configured");
+				}
+				const result = await api.vercelVerifyDomain({
+					domain: domainName.trim(),
+					resendApiKey: resendApiKey.trim() || undefined,
+					vercelApiToken: vercelCreds.vercelApiToken,
+					vercelTeamId: vercelCreds.vercelTeamId || undefined,
+				});
+				if (result.dnsRecords) {
+					setDnsRecords(result.dnsRecords);
+				}
+				if (result.warnings && result.warnings.length > 0) {
+					setWarnings(result.warnings);
+				}
+				setReceiveStatus("success");
+			} catch (err: unknown) {
+				setReceiveStatus("failed");
+				setReceiveError(
+					err instanceof Error
+						? err.message
+						: "Failed to configure Vercel DNS",
+				);
+			}
+		};
+		setup();
+	}, [step, receiveStatus, domainName, resendApiKey]);
 
 	// ── Step 4: Sending – Resend API Key → create domain ──
 	const handleSendingSubmit = async (e: FormEvent) => {
@@ -329,29 +377,53 @@ export function AddDomainWizard({
 		setVerifyStatus("verifying");
 		try {
 			const creds = await loadCfCredentials();
-			const result = await api.verifyDomain({
-				domain: domainName.trim(),
-				resendApiKey: resendApiKey.trim(),
-				cfApiToken: creds.cfApiToken,
-				cfAccountId: creds.cfAccountId,
-			});
-			if (result.status === "verified" || result.status === "valid") {
-				setVerifyStatus("verified");
-				setSummary({
-					receiving: isCfManaged ? "configured" : "skipped",
-					sending: "configured",
+			if (creds.cfApiToken && creds.cfAccountId) {
+				const result = await api.verifyDomain({
+					domain: domainName.trim(),
+					resendApiKey: resendApiKey.trim(),
+					cfApiToken: creds.cfApiToken,
+					cfAccountId: creds.cfAccountId,
 				});
-				setStep("done");
-				toastManager.add({
-					title: `Domain ${domainName} verified successfully!`,
-				});
-				onSuccess();
-				onComplete?.();
+				if (result.status === "verified" || result.status === "valid") {
+					setVerifyStatus("verified");
+					setSummary({
+						receiving: isCfManaged ? "configured" : "skipped",
+						sending: "configured",
+					});
+					setStep("done");
+					toastManager.add({
+						title: `Domain ${domainName} verified successfully!`,
+					});
+					onSuccess();
+					onComplete?.();
+				} else {
+					setVerifyStatus("failed");
+					setVerifyError(
+						`Domain status: ${result.status}. DNS records may still be propagating. Please wait a few minutes and try again.`,
+					);
+				}
 			} else {
-				setVerifyStatus("failed");
-				setVerifyError(
-					`Domain status: ${result.status}. DNS records may still be propagating. Please wait a few minutes and try again.`,
-				);
+				// No CF credentials — just check if domain is verified via Resend
+				const domains = await api.domains.list();
+				const domain = domains.find((d: { name: string }) => d.name === domainName.trim());
+				if (domain && (domain as unknown as { status: string }).status === "verified") {
+					setVerifyStatus("verified");
+					setSummary({
+						receiving: isCfManaged ? "configured" : "skipped",
+						sending: "configured",
+					});
+					setStep("done");
+					toastManager.add({
+						title: `Domain ${domainName} verified successfully!`,
+					});
+					onSuccess();
+					onComplete?.();
+				} else {
+					setVerifyStatus("failed");
+					setVerifyError(
+						"Domain status: pending. DNS records may still be propagating. Please wait a few minutes and try again.",
+					);
+				}
 			}
 		} catch (err: unknown) {
 			setVerifyStatus("failed");
@@ -666,6 +738,142 @@ export function AddDomainWizard({
 					</>
 				)}
 
+				{/* ── Step 3c: Receiving – Vercel Auto-Setup ── */}
+				{step === "receive-vercel" && (
+					<>
+						<div className="flex justify-center mb-4">
+							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/10">
+								<Mail
+									size={24}
+									className="text-black"
+								/>
+							</div>
+						</div>
+						<Dialog.Title className="text-base font-semibold text-center mb-1">
+							Configuring Vercel DNS
+						</Dialog.Title>
+						<p className="text-sm text-kumo-subtle text-center mb-5">
+							Configuring DNS records for{" "}
+							<strong className="text-kumo-default">
+								{domainName}
+							</strong>
+							via Vercel API...
+						</p>
+
+						<div className="space-y-3 mb-5">
+							{receiveStatus === "loading" && (
+								<div className="flex flex-col items-center gap-3 py-4">
+									<Loader size="base" />
+									<p className="text-sm text-kumo-subtle">
+										Setting up DNS records via Vercel API…
+									</p>
+								</div>
+							)}
+							{receiveStatus === "success" && (
+								<div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
+									<CircleCheckBig
+										size={14}
+										className="text-green-600 shrink-0"
+									/>
+									<span className="text-sm text-green-700">
+										DNS records configured via Vercel! All email
+										sent to{' '}
+										<code className="font-mono">
+											*@{domainName}
+									</code>{' '}
+										will be delivered to your catch-all
+										mailbox.
+									</span>
+								</div>
+							)}
+							{receiveStatus === "failed" && (
+								<div className="space-y-2">
+									<ErrorBanner
+										message={
+											receiveError ??
+											"Failed to configure Vercel DNS"
+										}
+									/>
+									<p className="text-xs text-kumo-subtle">
+										You can set this up manually later, or try
+										again from the Domains page.
+									</p>
+								</div>
+							)}
+						</div>
+
+						<div className="flex justify-end gap-2">
+							{receiveStatus === "loading" ? (
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => {
+										setReceiveStatus("idle");
+										setReceiveError(null);
+										setStep("sending");
+									}}
+								>
+									Skip for now
+								</Button>
+							) : (
+								<>
+									<Button
+										variant="secondary"
+										size="sm"
+										onClick={() => setStep("domain-type")}
+									>
+										<ChevronLeft size={14} />
+										Back
+									</Button>
+									{receiveStatus === "success" ? (
+										<Button
+											variant="primary"
+											size="sm"
+											onClick={() => setStep("sending")}
+										>
+											Continue
+											<ChevronRight size={14} />
+										</Button>
+									) : receiveStatus === "failed" ? (
+										<>
+											<Button
+												variant="secondary"
+												size="sm"
+												onClick={() => {
+													setReceiveStatus("idle");
+													setReceiveError(null);
+													setStep("sending");
+												}}
+											>
+												Skip receiving
+											</Button>
+											<Button
+												variant="primary"
+												size="sm"
+												onClick={() => {
+													setReceiveStatus("idle");
+													setReceiveError(null);
+												}}
+											>
+												Retry
+											</Button>
+										</>
+									) : (
+										<Button
+											variant="primary"
+											size="sm"
+											onClick={() => setStep("sending")}
+										>
+											Continue
+											<ChevronRight size={14} />
+										</Button>
+									)}
+								</>
+							)}
+						</div>
+					</>
+				)}
+
 				{/* ── Step 3b: Receiving – External Domain ──── */}
 				{step === "receive-external" && (
 					<>
@@ -832,7 +1040,9 @@ export function AddDomainWizard({
 										setStep(
 											isCfManaged
 												? "receive-cf"
-												: "receive-external",
+												: detectedDnsProvider?.provider === "Vercel"
+													? "receive-vercel"
+													: "receive-external",
 										);
 									}}
 								>
