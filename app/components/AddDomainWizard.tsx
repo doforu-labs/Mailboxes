@@ -386,10 +386,21 @@ export function AddDomainWizard({
 		const setup = async () => {
 			setReceiveStatus("loading");
 			try {
+				// Load Resend API Key from D1 if not already provided
+				let apiKey = resendApiKey.trim();
+				if (!apiKey) {
+					const stored = await api.getPlatformSetting("resend_api_key");
+					apiKey = stored.value || "";
+				}
+				if (!apiKey) {
+					setReceiveStatus("failed");
+					setReceiveError("Resend API Key is required. Please enter it in the Sending step first, or save it in Platform Settings.");
+					return;
+				}
 				const result = await api.providerVerifyDomain({
 					provider: matchedProvider,
 					domain: domainName.trim(),
-					resendApiKey: resendApiKey.trim() || "",
+					resendApiKey: apiKey,
 					credentials: matchedProviderCreds,
 				});
 				if (result.dnsRecords) {
