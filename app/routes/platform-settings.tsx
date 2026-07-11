@@ -572,7 +572,7 @@ function DomainsSection() {
 			{showAddWizard && (
 				<AddDomainWizard
 					onClose={() => setShowAddWizard(false)}
-					onSuccess={() => {}}
+					onSuccess={() => setShowAddWizard(false)}
 					onComplete={() => setShowAddWizard(false)}
 				/>
 			)}

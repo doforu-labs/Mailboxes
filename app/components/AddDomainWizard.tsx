@@ -356,17 +356,28 @@ export function AddDomainWizard({
 		onComplete?.();
 	};
 
-	const handleSkipSending = () => {
-		setSummary({
-			receiving: isCfManaged ? "configured" : "skipped",
-			sending: "skipped",
-		});
-		setStep("done");
-		toastManager.add({
-			title: "Domain added for receiving. You can set up sending later.",
-		});
-		onSuccess();
-		onComplete?.();
+	const handleSkipSending = async () => {
+		setIsProcessing(true);
+		try {
+			await createDomain.mutateAsync({
+				name: domainName.trim(),
+			});
+			setSummary({
+				receiving: isCfManaged ? "configured" : "skipped",
+				sending: "skipped",
+			});
+			setStep("done");
+			toastManager.add({
+				title: "Domain added for receiving. You can set up sending later.",
+			});
+			onSuccess();
+			onComplete?.();
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to create domain";
+			setError(msg);
+		} finally {
+			setIsProcessing(false);
+		}
 	};
 
 	const handleClose = () => onClose();
@@ -786,22 +797,7 @@ export function AddDomainWizard({
 									variant="secondary"
 									size="sm"
 									type="button"
-									onClick={() => {
-										setError(null);
-										setResendApiKey("");
-										setSummary({
-											receiving: isCfManaged
-												? "configured"
-												: "skipped",
-											sending: "skipped",
-										});
-										setStep("done");
-										toastManager.add({
-											title: "Domain added! You can set up sending later.",
-										});
-										onSuccess();
-										onComplete?.();
-									}}
+									onClick={handleSkipSending}
 								>
 									Skip sending
 								</Button>
