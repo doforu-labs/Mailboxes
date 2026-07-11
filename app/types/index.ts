@@ -31,6 +31,12 @@ export interface Mailbox {
 	name: string;
 	settings?: MailboxSettings;
 	created_at?: string;
+	// Summary fields for mailbox list view
+	unread_count?: number;
+	latest_subject?: string | null;
+	latest_sender?: string | null;
+	latest_date?: string | null;
+	latest_snippet?: string | null;
 }
 
 export interface Email {

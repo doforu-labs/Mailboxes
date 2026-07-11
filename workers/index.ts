@@ -177,7 +177,31 @@ app.get("/api/v1/config", async (c) => {
 
 app.get("/api/v1/mailboxes", async (c) => {
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
-	return c.json(allMailboxes.map((m) => ({ ...m, name: m.id })));
+	const mailboxIds = allMailboxes.map((m) => m.id);
+
+	// Query unread counts and latest emails from D1 in parallel
+	const [unreadMap, latestMap] = await Promise.all([
+		db.getMailboxUnreadCounts(c.env.DB, mailboxIds),
+		db.getMailboxLatestEmails(c.env.DB, mailboxIds),
+	]);
+
+	const result = allMailboxes.map((m) => {
+		const latest = latestMap.get(m.id);
+		const rawSnippet = latest?.snippet;
+		return {
+			...m,
+			name: m.id,
+			unread_count: unreadMap.get(m.id) ?? 0,
+			latest_subject: latest?.subject ?? null,
+			latest_sender: latest?.sender ?? null,
+			latest_date: latest?.date ?? null,
+			latest_snippet: rawSnippet
+				? rawSnippet.replace(/<[^>]*>/g, "").trim().substring(0, 100)
+				: null,
+		};
+	});
+
+	return c.json(result);
 });
 
 app.post("/api/v1/mailboxes", async (c) => {

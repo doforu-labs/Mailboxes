@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and, or, asc, desc, sql, ne } from "drizzle-orm";
+import { eq, and, or, asc, desc, sql, ne, inArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "./schema";
 import { Folders } from "../../shared/folders";
@@ -1275,7 +1275,85 @@ export async function deleteMailbox(
 	return allAttachments;
 }
 
-// ── 28. Platform Settings (key-value) ─────────────────────────
+// ── 28. Mailbox list summary (unread count + latest email) ────
+
+export async function getMailboxUnreadCounts(
+	db: D1Database,
+	mailboxIds: string[],
+): Promise<Map<string, number>> {
+	if (mailboxIds.length === 0) return new Map();
+
+	const orm = drizzle(db, { schema });
+	const results = await orm
+		.select({
+			mailboxId: schema.emails.mailbox_id,
+			count: sql<number>`COUNT(*)`.mapWith(Number),
+		})
+		.from(schema.emails)
+		.where(
+			and(
+				eq(schema.emails.folder_id, 'inbox'),
+				eq(schema.emails.read, 0),
+				inArray(schema.emails.mailbox_id, mailboxIds),
+			),
+		)
+		.groupBy(schema.emails.mailbox_id)
+		.all();
+
+	const map = new Map<string, number>();
+	for (const row of results) {
+		map.set(row.mailboxId, row.count);
+	}
+	return map;
+}
+
+export async function getMailboxLatestEmails(
+	db: D1Database,
+	mailboxIds: string[],
+): Promise<Map<string, { subject: string | null; sender: string | null; date: string | null; snippet: string | null }>> {
+	if (mailboxIds.length === 0) return new Map();
+
+	const orm = drizzle(db, { schema });
+
+	// Use a subquery: for each mailbox_id, find the row with MAX(date)
+	const idLiterals = mailboxIds.map((id) => sql`${id}`);
+	const inList = sql.join(idLiterals, sql`, `);
+
+	const results = await orm
+		.select({
+			mailboxId: schema.emails.mailbox_id,
+			subject: schema.emails.subject,
+			sender: schema.emails.sender,
+			date: schema.emails.date,
+			snippet: sql<string>`SUBSTR(${schema.emails.body}, 1, 150)`,
+		})
+		.from(schema.emails)
+		.where(
+			sql`(${schema.emails.mailbox_id}, ${schema.emails.date}) IN (
+				SELECT mailbox_id, MAX(date)
+				FROM emails
+				WHERE mailbox_id IN (${inList})
+				GROUP BY mailbox_id
+			)`,
+		)
+		.all();
+
+	const map = new Map<string, { subject: string | null; sender: string | null; date: string | null; snippet: string | null }>();
+	for (const row of results) {
+		// If two rows share the same timestamp, keep the first (any is fine)
+		if (!map.has(row.mailboxId)) {
+			map.set(row.mailboxId, {
+				subject: row.subject,
+				sender: row.sender,
+				date: row.date,
+				snippet: row.snippet,
+			});
+		}
+	}
+	return map;
+}
+
+// ── 29. Platform Settings (key-value) ─────────────────────────
 
 export async function getSetting(
 	db: D1Database,

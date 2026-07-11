@@ -402,16 +402,51 @@ export default function HomeRoute() {
 												idx > 0 ? "border-t border-kumo-line" : ""
 											}`}
 										>
-											<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
-												<Mail size={14} className="text-kumo-subtle" />
+											<div className="relative flex-shrink-0">
+												<div className="flex h-9 w-9 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+													<Mail size={14} className="text-kumo-subtle" />
+												</div>
+												{account.unread_count > 0 && (
+													<div className="absolute -right-1.5 -top-1.5 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-bold text-white leading-none">
+														{account.unread_count > 99 ? '99+' : account.unread_count}
+													</div>
+												)}
 											</div>
 											<div className="min-w-0 flex-1">
-												<div className="text-sm font-medium text-kumo-default truncate">
-													{account.name}
+												<div className="flex items-center gap-2">
+													<span className="text-sm font-medium text-kumo-default truncate">
+														{account.name}
+													</span>
 												</div>
 												<div className="text-xs text-kumo-subtle truncate">
 													{account.email}
 												</div>
+												{account.latest_subject && (
+													<div className="mt-0.5 flex items-center gap-1.5 text-xs text-kumo-subtle/70 truncate">
+														<span className="truncate font-medium text-kumo-subtle/80">
+															{account.latest_subject}
+														</span>
+														{account.latest_snippet && (
+															<>
+																<span className="shrink-0 text-kumo-subtle/40">—</span>
+																<span className="truncate">
+																	{account.latest_snippet}
+																</span>
+															</>
+														)}
+													</div>
+												)}
+												{!account.latest_subject && account.latest_sender && (
+													<div className="mt-0.5 flex items-center gap-1.5 text-xs text-kumo-subtle/50 truncate">
+														<span>Latest: {account.latest_sender}</span>
+														{account.latest_date && (
+															<>
+																<span className="shrink-0">·</span>
+																<span>{new Date(account.latest_date).toLocaleDateString()}</span>
+															</>
+														)}
+													</div>
+												)}
 											</div>
 											<Button
 												variant="ghost"
