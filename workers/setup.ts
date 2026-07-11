@@ -40,6 +40,7 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 		const zones: Array<{ id: string; name: string; status: string }> = [];
 		let page = 1;
 		let hasMore = true;
+		let accountName = "";
 
 		while (hasMore && page <= 5) {
 			const url = new URL(
@@ -64,7 +65,7 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 			const data = (await res.json()) as {
 				success: boolean;
 				errors: Array<{ message: string }>;
-				result: Array<{ id: string; name: string; status: string }>;
+				result: Array<{ id: string; name: string; status: string; account?: { id: string; name: string } }>;
 				result_info: { total_pages: number };
 			};
 
@@ -77,31 +78,11 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 				zones.push({ id: zone.id, name: zone.name, status: zone.status });
 			}
 
+			// Extract account name from the first zone's account object
+			if (!accountName) accountName = data.result[0]?.account?.name || "";
+
 			hasMore = page < data.result_info.total_pages;
 			page++;
-		}
-
-		// Fetch account info to display account name
-		let accountName = "";
-		try {
-			const acctRes = await fetch(
-				`https://api.cloudflare.com/client/v4/accounts/${cfAccountId}`,
-				{
-					method: "GET",
-					headers: {
-						Authorization: `Bearer ${cfApiToken}`,
-						"Content-Type": "application/json",
-					},
-				},
-			);
-			if (acctRes.ok) {
-				const acctData = (await acctRes.json()) as {
-					result?: { name?: string };
-				};
-				accountName = acctData.result?.name || "";
-			}
-		} catch {
-			// Ignore — account name is optional
 		}
 
 		return c.json({ zones, accountName });
