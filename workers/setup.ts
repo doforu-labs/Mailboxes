@@ -1160,7 +1160,7 @@ setup.post("/api/v1/setup/detect-vercel-domains", async (c) => {
 		}
 
 		// Build URL — include teamId query param if provided
-		const domainsUrl = new URL("https://api.vercel.com/v4/domains");
+		const domainsUrl = new URL("https://api.vercel.com/v5/domains");
 		if (vercelTeamId) {
 			domainsUrl.searchParams.set("teamId", vercelTeamId);
 		}
@@ -1187,13 +1187,13 @@ setup.post("/api/v1/setup/detect-vercel-domains", async (c) => {
 		const data = (await res.json()) as {
 			domains: Array<{
 				name: string;
-				created: string;
+				createdAt: string;
 			}>;
 		};
 
 		const domains = (data.domains || []).map((d) => ({
 			name: d.name,
-			createdAt: d.created,
+			createdAt: d.createdAt,
 		}));
 
 		// If teamId was provided, try to get team name
@@ -1443,6 +1443,25 @@ setup.post("/api/v1/setup/detect-provider-domains", async (c) => {
 		let teamName: string | null = null;
 
 		switch (provider) {
+			case "vercel": {
+				const token = credentials.apiToken;
+				if (!token) return c.json({ error: "apiToken is required" }, 400);
+				const domainsUrl = new URL("https://api.vercel.com/v5/domains");
+				if (credentials.teamId) {
+					domainsUrl.searchParams.set("teamId", credentials.teamId);
+				}
+				const res = await fetch(domainsUrl.toString(), {
+					headers: bearerHeaders(token),
+				});
+				if (res.status === 401 || res.status === 403) return c.json({ error: "Invalid Vercel API token" }, 400);
+				if (!res.ok) return c.json({ error: "Vercel API error" }, 400);
+				const data = (await res.json()) as { domains: Array<{ name: string; createdAt: string }> };
+				domains = (data.domains || []).map((d) => ({
+					name: d.name,
+					createdAt: d.createdAt,
+				}));
+				break;
+			}
 			case "digitalocean": {
 				const token = credentials.apiToken;
 				if (!token) return c.json({ error: "apiToken is required" }, 400);
@@ -1591,7 +1610,7 @@ setup.post("/api/v1/setup/provider-verify-domain", async (c) => {
 		const resendData = (await resendRes.json()) as {
 			id?: string;
 			name?: string;
-			dns_records?: Array<{
+			records?: Array<{
 				record: string;
 				name: string;
 				type: string;
@@ -1611,7 +1630,7 @@ setup.post("/api/v1/setup/provider-verify-domain", async (c) => {
 		}
 
 		const resendDomainId = resendData.id;
-		const dnsRecords = resendData.dns_records || [];
+		const dnsRecords = resendData.records || [];
 
 		// Step 2: Helper to create DNS records via provider
 		const createDnsRecords = async (
@@ -1625,6 +1644,36 @@ setup.post("/api/v1/setup/provider-verify-domain", async (c) => {
 			for (const record of records) {
 				try {
 					switch (provider) {
+						case "vercel": {
+							const recordBody: Record<string, string | number> = {
+								name: record.name,
+								type: record.type,
+								value: record.value,
+								ttl: record.ttl ? Number(record.ttl) : 60,
+							};
+							if (record.priority !== undefined) {
+								recordBody.priority = record.priority;
+							}
+							const recordUrl = new URL(`https://api.vercel.com/v2/domains/${domain}/records`);
+							if (credentials.teamId) {
+								recordUrl.searchParams.set("teamId", credentials.teamId);
+							}
+							const res = await fetch(recordUrl.toString(), {
+								method: "POST",
+								headers: {
+									"Authorization": `Bearer ${credentials.apiToken}`,
+									"Content-Type": "application/json",
+								},
+								body: JSON.stringify(recordBody),
+							});
+							if (!res.ok) {
+								const errBody = await res.json().catch(() => ({}));
+								const errMsg = (errBody as any)?.error?.message || `DNS record creation failed: ${res.status}`;
+								warnings.push(`Failed to create ${record.type} record via Vercel: ${errMsg}`);
+							}
+							break;
+						}
+
 						case "digitalocean": {
 							const res = await fetch(
 								`https://api.digitalocean.com/v2/domains/${domain}/records`,
@@ -1881,25 +1930,32 @@ setup.post("/api/v1/setup/provider-verify-domain", async (c) => {
 		};
 
 		// Step 5: Persist domain in D1
-		const db = c.env.DB;
-		const dbService = createDbService(db);
 		let domainId = "";
 
-		const existing = await dbService.getDomainByName(domain);
-		if (existing) {
-			domainId = existing.id;
-			await dbService.updateDomain(existing.id, {
-				resend_id: resendDomainId,
-				status: normalizeDomainStatus(verifyData.status),
-			});
-		} else {
-			const newDomain = await dbService.createDomain({
-				name: domain,
-				resend_id: resendDomainId,
-				catch_all_mailbox_id: null,
-				status: normalizeDomainStatus(verifyData.status),
-			});
-			domainId = newDomain.id;
+		try {
+			const existingDomain = await dbService.getDomainByName(c.env.DB, domain.toLowerCase());
+			if (existingDomain) {
+				domainId = existingDomain.id;
+				await dbService.updateDomain(c.env.DB, existingDomain.id, {
+					resend_domain_id: resendDomainId,
+					status: normalizeDomainStatus(verifyData.status),
+					resend_api_key: resendApiKey,
+				});
+			} else {
+				await dbService.createDomain(c.env.DB, {
+					id: crypto.randomUUID(),
+					name: domain.toLowerCase(),
+					resend_domain_id: resendDomainId,
+					status: normalizeDomainStatus(verifyData.status),
+					resend_api_key: resendApiKey,
+					created_at: new Date().toISOString(),
+				});
+				const created = await dbService.getDomainByName(c.env.DB, domain.toLowerCase());
+				domainId = created?.id || "";
+			}
+		} catch (dbErr) {
+			console.error("Failed to persist domain to DB:", dbErr);
+			return c.json({ error: "Failed to save domain configuration" }, 500);
 		}
 
 		return c.json({
