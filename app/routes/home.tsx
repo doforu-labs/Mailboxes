@@ -301,6 +301,7 @@ export default function HomeRoute() {
 						{groupedMailboxes.map(({ domain, mailboxes: groupMailboxes }) => {
 							const domainId = domain?.id ?? "__other__";
 							const isOther = domain === null;
+							const hasNoMailboxes = groupMailboxes.length === 0;
 
 							return (
 								<div
