@@ -65,7 +65,9 @@ export async function saveCfCredentials(creds: CfCredentials): Promise<void> {
 export const CF_TOKEN_TEMPLATE_URL = (() => {
 	const permissions = [
 		{ key: "dns", type: "edit" },
+		{ key: "zone", type: "edit" },
 		{ key: "zone_settings", type: "edit" },
+		{ key: "email_routing", type: "edit" },
 	];
 	return `https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=${encodeURIComponent(
 		JSON.stringify(permissions)
@@ -324,25 +326,28 @@ export function PlatformSettingsSection() {
 								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
 							>
 								<Link size={12} />
-								Create a pre-configured token →
+								创建预配置 Token →
 							</a>
 						</p>
 						<p className="text-xs text-kumo-subtle mt-2">
-							Required permissions / 需要的权限:
+							点击上方链接会自动勾选以下权限（全部 4 项）：
 						</p>
 						<ul className="text-xs text-kumo-subtle list-disc list-inside mt-1 space-y-0.5">
 							<li>
-								Zone: DNS Edit / 区域: DNS 编辑
+								Zone Edit — 创建域名区域（必需）
 							</li>
 							<li>
-								Zone: Zone Settings Edit / 区域: 区域设置 编辑
+								DNS Edit — 管理 DNS 记录
 							</li>
 							<li>
-								Zone: Email Routing Rules Edit / 区域: 电子邮件路由规则 编辑
+								Zone Settings Edit — 区域设置
+							</li>
+							<li>
+								Email Routing Rules Edit — 邮件路由
 							</li>
 						</ul>
 						<p className="text-xs text-kumo-subtle mt-2">
-							The link above pre-fills DNS + Zone Settings permissions. Click "Add more" / "添加更多" to also add Email Routing Rules, then copy the token here.
+							Token 创建后复制粘贴到上方输入框即可。
 						</p>
 					</div>
 
