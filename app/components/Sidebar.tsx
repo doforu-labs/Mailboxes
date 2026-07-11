@@ -6,7 +6,7 @@ import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
 	Archive,
 	ChevronLeft,
-	File,
+	FilePen,
 	Folder,
 	Send,
 	Pencil,
@@ -24,7 +24,7 @@ import { useUIStore } from "~/hooks/useUIStore";
 const FOLDER_ICONS: Record<string, React.ReactNode> = {
 	[Folders.INBOX]: <Inbox size={18} />,
 	[Folders.SENT]: <Send size={18} />,
-	[Folders.DRAFT]: <File size={18} />,
+	[Folders.DRAFT]: <FilePen size={18} />,
 	[Folders.ARCHIVE]: <Archive size={18} />,
 	[Folders.TRASH]: <Trash2 size={18} />,
 };
