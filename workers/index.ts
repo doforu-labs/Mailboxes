@@ -302,6 +302,15 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 		// Get domain from database to match against Resend domains
 		const domainId = c.req.param("domainId");
 		const domain = await db.getDomain(c.env.DB, domainId);
+
+		// If no cfApiToken provided, try to read from platform settings
+		if (!cfApiToken && domain?.cf_zone_id) {
+			const savedToken = await db.getSetting(c.env.DB, "cf_api_token");
+			if (savedToken) {
+				cfApiToken = savedToken;
+			}
+		}
+
 		if (!domain) {
 			// Domain not found locally — still return valid=true but no matchingDomain
 			return c.json({
@@ -340,10 +349,13 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 // POST /api/v1/domains/:domainId/setup-resend-sending — create Resend domain + optionally add DNS records
 app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext) => {
 	try {
-		const { apiKey, cfApiToken } = await c.req.json() as { 
+		const body = await c.req.json() as { 
 			apiKey: string; 
 			cfApiToken?: string; 
 		};
+
+		const { apiKey } = body;
+		let cfApiToken = body.cfApiToken;
 
 		if (!apiKey) {
 			return c.json({ success: false, error: "Missing API key" }, 400);
@@ -352,6 +364,15 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 		// 1. Get domain from DB
 		const domainId = c.req.param("domainId");
 		const domain = await db.getDomain(c.env.DB, domainId);
+
+		// If no cfApiToken provided, try to read from platform settings
+		if (!cfApiToken && domain?.cf_zone_id) {
+			const savedToken = await db.getSetting(c.env.DB, "cf_api_token");
+			if (savedToken) {
+				cfApiToken = savedToken;
+			}
+		}
+
 		if (!domain) {
 			return c.json({ success: false, error: "Domain not found" }, 404);
 		}

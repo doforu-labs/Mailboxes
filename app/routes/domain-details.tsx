@@ -211,8 +211,6 @@ export default function DomainDetailsRoute() {
 	const [apiKeyVerifyStatus, setApiKeyVerifyStatus] = useState<ApiKeyVerifyStatus>("idle");
 	const [apiKeyVerifyResult, setApiKeyVerifyResult] = useState<VerifyResendResult | null>(null);
 	const [isSettingUpResend, setIsSettingUpResend] = useState(false);
-	const [showCfTokenDialog, setShowCfTokenDialog] = useState(false);
-	const [cfTokenInput, setCfTokenInput] = useState("");
 
 	// Catch-all dialog
 	const [isCatchAllOpen, setIsCatchAllOpen] = useState(false);
@@ -283,35 +281,22 @@ export default function DomainDetailsRoute() {
 
 	const handleSetupResendSending = async () => {
 		if (!domain || !apiKeyInput.trim()) return;
-
-		// If domain has a CF zone, ask for CF API token
-		if (domain.cf_zone_id) {
-			setShowCfTokenDialog(true);
-			return;
-		}
-
-		// No CF zone — just create the Resend domain directly
 		await doSetupResendSending();
 	};
 
-	const handleCfTokenDialogConfirm = async () => {
-		setShowCfTokenDialog(false);
-		await doSetupResendSending(cfTokenInput.trim() || undefined);
-	};
-
-	const doSetupResendSending = async (cfApiToken?: string) => {
+	const doSetupResendSending = async () => {
 		if (!domain) return;
 		setIsSettingUpResend(true);
 		try {
 			const result = await api.setupResendSending(domain.id, {
 				apiKey: apiKeyInput.trim(),
-				cfApiToken,
 			});
 			if (result.success && result.verification) {
 				setApiKeyVerifyResult(result.verification);
 				setApiKeyVerifyStatus(result.verification.valid ? "valid" : "invalid");
+				const dnsCreated = result.dnsResults?.some(r => r.status === "created");
 				toastManager.add({
-					title: result.dnsResults?.some(r => r.status === "created")
+					title: dnsCreated
 						? "Resend domain created and DNS records configured"
 						: "Resend domain created. Add DNS records manually to enable sending",
 				});
@@ -328,7 +313,6 @@ export default function DomainDetailsRoute() {
 			});
 		} finally {
 			setIsSettingUpResend(false);
-			setCfTokenInput("");
 		}
 	};
 
@@ -698,51 +682,6 @@ export default function DomainDetailsRoute() {
 				isDeleting={isDeleting}
 			/>
 
-			{/* ── CF API Token Dialog ── */}
-			<Dialog.Root
-				open={showCfTokenDialog}
-				onOpenChange={(isOpen) => {
-					if (!isOpen) setShowCfTokenDialog(false);
-				}}
-			>
-				<Dialog size="sm" className="p-6">
-					<div className="flex items-center gap-3 mb-4">
-						<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-							<TriangleAlert size={20} />
-						</div>
-						<Dialog.Title className="text-base font-semibold text-kumo-default">
-							Cloudflare API Token
-						</Dialog.Title>
-					</div>
-					<p className="text-sm text-kumo-subtle mb-5">
-						Enter your Cloudflare API Token to automatically add DNS records for {domain?.name} in Cloudflare.
-						If you skip, you'll need to add the DNS records manually.
-					</p>
-					<Input
-						type="password"
-						placeholder="Cloudflare API Token"
-						value={cfTokenInput}
-						onChange={(e) => setCfTokenInput(e.target.value)}
-						className="mb-5"
-					/>
-					<div className="flex justify-end gap-2">
-						<Button
-							variant="secondary"
-							size="sm"
-							onClick={() => { setShowCfTokenDialog(false); doSetupResendSending(); }}
-						>
-							Skip — I'll add DNS manually
-						</Button>
-						<Button
-							size="sm"
-							disabled={!cfTokenInput.trim()}
-							onClick={handleCfTokenDialogConfirm}
-						>
-							Add DNS & Verify
-						</Button>
-					</div>
-				</Dialog>
-			</Dialog.Root>
 		</div>
 	);
 }
