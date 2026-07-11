@@ -24,6 +24,7 @@ import {
 import { type FormEvent, useEffect, useState } from "react";
 import { useCreateDomain } from "~/queries/domains";
 import api from "~/services/api";
+import { ApiError } from "~/services/api";
 
 // ── CF Credentials from localStorage ──────────────────────────────
 
@@ -194,8 +195,11 @@ export function AddDomainWizard({
 
 	// DNS records for sending
 	const [dnsRecords, setDnsRecords] = useState<
-		Array<{ name: string; type: string; status: string }>
+		Array<{ name: string; type: string; status: string; value?: string }>
 	>([]);
+
+	// Warnings from backend
+	const [warnings, setWarnings] = useState<string[]>([]);
 
 	// Verify
 	const [verifyStatus, setVerifyStatus] = useState<
@@ -217,7 +221,7 @@ export function AddDomainWizard({
 			setError("Please enter a domain name");
 			return;
 		}
-		if (!domainName.includes(".")) {
+		if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(domainName.trim())) {
 			setError("Please enter a valid domain (e.g. example.com)");
 			return;
 		}
@@ -295,11 +299,18 @@ export function AddDomainWizard({
 				resendApiKey: resendApiKey.trim() || undefined,
 			});
 			setDnsRecords(result.dnsRecords);
+			if (result.warnings && result.warnings.length > 0) {
+				setWarnings(result.warnings);
+			}
 			setStep("dns-records");
 		} catch (err: unknown) {
-			const msg =
-				err instanceof Error ? err.message : "Failed to create domain";
-			setError(msg);
+			if (err instanceof ApiError && err.status === 409) {
+				setError("This domain has already been added. You can find it in the Domains list.");
+			} else {
+				const msg =
+					err instanceof Error ? err.message : "Failed to create domain";
+				setError(msg);
+			}
 		} finally {
 			setIsProcessing(false);
 		}
@@ -860,6 +871,26 @@ export function AddDomainWizard({
 											{record.status}
 										</Badge>
 									</div>
+									{record.value && (
+										<div className="mt-1.5">
+										<p className="text-xs text-kumo-subtle mb-1">
+											Value:{" "}
+											<code className="text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
+												{record.value}
+											</code>
+											<button
+												type="button"
+												className="ml-1.5 text-blue-600 hover:text-blue-800 underline text-xs"
+												onClick={() => {
+													navigator.clipboard.writeText(record.value!);
+													toastManager.add({ title: "Copied to clipboard" });
+												}}
+											>
+												Copy
+											</button>
+										</div>
+										</div>
+									)}
 									<p className="text-xs text-kumo-subtle">
 										Add this {record.type} record at your DNS
 										provider. The status above shows whether
@@ -890,7 +921,8 @@ export function AddDomainWizard({
 							<Button
 								variant="secondary"
 								size="sm"
-								onClick={() => setStep("sending")}
+								disabled
+								title="Domain already created. Please continue with DNS setup."
 							>
 								Back
 							</Button>
@@ -911,6 +943,17 @@ export function AddDomainWizard({
 								<CheckCircleIcon size={14} />
 							</Button>
 						</div>
+
+						{warnings.length > 0 && (
+							<div className="rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2.5 mb-5">
+								<p className="text-xs font-medium text-yellow-800 mb-1">Warnings</p>
+								<ul className="text-xs text-yellow-700 list-disc list-inside space-y-0.5">
+									{warnings.map((w, i) => (
+										<li key={i}>{w}</li>
+									))}
+								</ul>
+							</div>
+						)}
 
 						{verifyError && (
 							<div className="mt-4 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2.5">

@@ -1138,9 +1138,9 @@ export interface DomainUpdate {
 export async function createDomain(
 	db: D1Database,
 	data: DomainData,
-): Promise<void> {
-	await db.prepare(
-		`INSERT INTO domains (id, name, resend_domain_id, cf_zone_id, cf_account_id, status, resend_api_key, created_at)
+): Promise<boolean> {
+	const result = await db.prepare(
+		`INSERT OR IGNORE INTO domains (id, name, resend_domain_id, cf_zone_id, cf_account_id, status, resend_api_key, created_at)
 		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
 	).bind(
 		data.id,
@@ -1152,6 +1152,7 @@ export async function createDomain(
 		data.resend_api_key ?? null,
 		data.created_at,
 	).run();
+	return result.meta.changes > 0;
 }
 
 export async function getDomain(

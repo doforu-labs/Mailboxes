@@ -109,6 +109,7 @@ export interface DnsRecord {
 	name: string;
 	type: string;
 	status: string;
+	value?: string;
 }
 
 export interface VerifyResult {
@@ -162,6 +163,7 @@ export interface DetectCfDomainsResult {
 export interface CreateDomainResponse {
 	domain: Domain;
 	dnsRecords: DnsRecord[];
+	warnings?: string[];
 }
 
 const api = {

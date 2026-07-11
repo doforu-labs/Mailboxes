@@ -15,6 +15,7 @@ const setup = new Hono<{ Bindings: Env }>();
 function normalizeDomainStatus(status: string | undefined): "pending" | "verified" | "failed" {
 	if (status === "verified") return "verified";
 	if (status === "failed") return "failed";
+	if (status === "temporary_failure") return "failed";
 	return "pending";
 }
 
@@ -217,7 +218,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 		const zoneId = zonesData.result[0].id;
 
 		// 3. Add DNS records from Resend verification records
-		const dnsResults: Array<{ name: string; type: string; status: string }> = [];
+		const dnsResults: Array<{ name: string; type: string; status: string; value: string }> = [];
 
 		for (const record of resendData.records) {
 			const dnsBody: Record<string, string | number> = {
@@ -254,12 +255,14 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 					name: record.name,
 					type: record.type,
 					status: `error: ${errMsg}`,
+					value: record.value || "",
 				});
 			} else {
 				dnsResults.push({
 					name: record.name,
 					type: record.type,
 					status: "created",
+					value: record.value || "",
 				});
 			}
 		}
@@ -304,7 +307,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			}
 		} catch (dbErr) {
 			console.error("Failed to persist domain to DB:", dbErr);
-			// Non-fatal — DNS records are still created
+			return c.json({ error: "Failed to save domain configuration" }, 500);
 		}
 
 		return c.json({
@@ -534,7 +537,8 @@ setup.post("/api/v1/domains", async (c) => {
 		});
 
 		let resendDomainId: string | undefined;
-		const dnsResults: Array<{ name: string; type: string; status: string }> = [];
+		const dnsResults: Array<{ name: string; type: string; status: string; value: string }> = [];
+		const warnings: string[] = [];
 
 		// If API keys provided, perform DNS setup automatically
 		if (resendApiKey && cfApiToken && cfAccountId) {
@@ -586,6 +590,9 @@ setup.post("/api/v1/domains", async (c) => {
 						zoneId = zonesData.result[0].id;
 					}
 				}
+				if (!zoneId) {
+					warnings.push("Could not find Cloudflare zone for this domain — DNS records must be added manually");
+				}
 
 				// 3. Add DNS records
 				if (zoneId) {
@@ -618,14 +625,15 @@ setup.post("/api/v1/domains", async (c) => {
 								name: record.name,
 								type: record.type,
 								status: `error: ${(errBody as any)?.errors?.[0]?.message || "unknown"}`,
+								value: record.value || "",
 							});
 						} else {
-							dnsResults.push({ name: record.name, type: record.type, status: "created" });
+							dnsResults.push({ name: record.name, type: record.type, status: "created", value: record.value || "" });
 						}
 					}
 
 					// 4. Enable Email Routing and set catch-all
-					await fetch(
+					const emailRoutingRes = await fetch(
 						`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/enable`,
 						{
 							method: "POST",
@@ -636,7 +644,11 @@ setup.post("/api/v1/domains", async (c) => {
 						},
 					);
 
-					await fetch(
+					if (!emailRoutingRes.ok) {
+						warnings.push("Email Routing setup failed — manual configuration may be needed");
+					}
+
+					const catchAllRes = await fetch(
 						`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/rules/catch_all`,
 						{
 							method: "PUT",
@@ -652,6 +664,10 @@ setup.post("/api/v1/domains", async (c) => {
 							}),
 						},
 					);
+
+					if (!catchAllRes.ok) {
+						warnings.push("Catch-all routing setup failed");
+					}
 
 					// Update domain with CF info
 					await dbService.updateDomain(c.env.DB, domainId, {
@@ -717,6 +733,7 @@ setup.post("/api/v1/domains", async (c) => {
 					name: record.name,
 					type: record.type,
 					status: record.status || "pending",
+					value: record.value || "",
 				});
 			}
 
@@ -727,12 +744,14 @@ setup.post("/api/v1/domains", async (c) => {
 				resend_api_key: resendApiKey,
 			});
 		} else {
-			// Domain record created but Resend setup failed — leave as pending
+			const errBody = await resendRes.json().catch(() => ({}));
+			const msg = (errBody as any).message || `Resend API error: ${resendRes.status}`;
+			return c.json({ error: `Failed to create Resend domain: ${msg}` }, 400);
 		}
 	}
 
 	const updatedDomain = await dbService.getDomain(c.env.DB, domainId);
-		return c.json({ domain: updatedDomain, dnsRecords: dnsResults }, 201);
+		return c.json({ domain: updatedDomain, dnsRecords: dnsResults, warnings }, 201);
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ error: `Failed to add domain: ${msg}` }, 500);
@@ -846,6 +865,70 @@ setup.put("/api/v1/domains/:id/api-key", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ error: `Failed to update API key: ${msg}` }, 500);
+	}
+});
+
+// GET /api/v1/setup/verify-domain/:domainId — Poll domain verification status
+setup.get("/api/v1/setup/verify-domain/:domainId", async (c) => {
+	try {
+		const domainId = c.req.param("domainId");
+		const domain = await dbService.getDomain(c.env.DB, domainId);
+
+		if (!domain) {
+			return c.json({ error: "Domain not found" }, 404);
+		}
+
+		// If already verified or failed, just return current status
+		if (domain.status === "verified" || domain.status === "failed") {
+			return c.json({
+				domainId: domain.id,
+				name: domain.name,
+				status: domain.status,
+			});
+		}
+
+		// If pending and we have a resend_domain_id, trigger re-verification
+		if (domain.status === "pending" && domain.resend_domain_id && domain.resend_api_key) {
+			try {
+				const verifyRes = await fetch(
+					`https://api.resend.com/domains/${domain.resend_domain_id}/verify`,
+					{
+						method: "POST",
+						headers: {
+							Authorization: `Bearer ${domain.resend_api_key}`,
+							"Content-Type": "application/json",
+						},
+					},
+				);
+
+				if (verifyRes.ok) {
+					const verifyData = (await verifyRes.json()) as { status: string };
+					const newStatus = normalizeDomainStatus(verifyData.status);
+
+					await dbService.updateDomain(c.env.DB, domainId, {
+						status: newStatus,
+					});
+
+					return c.json({
+						domainId: domain.id,
+						name: domain.name,
+						status: newStatus,
+					});
+				}
+			} catch (verifyErr) {
+				console.error("Re-verification request failed:", verifyErr);
+			}
+		}
+
+		// Return current status if re-verification didn't help
+		return c.json({
+			domainId: domain.id,
+			name: domain.name,
+			status: domain.status,
+		});
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ error: `Failed to verify domain: ${msg}` }, 500);
 	}
 });
 

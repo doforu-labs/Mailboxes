@@ -483,6 +483,7 @@ export default function DomainsRoute() {
 				<AddDomainWizard
 					onClose={() => setIsCreateOpen(false)}
 					onSuccess={() => setIsCreateOpen(false)}
+					onComplete={() => setIsCreateOpen(false)}
 				/>
 			)}
 
