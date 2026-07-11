@@ -209,13 +209,8 @@ export default function HomeRoute() {
 		setApiKeyVerifyStatus("verifying");
 		setApiKeyVerifyResult(null);
 		try {
-			// Use any mailbox from this domain to verify the key
-			const domainMailboxes = mailboxes.filter((m) => m.email.endsWith(`@${apiKeyDomain.name}`));
-			if (domainMailboxes.length === 0) {
-				setApiKeyVerifyStatus("error");
-				return;
-			}
-			const result = await api.verifyResendKey(domainMailboxes[0].id, apiKeyValue.trim());
+			// Verify the API key directly against Resend using the domain
+			const result = await api.verifyDomainResendKey(apiKeyDomain.id, apiKeyValue.trim());
 			setApiKeyVerifyResult(result);
 			setApiKeyVerifyStatus(result.valid ? "valid" : "invalid");
 		} catch {

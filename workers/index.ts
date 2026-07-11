@@ -264,6 +264,73 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 	}
 });
 
+// POST /api/v1/domains/:domainId/verify-resend — verify a Resend API key for a domain (no mailbox required)
+app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
+	try {
+		const { apiKey } = (await c.req.json()) as { apiKey?: string };
+		if (!apiKey) {
+			return c.json({ valid: false, error: "Missing API key" }, 400);
+		}
+
+		// Call Resend GET /domains to verify the key is valid
+		const res = await fetch("https://api.resend.com/domains", {
+			method: "GET",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+		});
+
+		if (res.status === 401 || res.status === 403) {
+			return c.json({ valid: false, error: "Invalid API key. Please check your Resend API key." }, 200);
+		}
+
+		if (!res.ok) {
+			const errBody = await res.json().catch(() => ({})) as { message?: string };
+			return c.json({ valid: false, error: errBody.message || `Resend API error: ${res.status}` }, 200);
+		}
+
+		const data = (await res.json()) as { data: ResendDomainRecord[] };
+		const domains = data.data ?? [];
+
+		// Get domain from database to match against Resend domains
+		const domainId = c.req.param("domainId");
+		const domain = await db.getDomain(c.env.DB, domainId);
+		if (!domain) {
+			// Domain not found locally — still return valid=true but no matchingDomain
+			return c.json({
+				valid: true,
+				domains: domains.map((d) => ({
+					id: d.id,
+					domain: d.name,
+					status: d.status,
+				})),
+				matchingDomain: null,
+				sendingReady: false,
+			});
+		}
+
+		const emailDomain = domain.name.toLowerCase();
+		const matchingDomain = domains.find((d) => d.name.toLowerCase() === emailDomain);
+
+		return c.json({
+			valid: true,
+			domains: domains.map((d) => ({
+				id: d.id,
+				domain: d.name,
+				status: d.status,
+			})),
+			matchingDomain: matchingDomain
+				? { domain: matchingDomain.name, status: matchingDomain.status }
+				: null,
+			sendingReady: !!matchingDomain && (matchingDomain.status === "valid" || matchingDomain.status === "verified"),
+		});
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ valid: false, error: `Verification failed: ${msg}` }, 200);
+	}
+});
+
 app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { settings } = (await c.req.json()) as { settings: Record<string, unknown> };

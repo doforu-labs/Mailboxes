@@ -253,6 +253,9 @@ const api = {
 	verifyResendKey: (mailboxId: string, apiKey: string) =>
 		post<VerifyResendResult>(`/api/v1/mailboxes/${mailboxId}/verify-resend`, { apiKey }),
 
+	verifyDomainResendKey: (domainId: string, apiKey: string) =>
+		post<VerifyResendResult>(`/api/v1/domains/${domainId}/verify-resend`, { apiKey }),
+
 	// DNS Provider Detection
 	// MX Record Verification
 	verifyMx: (domain: string) =>

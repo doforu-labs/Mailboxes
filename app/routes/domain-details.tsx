@@ -231,17 +231,8 @@ export default function DomainDetailsRoute() {
 		setApiKeyVerifyStatus("verifying");
 		setApiKeyVerifyResult(null);
 		try {
-			// Use any mailbox from this domain to verify the key
-			const domainMailboxes = mailboxes.filter((m) => m.email.endsWith(`@${domain.name}`));
-			if (domainMailboxes.length === 0) {
-				setApiKeyVerifyStatus("error");
-				toastManager.add({
-					title: "No mailbox found on this domain to verify",
-					variant: "error",
-				});
-				return;
-			}
-			const result = await api.verifyResendKey(domainMailboxes[0].id, apiKeyInput.trim());
+			// Verify the API key directly against Resend using the domain
+			const result = await api.verifyDomainResendKey(domain.id, apiKeyInput.trim());
 			setApiKeyVerifyResult(result);
 			setApiKeyVerifyStatus(result.valid ? "valid" : "invalid");
 		} catch {
