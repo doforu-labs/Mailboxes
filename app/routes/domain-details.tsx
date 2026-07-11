@@ -699,27 +699,50 @@ export default function DomainDetailsRoute() {
 			/>
 
 			{/* ── CF API Token Dialog ── */}
-			<Dialog open={showCfTokenDialog} onClose={() => setShowCfTokenDialog(false)} title="Cloudflare API Token">
-				<div className="space-y-3">
-					<p className="text-xs text-kumo-subtle">
+			<Dialog.Root
+				open={showCfTokenDialog}
+				onOpenChange={(isOpen) => {
+					if (!isOpen) setShowCfTokenDialog(false);
+				}}
+			>
+				<Dialog size="sm" className="p-6">
+					<div className="flex items-center gap-3 mb-4">
+						<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+							<TriangleAlert size={20} />
+						</div>
+						<Dialog.Title className="text-base font-semibold text-kumo-default">
+							Cloudflare API Token
+						</Dialog.Title>
+					</div>
+					<p className="text-sm text-kumo-subtle mb-5">
 						Enter your Cloudflare API Token to automatically add DNS records for {domain?.name} in Cloudflare.
+						If you skip, you'll need to add the DNS records manually.
 					</p>
 					<Input
 						type="password"
 						placeholder="Cloudflare API Token"
 						value={cfTokenInput}
 						onChange={(e) => setCfTokenInput(e.target.value)}
+						className="mb-5"
 					/>
-					<div className="flex gap-2 justify-end">
-						<Button variant="secondary" onClick={() => { setShowCfTokenDialog(false); doSetupResendSending(); }}>
+					<div className="flex justify-end gap-2">
+						<Button
+							variant="secondary"
+							size="sm"
+							onClick={() => { setShowCfTokenDialog(false); doSetupResendSending(); }}
+						>
 							Skip — I'll add DNS manually
 						</Button>
-						<Button onClick={handleCfTokenDialogConfirm} disabled={!cfTokenInput.trim()}>
+						<Button
+							size="sm"
+							disabled={!cfTokenInput.trim()}
+							onClick={handleCfTokenDialogConfirm}
+						>
 							Add DNS & Verify
 						</Button>
 					</div>
-				</div>
-			</Dialog>
+				</Dialog>
+			</Dialog.Root>
 		</div>
 	);
 }
