@@ -604,9 +604,11 @@ setup.post("/api/v1/domains", async (c) => {
 			resendApiKey?: string;
 			cfApiToken?: string;
 			cfAccountId?: string;
+			provider?: string;
+			providerCredentials?: Record<string, string>;
 		}>();
 
-		const { domain, resendApiKey, cfApiToken, cfAccountId } = body;
+		const { domain, resendApiKey, cfApiToken, cfAccountId, provider, providerCredentials } = body;
 
 		if (!domain) {
 			return c.json({ error: "Missing required field: domain" }, 400);
@@ -862,12 +864,58 @@ setup.post("/api/v1/domains", async (c) => {
 				});
 			}
 
-			// Update domain with Resend info
-			await dbService.updateDomain(c.env.DB, domainId, {
-				resend_domain_id: resendDomainId,
-				status: "pending",
-				resend_api_key: resendApiKey,
-			});
+			// If provider credentials provided, auto-create DNS records via provider API
+			if (provider && providerCredentials) {
+				const { warnings: dnsWarnings } = await createProviderDnsRecords(
+					provider,
+					domain,
+					resendData.records,
+					providerCredentials,
+				);
+				if (dnsWarnings && dnsWarnings.length > 0) {
+					warnings.push(...dnsWarnings);
+				}
+				// Mark DNS records as created since provider API handled them
+				for (const record of dnsResults) {
+					record.status = "created";
+				}
+
+				// Wait and verify via Resend
+				await new Promise((r) => setTimeout(r, 2000));
+				const verifyRes = await fetch(
+					`https://api.resend.com/domains/${resendDomainId}/verify`,
+					{
+						method: "POST",
+						headers: {
+							Authorization: `Bearer ${resendApiKey}`,
+							"Content-Type": "application/json",
+						},
+					},
+				);
+				if (verifyRes.ok) {
+					const verifyData = (await verifyRes.json()) as { status: string };
+					const newStatus = normalizeDomainStatus(verifyData.status);
+					// Update domain with Resend info and verification status
+					await dbService.updateDomain(c.env.DB, domainId, {
+						resend_domain_id: resendDomainId,
+						status: newStatus,
+						resend_api_key: resendApiKey,
+					});
+				} else {
+					await dbService.updateDomain(c.env.DB, domainId, {
+						resend_domain_id: resendDomainId,
+						status: "pending",
+						resend_api_key: resendApiKey,
+					});
+				}
+			} else {
+				// Update domain with Resend info (no provider auto-setup)
+				await dbService.updateDomain(c.env.DB, domainId, {
+					resend_domain_id: resendDomainId,
+					status: "pending",
+					resend_api_key: resendApiKey,
+				});
+			}
 		} else {
 			const errBody = await resendRes.json().catch(() => ({}));
 			const msg = (errBody as any).message || `Resend API error: ${resendRes.status}`;
@@ -1413,6 +1461,289 @@ setup.post("/api/v1/setup/vercel-verify-domain", async (c) => {
 	}
 });
 
+// ── Helper: Create DNS records via provider API (shared between /domains and /provider-verify-domain) ──
+
+type ResendRecord = {
+	record: string;
+	name: string;
+	type: string;
+	ttl: string;
+	status: string;
+	value: string;
+	priority?: number;
+};
+
+async function createProviderDnsRecords(
+	provider: string,
+	domain: string,
+	records: ResendRecord[],
+	credentials: Record<string, string>,
+): Promise<{ warnings?: string[] }> {
+	const warnings: string[] = [];
+
+	for (const record of records) {
+		try {
+			switch (provider) {
+				case "vercel": {
+					const recordBody: Record<string, string | number> = {
+						name: record.name,
+						type: record.type,
+						value: record.value,
+						ttl: record.ttl ? Number(record.ttl) : 60,
+					};
+					if (record.priority !== undefined) {
+						recordBody.priority = record.priority;
+					}
+					const recordUrl = new URL(`https://api.vercel.com/v2/domains/${domain}/records`);
+					if (credentials.teamId) {
+						recordUrl.searchParams.set("teamId", credentials.teamId);
+					}
+					const res = await fetch(recordUrl.toString(), {
+						method: "POST",
+						headers: {
+							"Authorization": `Bearer ${credentials.apiToken}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify(recordBody),
+					});
+					if (!res.ok) {
+						const errBody = await res.json().catch(() => ({}));
+						const errMsg = (errBody as any)?.error?.message || `DNS record creation failed: ${res.status}`;
+						warnings.push(`Failed to create ${record.type} record via Vercel: ${errMsg}`);
+					}
+					break;
+				}
+
+				case "digitalocean": {
+					const res = await fetch(
+						`https://api.digitalocean.com/v2/domains/${domain}/records`,
+						{
+							method: "POST",
+							headers: {
+								"Authorization": `Bearer ${credentials.apiToken}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								type: record.type,
+								name: record.name,
+								data: record.value,
+								priority: record.priority,
+								ttl: Number(record.ttl) || 1800,
+							}),
+						},
+					);
+					if (!res.ok)
+						warnings.push(
+							`Failed to create ${record.type} record via DigitalOcean`,
+						);
+					break;
+				}
+
+				case "hetzner": {
+					// First get zone_id
+					const zoneRes = await fetch(
+						`https://api.hetzner.com/v1/zones?name=${domain}`,
+						{
+							headers: {
+								"Authorization": `Bearer ${credentials.apiToken}`,
+								"Content-Type": "application/json",
+							},
+						},
+					);
+					const zoneData = (await zoneRes.json()) as {
+						zones: Array<{ id: string }>;
+					};
+					const zoneId = zoneData.zones?.[0]?.id;
+					if (!zoneId) {
+						warnings.push(`Zone not found for ${domain} on Hetzner`);
+						break;
+					}
+					const value =
+						record.type === "MX"
+							? `${record.priority} ${record.value}`
+							: record.value;
+					const res = await fetch(
+						`https://api.hetzner.com/v1/zones/${zoneId}/rrsets`,
+						{
+							method: "POST",
+							headers: {
+								"Authorization": `Bearer ${credentials.apiToken}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								name: record.name,
+								type: record.type,
+								ttl: Number(record.ttl) || 300,
+								records: [{ value, comment: "" }],
+								labels: {},
+							}),
+						},
+					);
+					if (!res.ok)
+						warnings.push(
+							`Failed to create ${record.type} record via Hetzner`,
+						);
+					break;
+				}
+
+				case "netlify": {
+					const zoneId = domain.replace(/\./g, "_");
+					const res = await fetch(
+						`https://api.netlify.com/api/v1/dns_zones/${zoneId}/dns_records`,
+						{
+							method: "POST",
+							headers: {
+								"Authorization": `Bearer ${credentials.apiToken}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								type: record.type,
+								hostname: record.name,
+								value: record.value,
+								priority: record.priority,
+								ttl: Number(record.ttl) || 3600,
+							}),
+						},
+					);
+					if (!res.ok)
+						warnings.push(
+							`Failed to create ${record.type} record via Netlify`,
+						);
+					break;
+				}
+
+				case "gandi": {
+					const value =
+						record.type === "MX"
+							? `${record.priority} ${record.value}`
+							: record.value;
+					const res = await fetch(
+						`https://api.gandi.net/v5/livedns/domains/${domain}/records/${record.name}/${record.type}`,
+						{
+							method: "POST",
+							headers: {
+								"Authorization": `Bearer ${credentials.apiToken}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								rrset_ttl: Number(record.ttl) || 3600,
+								rrset_values: [value],
+							}),
+						},
+					);
+					if (!res.ok)
+						warnings.push(
+							`Failed to create ${record.type} record via Gandi`,
+						);
+					break;
+				}
+
+				case "porkbun": {
+					const res = await fetch(
+						`https://api.porkbun.com/api/json/v3/dns/create/${domain}`,
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								apikey: credentials.apiKey,
+								secretapikey: credentials.secretApiKey,
+								name: record.name,
+								type: record.type,
+								content: record.value,
+								prio: record.priority,
+								ttl: Number(record.ttl) || 600,
+							}),
+						},
+					);
+					if (!res.ok)
+						warnings.push(
+							`Failed to create ${record.type} record via Porkbun`,
+						);
+					break;
+				}
+
+				case "name": {
+					const auth =
+						"Basic " +
+						btoa(`${credentials.username}:${credentials.apiToken}`);
+					const res = await fetch(
+						`https://api.name.com/core/v1/domains/${domain}/records`,
+						{
+							method: "POST",
+							headers: {
+								"Authorization": auth,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								type: record.type,
+								host: record.name,
+								answer: record.value,
+								priority: record.priority,
+								ttl: Number(record.ttl) || 3600,
+							}),
+						},
+					);
+					if (!res.ok)
+						warnings.push(
+							`Failed to create ${record.type} record via Name.com`,
+						);
+					break;
+				}
+
+				case "dnsimple": {
+					const accountId = credentials._accountId;
+					if (!accountId) {
+						// Get account ID first
+						const whoamiRes = await fetch(
+							"https://api.dnsimple.com/v2/account/whoami",
+							{
+								headers: {
+									"Authorization": `Bearer ${credentials.apiToken}`,
+									"Content-Type": "application/json",
+								},
+							},
+						);
+						const whoamiData = (await whoamiRes.json()) as {
+							data: { account: { id: number } };
+						};
+						credentials._accountId = String(
+							whoamiData.data.account.id,
+						);
+					}
+					const res = await fetch(
+						`https://api.dnsimple.com/v2/${credentials._accountId}/zones/${domain}/records`,
+						{
+							method: "POST",
+							headers: {
+								"Authorization": `Bearer ${credentials.apiToken}`,
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								name: record.name === "@" ? "" : record.name,
+								type: record.type,
+								content: record.value,
+								priority: record.priority,
+								ttl: Number(record.ttl) || 600,
+							}),
+						},
+					);
+					if (!res.ok)
+						warnings.push(
+							`Failed to create ${record.type} record via DNSimple`,
+						);
+					break;
+				}
+			}
+		} catch (err) {
+			warnings.push(
+				`Error creating ${record.type} record: ${err instanceof Error ? err.message : "unknown"}`,
+			);
+		}
+	}
+
+	return { warnings };
+}
+
 // ── Unified DNS Provider Endpoints ───────────────────────────────
 
 // Detect domains for any supported DNS provider
@@ -1632,281 +1963,8 @@ setup.post("/api/v1/setup/provider-verify-domain", async (c) => {
 		const resendDomainId = resendData.id;
 		const dnsRecords = resendData.records || [];
 
-		// Step 2: Helper to create DNS records via provider
-		const createDnsRecords = async (
-			provider: string,
-			domain: string,
-			records: typeof dnsRecords,
-			credentials: Record<string, string>,
-		): Promise<{ warnings?: string[] }> => {
-			const warnings: string[] = [];
-
-			for (const record of records) {
-				try {
-					switch (provider) {
-						case "vercel": {
-							const recordBody: Record<string, string | number> = {
-								name: record.name,
-								type: record.type,
-								value: record.value,
-								ttl: record.ttl ? Number(record.ttl) : 60,
-							};
-							if (record.priority !== undefined) {
-								recordBody.priority = record.priority;
-							}
-							const recordUrl = new URL(`https://api.vercel.com/v2/domains/${domain}/records`);
-							if (credentials.teamId) {
-								recordUrl.searchParams.set("teamId", credentials.teamId);
-							}
-							const res = await fetch(recordUrl.toString(), {
-								method: "POST",
-								headers: {
-									"Authorization": `Bearer ${credentials.apiToken}`,
-									"Content-Type": "application/json",
-								},
-								body: JSON.stringify(recordBody),
-							});
-							if (!res.ok) {
-								const errBody = await res.json().catch(() => ({}));
-								const errMsg = (errBody as any)?.error?.message || `DNS record creation failed: ${res.status}`;
-								warnings.push(`Failed to create ${record.type} record via Vercel: ${errMsg}`);
-							}
-							break;
-						}
-
-						case "digitalocean": {
-							const res = await fetch(
-								`https://api.digitalocean.com/v2/domains/${domain}/records`,
-								{
-									method: "POST",
-									headers: {
-										"Authorization": `Bearer ${credentials.apiToken}`,
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({
-										type: record.type,
-										name: record.name,
-										data: record.value,
-										priority: record.priority,
-										ttl: Number(record.ttl) || 1800,
-									}),
-								},
-								);
-							if (!res.ok)
-								warnings.push(
-									`Failed to create ${record.type} record via DigitalOcean`,
-								);
-							break;
-						}
-
-						case "hetzner": {
-							// First get zone_id
-							const zoneRes = await fetch(
-								`https://api.hetzner.com/v1/zones?name=${domain}`,
-								{
-									headers: {
-										"Authorization": `Bearer ${credentials.apiToken}`,
-										"Content-Type": "application/json",
-									},
-								},
-							);
-							const zoneData = (await zoneRes.json()) as {
-								zones: Array<{ id: string }>;
-							};
-							const zoneId = zoneData.zones?.[0]?.id;
-							if (!zoneId) {
-								warnings.push(`Zone not found for ${domain} on Hetzner`);
-								break;
-							}
-							// Hetzner uses RRsets: group by name+type
-							const value =
-								record.type === "MX"
-									? `${record.priority} ${record.value}`
-									: record.value;
-							const res = await fetch(
-								`https://api.hetzner.com/v1/zones/${zoneId}/rrsets`,
-								{
-									method: "POST",
-									headers: {
-										"Authorization": `Bearer ${credentials.apiToken}`,
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({
-										name: record.name,
-										type: record.type,
-										ttl: Number(record.ttl) || 300,
-										records: [{ value, comment: "" }],
-										labels: {},
-									}),
-								},
-								);
-							if (!res.ok)
-								warnings.push(
-									`Failed to create ${record.type} record via Hetzner`,
-								);
-							break;
-						}
-
-						case "netlify": {
-							const zoneId = domain.replace(/\./g, "_");
-							const res = await fetch(
-								`https://api.netlify.com/api/v1/dns_zones/${zoneId}/dns_records`,
-								{
-									method: "POST",
-									headers: {
-										"Authorization": `Bearer ${credentials.apiToken}`,
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({
-										type: record.type,
-										hostname: record.name,
-										value: record.value,
-										priority: record.priority,
-										ttl: Number(record.ttl) || 3600,
-									}),
-								},
-								);
-							if (!res.ok)
-								warnings.push(
-									`Failed to create ${record.type} record via Netlify`,
-								);
-							break;
-						}
-
-						case "gandi": {
-							const value =
-								record.type === "MX"
-									? `${record.priority} ${record.value}`
-									: record.value;
-							const res = await fetch(
-								`https://api.gandi.net/v5/livedns/domains/${domain}/records/${record.name}/${record.type}`,
-								{
-									method: "POST",
-									headers: {
-										"Authorization": `Bearer ${credentials.apiToken}`,
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({
-										rrset_ttl: Number(record.ttl) || 3600,
-									rrset_values: [value],
-									}),
-								},
-								);
-							if (!res.ok)
-								warnings.push(
-									`Failed to create ${record.type} record via Gandi`,
-								);
-							break;
-						}
-
-						case "porkbun": {
-							const res = await fetch(
-								`https://api.porkbun.com/api/json/v3/dns/create/${domain}`,
-								{
-									method: "POST",
-									headers: { "Content-Type": "application/json" },
-									body: JSON.stringify({
-										apikey: credentials.apiKey,
-										secretapikey: credentials.secretApiKey,
-										name: record.name,
-										type: record.type,
-										content: record.value,
-										prio: record.priority,
-										ttl: Number(record.ttl) || 600,
-									}),
-								},
-								);
-							if (!res.ok)
-								warnings.push(
-									`Failed to create ${record.type} record via Porkbun`,
-								);
-							break;
-						}
-
-						case "name": {
-							const auth =
-								"Basic " +
-								btoa(`${credentials.username}:${credentials.apiToken}`);
-							const res = await fetch(
-								`https://api.name.com/core/v1/domains/${domain}/records`,
-								{
-									method: "POST",
-									headers: {
-										"Authorization": auth,
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({
-										type: record.type,
-									host: record.name,
-										answer: record.value,
-										priority: record.priority,
-										ttl: Number(record.ttl) || 3600,
-									}),
-								},
-								);
-							if (!res.ok)
-								warnings.push(
-									`Failed to create ${record.type} record via Name.com`,
-								);
-							break;
-						}
-
-						case "dnsimple": {
-							const accountId = credentials._accountId;
-							if (!accountId) {
-								// Get account ID first
-								const whoamiRes = await fetch(
-									"https://api.dnsimple.com/v2/account/whoami",
-									{
-										headers: {
-											"Authorization": `Bearer ${credentials.apiToken}`,
-											"Content-Type": "application/json",
-										},
-									},
-								);
-								const whoamiData = (await whoamiRes.json()) as {
-									data: { account: { id: number } };
-								};
-								credentials._accountId = String(
-									whoamiData.data.account.id,
-								);
-							}
-							const res = await fetch(
-								`https://api.dnsimple.com/v2/${credentials._accountId}/zones/${domain}/records`,
-								{
-									method: "POST",
-									headers: {
-										"Authorization": `Bearer ${credentials.apiToken}`,
-										"Content-Type": "application/json",
-									},
-									body: JSON.stringify({
-										name: record.name === "@" ? "" : record.name,
-										type: record.type,
-										content: record.value,
-										priority: record.priority,
-										ttl: Number(record.ttl) || 600,
-									}),
-								},
-								);
-							if (!res.ok)
-								warnings.push(
-									`Failed to create ${record.type} record via DNSimple`,
-								);
-							break;
-						}
-					}
-				} catch (err) {
-					warnings.push(
-						`Error creating ${record.type} record: ${err instanceof Error ? err.message : "unknown"}`,
-					);
-				}
-			}
-
-			return { warnings };
-		};
-
-		// Step 3: Create DNS records via provider
-		const { warnings } = await createDnsRecords(
+		// Step 3: Create DNS records via provider (using shared module-level helper)
+		const { warnings } = await createProviderDnsRecords(
 			provider,
 			domain,
 			dnsRecords,

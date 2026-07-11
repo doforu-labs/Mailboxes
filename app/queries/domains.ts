@@ -16,7 +16,7 @@ export function useDomains() {
 
 export function useCreateDomain() {
 	const qc = useQueryClient();
-	return useMutation<CreateDomainResponse, Error, { domain: string; resendApiKey?: string }>({
+	return useMutation<CreateDomainResponse, Error, { domain: string; resendApiKey?: string; provider?: string; providerCredentials?: Record<string, string> }>({
 		mutationFn: (data) => api.domains.create(data) as Promise<CreateDomainResponse>,
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queryKeys.domains.all });
