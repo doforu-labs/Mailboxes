@@ -24,7 +24,7 @@ import {
 	WarningIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { Link as RouterLink } from "react-router";
+import { Link as RouterLink, useNavigate } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { CatchAllDialog } from "~/components/CatchAllDialog";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
@@ -365,6 +365,8 @@ function DomainsSection() {
 		setOpenMenu(null);
 	};
 
+	const navigate = useNavigate();
+
 	const handleEditDns = (domain: Domain) => {
 		if (domain.cf_zone_id) {
 			const creds = loadCfCredentials();
@@ -381,9 +383,11 @@ function DomainsSection() {
 				});
 			}
 		} else {
+			// Domain not on Cloudflare — go to details page to see DNS records
+			navigate(`/domains/${domain.id}`);
 			toastManager.add({
-				title: "This domain is not managed by Cloudflare",
-				variant: "error",
+				title: "Not on Cloudflare — showing DNS records instead",
+				variant: "warning",
 			});
 		}
 		setOpenMenu(null);
