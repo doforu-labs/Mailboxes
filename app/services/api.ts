@@ -154,6 +154,7 @@ export interface CfZone {
 
 export interface DetectCfDomainsResult {
 	zones: CfZone[];
+	accountName?: string;
 }
 
 // ---------- API client ----------

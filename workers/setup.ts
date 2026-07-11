@@ -81,7 +81,30 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 			page++;
 		}
 
-		return c.json({ zones });
+		// Fetch account info to display account name
+		let accountName = "";
+		try {
+			const acctRes = await fetch(
+				`https://api.cloudflare.com/client/v4/accounts/${cfAccountId}`,
+				{
+					method: "GET",
+					headers: {
+						Authorization: `Bearer ${cfApiToken}`,
+						"Content-Type": "application/json",
+					},
+				},
+			);
+			if (acctRes.ok) {
+				const acctData = (await acctRes.json()) as {
+					result?: { name?: string };
+				};
+				accountName = acctData.result?.name || "";
+			}
+		} catch {
+			// Ignore — account name is optional
+		}
+
+		return c.json({ zones, accountName });
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ error: `Failed to detect CF domains: ${msg}` }, 500);

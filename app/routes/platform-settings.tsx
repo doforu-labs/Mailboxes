@@ -154,8 +154,9 @@ function PlatformSettingsSection() {
 
 		// Verify credentials before saving
 		setIsVerifying(true);
+		let result;
 		try {
-			await api.detectCfDomains({
+			result = await api.detectCfDomains({
 				cfApiToken: creds.cfApiToken.trim(),
 				cfAccountId: creds.cfAccountId.trim(),
 			});
@@ -175,7 +176,12 @@ function PlatformSettingsSection() {
 		saveCfCredentials(creds);
 		setIsSaving(false);
 		setHasChanges(false);
-		toastManager.add({ title: "Cloudflare credentials verified successfully" });
+		toastManager.add({
+			title: "Cloudflare credentials verified successfully",
+			description: result.accountName
+				? `Account: ${result.accountName} · ${result.zones.length} zone(s) found`
+				: `${result.zones.length} zone(s) found`,
+		});
 	};
 
 	return (
