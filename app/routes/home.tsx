@@ -32,7 +32,7 @@ import {
 } from "~/queries/mailboxes";
 import { useDomains, useUpdateDomainApiKey } from "~/queries/domains";
 import api, { type VerifyResendResult } from "~/services/api";
-import { StatusBadge } from "~/components/DomainStatusBadge";
+import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import type { Domain, Mailbox } from "~/types";
 
 export function meta() {
@@ -320,7 +320,7 @@ export default function HomeRoute() {
 											<span className="text-sm font-semibold text-kumo-default">
 												{isOther ? "Other" : domain.name}
 											</span>
-											{!isOther && <StatusBadge status={domain.status} />}
+											{!isOther && <DomainFullStatus domain={domain} />}
 											<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
 												{groupMailboxes.length}
 											</span>
@@ -382,14 +382,6 @@ export default function HomeRoute() {
 											<div className="flex items-center gap-3 px-5 pb-2.5 text-[11px]">
 												<span className="text-kumo-subtle">
 													Added {domain.created_at ? new Date(domain.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
-												</span>
-												<span className="inline-flex items-center gap-1">
-													<span className={`inline-block h-1.5 w-1.5 rounded-full ${domain.cf_zone_id ? "bg-green-500" : "bg-amber-400"}`} />
-													<span className={domain.cf_zone_id ? "text-green-600" : "text-amber-600"}>Receiving</span>
-												</span>
-												<span className="inline-flex items-center gap-1">
-													<span className={`inline-block h-1.5 w-1.5 rounded-full ${(domain as any).resend_api_key && domain.status === "verified" ? "bg-green-500" : "bg-amber-400"}`} />
-													<span className={(domain as any).resend_api_key && domain.status === "verified" ? "text-green-600" : "text-amber-600"}>Sending</span>
 												</span>
 												{domain.catch_all_mailbox && (
 													<span className="text-blue-600">Catch-all: {domain.catch_all_mailbox}</span>
