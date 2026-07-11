@@ -348,14 +348,14 @@ export default function HomeRoute() {
 														{openMenu === domainId && (
 															<div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-kumo-line bg-kumo-base py-1 shadow-lg">
 																<RouterLink
-																	to={`/domains/${domainId}`}
+																	to={`/settings/domains/${domainId}`}
 																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
 																	onClick={() => setOpenMenu(null)}
 																>
 																	Edit
 																</RouterLink>
 																<RouterLink
-																	to={`/domains/${domainId}`}
+																	to={`/settings/domains/${domainId}`}
 																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
 																	onClick={() => setOpenMenu(null)}
 																>

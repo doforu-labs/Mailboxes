@@ -293,7 +293,7 @@ export default function DomainDetailsRoute() {
 		try {
 			await deleteDomain.mutateAsync(domain.id);
 			toastManager.add({ title: "Domain deleted" });
-			navigate("/domains");
+			navigate("/settings");
 		} catch {
 			toastManager.add({
 				title: "Failed to delete domain",
@@ -320,7 +320,7 @@ export default function DomainDetailsRoute() {
 				<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
 					<div className="mb-6">
 						<RouterLink
-							to="/domains"
+							to="/settings"
 							className="inline-flex items-center gap-1.5 text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
 						>
 							<ArrowLeft size={14} />
@@ -334,7 +334,7 @@ export default function DomainDetailsRoute() {
 						<p className="text-sm text-kumo-subtle mb-5">
 							The domain you're looking for doesn't exist or has been deleted.
 						</p>
-						<Button variant="primary" onClick={() => navigate("/domains")}>
+						<Button variant="primary" onClick={() => navigate("/settings")}>
 							Back to Mailboxes
 						</Button>
 					</div>
@@ -355,7 +355,7 @@ export default function DomainDetailsRoute() {
 				<div className="mb-8">
 					<div className="mb-3">
 						<RouterLink
-							to="/domains"
+							to="/settings"
 							className="inline-flex items-center gap-1.5 text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
 						>
 							<ArrowLeft size={14} />

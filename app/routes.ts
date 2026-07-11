@@ -12,7 +12,7 @@ export default [
 	index("routes/home.tsx"),
 	route("settings", "routes/platform-settings.tsx"),
 	route("setup", "routes/setup.tsx"),
-	route("domains/:id", "routes/domain-details.tsx"),
+	route("settings/domains/:id", "routes/domain-details.tsx"),
 	route("mailbox/:mailboxId", "routes/mailbox.tsx", [
 		index("routes/mailbox-index.tsx"),
 		route("emails/:folder", "routes/email-list.tsx"),
