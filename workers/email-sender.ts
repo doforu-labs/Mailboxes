@@ -32,6 +32,8 @@ export interface SendEmailParams {
 	headers?: Record<string, string>;
 }
 
+import { fetchWithTimeout } from "./lib/fetch-with-timeout";
+
 const RESEND_API_URL = "https://api.resend.com/emails";
 
 /**
@@ -80,7 +82,7 @@ export async function sendEmail(
 		}));
 	}
 
-	const response = await fetch(RESEND_API_URL, {
+	const response = await fetchWithTimeout(RESEND_API_URL, {
 		method: "POST",
 		headers: {
 			Authorization: `Bearer ${apiKey}`,

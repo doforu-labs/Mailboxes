@@ -17,6 +17,7 @@ import type { Env } from "./types";
 import { Folders } from "../shared/folders";
 import type { StoredAttachment } from "./lib/attachments";
 import * as dbService from "./db";
+import { fetchWithTimeout } from "./lib/fetch-with-timeout";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ export async function handleResendInbound(
 
 	// ── 4. Fetch full email content from Resend API ──
 
-	const emailResponse = await fetch(
+	const emailResponse = await fetchWithTimeout(
 		`${baseUrl}/emails/receiving/${data.email_id}`,
 		{
 			headers: {
@@ -231,7 +232,7 @@ export async function handleResendInbound(
 			);
 
 			// Download attachment binary from Resend
-			const attResponse = await fetch(
+			const attResponse = await fetchWithTimeout(
 				`${baseUrl}/emails/receiving/${data.email_id}/attachments/${att.id}/download`,
 				{
 					headers: {

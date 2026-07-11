@@ -8,6 +8,7 @@ import dns from "node:dns";
 // verify-mx uses DoH directly to avoid Workers polyfill issues.
 import { listMailboxes } from "./lib/email-helpers";
 import type { Env } from "./types";
+import { fetchWithTimeout } from "./lib/fetch-with-timeout";
 import * as dbService from "./db";
 
 const setup = new Hono<{ Bindings: Env }>();
@@ -42,6 +43,10 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
 			if (saved) cfAccountId = saved;
 		}
+		if (!cfAccountId) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
+			if (saved) cfAccountId = saved;
+		}
 
 		if (!cfApiToken || !cfAccountId) {
 			return c.json(
@@ -60,7 +65,7 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 			const url = new URL(
 				`https://api.cloudflare.com/client/v4/zones?account.id=${cfAccountId}&page=${page}&per_page=100`,
 			);
-			const res = await fetch(url.toString(), {
+			const res = await fetchWithTimeout(url.toString(), {
 				method: "GET",
 				headers: {
 					Authorization: `Bearer ${cfApiToken}`,
@@ -117,7 +122,7 @@ setup.post("/api/v1/setup/verify-mx", async (c) => {
 	try {
 		// Use Cloudflare DoH API directly instead of dns.promises.resolveMx
 		// to avoid node:dns polyfill compatibility issues in Workers runtime
-		const dohRes = await fetch(
+		const dohRes = await fetchWithTimeout(
 			`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`,
 			{ headers: { Accept: "application/dns-json" } },
 		);
@@ -276,7 +281,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 		}
 
 		// 1. Create domain via Resend API
-		const resendRes = await fetch("https://api.resend.com/domains", {
+		const resendRes = await fetchWithTimeout("https://api.resend.com/domains", {
 			method: "POST",
 			headers: {
 				Authorization: `Bearer ${resendApiKey}`,
@@ -317,7 +322,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 		const zonesUrl = new URL(
 			`https://api.cloudflare.com/client/v4/zones?name=${domain}&status=active`,
 		);
-		const zonesRes = await fetch(zonesUrl.toString(), {
+		const zonesRes = await fetchWithTimeout(zonesUrl.toString(), {
 			method: "GET",
 			headers: {
 				Authorization: `Bearer ${cfApiToken}`,
@@ -341,7 +346,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			const parts = domain.split(".");
 			for (let i = 1; i < parts.length - 1; i++) {
 				const parentZone = parts.slice(i).join(".");
-				const parentRes = await fetch(
+				const parentRes = await fetchWithTimeout(
 					`https://api.cloudflare.com/client/v4/zones?name=${parentZone}&status=active`,
 					{
 						method: "GET",
@@ -391,7 +396,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			}
 
 			// CAA and TXT records need proxied=false
-			const dnsRes = await fetch(
+			const dnsRes = await fetchWithTimeout(
 				`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
 				{
 					method: "POST",
@@ -427,7 +432,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 		// 4. Wait 2s then verify domain via Resend
 		await new Promise((r) => setTimeout(r, 2000));
 
-		const verifyRes = await fetch(
+		const verifyRes = await fetchWithTimeout(
 			`https://api.resend.com/domains/${domainId}/verify`,
 			{
 				method: "POST",
@@ -497,6 +502,10 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			const saved = await dbService.getSetting(c.env.DB, "cf_api_token");
 			if (saved) cfApiToken = saved;
 		}
+		if (!cfAccountId) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
+			if (saved) cfAccountId = saved;
+		}
 
 		if (!domain || !cfApiToken) {
 			return c.json(
@@ -512,7 +521,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 		let zonesUrl = new URL(
 			`https://api.cloudflare.com/client/v4/zones?name=${domain}`,
 		);
-		let zonesRes = await fetch(zonesUrl.toString(), {
+		let zonesRes = await fetchWithTimeout(zonesUrl.toString(), {
 			method: "GET",
 			headers: {
 				Authorization: `Bearer ${cfApiToken}`,
@@ -539,7 +548,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 				zonesUrl = new URL(
 					`https://api.cloudflare.com/client/v4/zones?name=${parentZone}`,
 				);
-				zonesRes = await fetch(zonesUrl.toString(), {
+				zonesRes = await fetchWithTimeout(zonesUrl.toString(), {
 					method: "GET",
 					headers: {
 						Authorization: `Bearer ${cfApiToken}`,
@@ -569,7 +578,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 		}
 
 		// 2. Enable Email Routing
-		const enableRes = await fetch(
+		const enableRes = await fetchWithTimeout(
 			`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/enable`,
 			{
 				method: "POST",
@@ -589,7 +598,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 		}
 
 		// 3. Set up catch-all rule → forward to Worker "mailboxes"
-		const catchAllRes = await fetch(
+		const catchAllRes = await fetchWithTimeout(
 			`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/rules/catch_all`,
 			{
 				method: "PUT",
@@ -750,7 +759,7 @@ setup.post("/api/v1/domains", async (c) => {
 		// If API keys provided, perform DNS setup automatically
 		if (resendApiKey && cfApiToken && cfAccountId) {
 			// 1. Create Resend domain
-			const resendRes = await fetch("https://api.resend.com/domains", {
+			const resendRes = await fetchWithTimeout("https://api.resend.com/domains", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${resendApiKey}`,
@@ -779,7 +788,7 @@ setup.post("/api/v1/domains", async (c) => {
 				let zoneId: string | undefined;
 
 				// Try exact match first
-				const zonesRes = await fetch(
+				const zonesRes = await fetchWithTimeout(
 					`https://api.cloudflare.com/client/v4/zones?name=${domain}&status=active`,
 					{
 						method: "GET",
@@ -805,7 +814,7 @@ setup.post("/api/v1/domains", async (c) => {
 					const parts = domain.split(".");
 					for (let i = 1; i < parts.length - 1; i++) {
 						const parentZone = parts.slice(i).join(".");
-						const parentRes = await fetch(
+						const parentRes = await fetchWithTimeout(
 							`https://api.cloudflare.com/client/v4/zones?name=${parentZone}&status=active`,
 							{
 								method: "GET",
@@ -845,7 +854,7 @@ setup.post("/api/v1/domains", async (c) => {
 							dnsBody.priority = record.priority;
 						}
 
-						const dnsRes = await fetch(
+						const dnsRes = await fetchWithTimeout(
 							`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
 							{
 								method: "POST",
@@ -871,7 +880,7 @@ setup.post("/api/v1/domains", async (c) => {
 					}
 
 					// 4. Enable Email Routing and set catch-all
-					const emailRoutingRes = await fetch(
+					const emailRoutingRes = await fetchWithTimeout(
 						`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/enable`,
 						{
 							method: "POST",
@@ -886,7 +895,7 @@ setup.post("/api/v1/domains", async (c) => {
 						warnings.push("Email Routing setup failed — manual configuration may be needed");
 					}
 
-					const catchAllRes = await fetch(
+					const catchAllRes = await fetchWithTimeout(
 						`https://api.cloudflare.com/client/v4/zones/${zoneId}/email/routing/rules/catch_all`,
 						{
 							method: "PUT",
@@ -916,7 +925,7 @@ setup.post("/api/v1/domains", async (c) => {
 
 				// 5. Verify Resend domain
 				await new Promise((r) => setTimeout(r, 2000));
-				const verifyRes = await fetch(
+				const verifyRes = await fetchWithTimeout(
 					`https://api.resend.com/domains/${resendDomainId}/verify`,
 					{
 						method: "POST",
@@ -951,7 +960,7 @@ setup.post("/api/v1/domains", async (c) => {
 			}
 	} else if (resendApiKey) {
 		// Resend-only mode: create Resend domain, return DNS records for user to add manually
-		const resendRes = await fetch("https://api.resend.com/domains", {
+		const resendRes = await fetchWithTimeout("https://api.resend.com/domains", {
 			method: "POST",
 			headers: {
 				Authorization: `Bearer ${resendApiKey}`,
@@ -998,7 +1007,7 @@ setup.post("/api/v1/domains", async (c) => {
 			// Resend API failed — roll back the D1 record or revert to original status
 			if (domainWasReused) {
 				await dbService.updateDomain(c.env.DB, domainId, {
-					status: originalStatus,
+					status: originalStatus ?? "pending",
 					resend_api_key: null,
 				});
 			} else {
@@ -1063,7 +1072,7 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 		// ── 2. Delete Resend domain ──
 		if (domain.resend_domain_id && domain.resend_api_key) {
 			try {
-				const resendRes = await fetch(
+				const resendRes = await fetchWithTimeout(
 					`https://api.resend.com/domains/${domain.resend_domain_id}`,
 					{
 						method: "DELETE",
@@ -1240,7 +1249,7 @@ setup.get("/api/v1/setup/verify-domain/:domainId", async (c) => {
 		// If pending and we have a resend_domain_id, trigger re-verification
 		if (domain.status === "pending" && domain.resend_domain_id && domain.resend_api_key) {
 			try {
-				const verifyRes = await fetch(
+				const verifyRes = await fetchWithTimeout(
 					`https://api.resend.com/domains/${domain.resend_domain_id}/verify`,
 					{
 						method: "POST",

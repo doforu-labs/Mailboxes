@@ -315,7 +315,7 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 		}
 
 		// Call Resend GET /domains to verify the key is valid
-		const res = await fetch("https://api.resend.com/domains", {
+		const res = await fetchWithTimeout("https://api.resend.com/domains", {
 			method: "GET",
 			headers: {
 				Authorization: `Bearer ${apiKey}`,
@@ -465,7 +465,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 					dnsBody.priority = record.priority;
 				}
 
-				const dnsRes = await fetch(
+				const dnsRes = await fetchWithTimeout(
 					`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
 					{
 						method: "POST",
@@ -499,7 +499,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 		// 4. Wait 2s then trigger Resend verify
 		await new Promise((r) => setTimeout(r, 2000));
 
-		const verifyRes = await fetch(
+		const verifyRes = await fetchWithTimeout(
 			`https://api.resend.com/domains/${resendData.id}/verify`,
 			{
 				method: "POST",
@@ -518,7 +518,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 		});
 
 		// 6. Re-fetch Resend domain list to get up-to-date verification result
-		const listRes = await fetch("https://api.resend.com/domains", {
+		const listRes = await fetchWithTimeout("https://api.resend.com/domains", {
 			method: "GET",
 			headers: { Authorization: `Bearer ${apiKey}` },
 		});
@@ -1138,7 +1138,7 @@ async function callAi(
 			body.tools = TOOL_DEFINITIONS;
 		}
 		try {
-			const res = await fetch(`${providerCfg.baseUrl!.replace(/\/+$/, "")}/chat/completions`, {
+			const res = await fetchWithTimeout(`${providerCfg.baseUrl!.replace(/\/+$/, "")}/chat/completions`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
