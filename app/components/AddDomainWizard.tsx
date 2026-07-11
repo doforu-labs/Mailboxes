@@ -888,7 +888,7 @@ export function AddDomainWizard({
 											>
 												Copy
 											</button>
-										</div>
+											</p>
 										</div>
 									)}
 									<p className="text-xs text-kumo-subtle">
