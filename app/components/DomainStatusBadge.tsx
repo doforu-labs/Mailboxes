@@ -37,7 +37,7 @@ export function StatusBadge({ status }: { status: Domain["status"] }) {
 // Unified status display that replaces StatusBadge + DomainStatusIndicators.
 // Shows one clear badge + descriptive subtitle per domain.
 
-type DomainStatus = "active" | "awaiting_dns" | "sending_only" | "receiving_only" | "failed";
+type DomainStatus = "active" | "awaiting_dns" | "sending_only" | "receiving_only" | "receiving" | "failed";
 
 function getDomainStatus(domain: Domain): {
 	status: DomainStatus;
@@ -57,14 +57,23 @@ function getDomainStatus(domain: Domain): {
 		};
 	}
 
-	// DNS not verified yet (Resend still pending)
+	// Not verified yet — split by receiving capacity
 	if (!isVerified) {
+		if (hasZone) {
+			// Cloudflare zone + Email Routing active → receiving works
+			return {
+				status: "receiving",
+				badge: { label: "Receiving", variant: "success" },
+				subtitle: hasKey
+					? "Receiving emails active. Sending pending DNS verification with Resend"
+					: "Receiving emails active. Add a Resend API key to enable sending",
+			};
+		}
+		// No Cloudflare zone → neither receiving nor sending is ready
 		return {
 			status: "awaiting_dns",
 			badge: { label: "Awaiting DNS", variant: "warning" },
-			subtitle: hasZone
-				? "Cloudflare routing ready — verify DNS to enable sending"
-				: "Add DNS records and verify to start sending and receiving",
+			subtitle: "Add DNS records and verify to start sending and receiving",
 		};
 	}
 
