@@ -10,19 +10,19 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
-	CaretDownIcon,
-	CaretRightIcon,
-	DotsThreeVerticalIcon,
-	GearSixIcon,
-	GlobeIcon,
-	KeyIcon,
-	LinkIcon,
-	EyeIcon,
-	EyeSlashIcon,
-	PlusIcon,
-	TrashIcon,
-	WarningIcon,
-} from "@phosphor-icons/react";
+	ChevronDown,
+	ChevronRight,
+	MoreVertical,
+	Settings,
+	Globe,
+	Key,
+	Link,
+	Eye,
+	EyeOff,
+	Plus,
+	Trash2,
+	TriangleAlert,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
@@ -145,7 +145,7 @@ function PlatformSettingsSection() {
 				onClick={() => setIsExpanded(!isExpanded)}
 			>
 				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-kumo-default">
-					<GearSixIcon size={16} />
+					<Settings size={16} />
 				</div>
 				<div className="min-w-0 flex-1">
 					<span className="text-sm font-medium text-kumo-default">
@@ -159,9 +159,9 @@ function PlatformSettingsSection() {
 					{isConfigured ? "Configured" : "Not configured"}
 				</Badge>
 				{isExpanded ? (
-					<CaretDownIcon size={16} className="text-kumo-muted shrink-0" />
+					<ChevronDown size={16} className="text-kumo-muted shrink-0" />
 				) : (
-					<CaretRightIcon size={16} className="text-kumo-muted shrink-0" />
+					<ChevronRight size={16} className="text-kumo-muted shrink-0" />
 				)}
 			</button>
 
@@ -187,7 +187,7 @@ function PlatformSettingsSection() {
 								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
 								onClick={() => setShowToken(!showToken)}
 							>
-								{showToken ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+								{showToken ? <EyeOff size={16} /> : <Eye size={16} />}
 							</button>
 						</div>
 					</div>
@@ -211,9 +211,9 @@ function PlatformSettingsSection() {
 								onClick={() => setShowAccountId(!showAccountId)}
 							>
 								{showAccountId ? (
-									<EyeSlashIcon size={16} />
+									<EyeOff size={16} />
 								) : (
-									<EyeIcon size={16} />
+									<Eye size={16} />
 								)}
 							</button>
 						</div>
@@ -227,7 +227,7 @@ function PlatformSettingsSection() {
 								rel="noopener noreferrer"
 								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
 							>
-								<LinkIcon size={12} />
+								<Link size={12} />
 								Create a pre-configured token →
 							</a>
 						</p>
@@ -398,7 +398,7 @@ function DomainsSection() {
 			{/* Header */}
 			<div className="flex items-center gap-3 px-5 py-3.5 border-b border-kumo-line">
 				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-kumo-default">
-					<GlobeIcon size={16} />
+					<Globe size={16} />
 				</div>
 				<div className="min-w-0 flex-1">
 					<span className="text-sm font-medium text-kumo-default">
@@ -411,7 +411,7 @@ function DomainsSection() {
 				<Button
 					variant="primary"
 					size="sm"
-					icon={<PlusIcon size={16} />}
+					icon={<Plus size={16} />}
 					onClick={() => setShowAddWizard(true)}
 				>
 					Add Domain
@@ -440,7 +440,7 @@ function DomainsSection() {
 						>
 							{/* Row 1: Domain name, status, menu */}
 							<div className="flex items-center gap-2">
-								<GlobeIcon
+								<Globe
 									size={16}
 									className="shrink-0 text-kumo-subtle"
 								/>
@@ -460,7 +460,7 @@ function DomainsSection() {
 										}
 										aria-label="Domain actions"
 									>
-										<DotsThreeVerticalIcon size={16} />
+										<MoreVertical size={16} />
 									</button>
 										{openMenu === domain.id && (
 											<div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg border border-kumo-line bg-kumo-base py-1 shadow-lg">
@@ -476,7 +476,7 @@ function DomainsSection() {
 													className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-kumo-default hover:bg-kumo-tint"
 													onClick={() => handleApiKeyOpen(domain)}
 												>
-													<KeyIcon size={14} />
+													<Key size={14} />
 													Resend API Key
 												</button>
 												<button
@@ -496,7 +496,7 @@ function DomainsSection() {
 													setOpenMenu(null);
 													}}
 												>
-													<TrashIcon size={14} />
+													<Trash2 size={14} />
 													Delete
 												</button>
 											</div>

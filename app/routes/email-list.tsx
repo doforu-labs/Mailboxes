@@ -4,18 +4,18 @@
 
 import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
 import {
-	ArchiveIcon,
-	ArrowBendUpLeftIcon,
-	ArrowsClockwiseIcon,
-	EnvelopeOpenIcon,
-	EnvelopeSimpleIcon,
-	FileIcon,
-	PaperPlaneTiltIcon,
-	PencilSimpleIcon,
-	StarIcon,
-	TrashIcon,
-	TrayIcon,
-} from "@phosphor-icons/react";
+	Archive,
+	Reply,
+	RefreshCw,
+	MailOpen,
+	Mail,
+	File,
+	Send,
+	Pencil,
+	Star,
+	Trash2,
+	Inbox,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
@@ -46,7 +46,7 @@ const FOLDER_EMPTY_STATES: Record<
 	}
 > = {
 	[Folders.INBOX]: {
-		icon: <TrayIcon size={48} weight="thin" className="text-kumo-subtle" />,
+		icon: <Inbox size={48} className="text-kumo-subtle" />,
 		title: "Your inbox is empty",
 		description:
 			"New emails will appear here when they arrive. Send an email to get the conversation started.",
@@ -54,26 +54,26 @@ const FOLDER_EMPTY_STATES: Record<
 	},
 	[Folders.SENT]: {
 		icon: (
-			<PaperPlaneTiltIcon size={48} weight="thin" className="text-kumo-subtle" />
+			<Send size={48} className="text-kumo-subtle" />
 		),
 		title: "No sent emails",
 		description: "Emails you send will show up here.",
 		showCompose: true,
 	},
 	[Folders.DRAFT]: {
-		icon: <FileIcon size={48} weight="thin" className="text-kumo-subtle" />,
+		icon: <File size={48} className="text-kumo-subtle" />,
 		title: "No drafts",
 		description: "Emails you're still working on will be saved here.",
 		showCompose: true,
 	},
 	[Folders.ARCHIVE]: {
-		icon: <ArchiveIcon size={48} weight="thin" className="text-kumo-subtle" />,
+		icon: <Archive size={48} className="text-kumo-subtle" />,
 		title: "Archive is empty",
 		description:
 			"Move emails here to keep your inbox clean without deleting them.",
 	},
 	[Folders.TRASH]: {
-		icon: <TrashIcon size={48} weight="thin" className="text-kumo-subtle" />,
+		icon: <Trash2 size={48} className="text-kumo-subtle" />,
 		title: "Trash is empty",
 		description:
 			"Deleted emails will appear here. You can restore them or permanently delete them.",
@@ -111,7 +111,7 @@ function FolderEmptyState({
 }) {
 	const config = (folder && FOLDER_EMPTY_STATES[folder]) || {
 		icon: (
-			<EnvelopeSimpleIcon size={48} weight="thin" className="text-kumo-subtle" />
+			<Mail size={48} className="text-kumo-subtle" />
 		),
 		title: "No emails",
 		description: "This folder is empty.",
@@ -130,7 +130,7 @@ function FolderEmptyState({
 				<Button
 					variant="primary"
 					size="sm"
-					icon={<PencilSimpleIcon size={16} />}
+					icon={<Pencil size={16} />}
 					onClick={onCompose}
 				>
 					Compose
@@ -294,7 +294,7 @@ export default function EmailListRoute() {
 								shape="square"
 								size="sm"
 								icon={
-									<ArrowsClockwiseIcon
+									<RefreshCw
 										size={18}
 										className={isRefreshing ? "animate-spin" : ""}
 									/>
@@ -348,9 +348,9 @@ export default function EmailListRoute() {
 												toggleStar(e, email);
 											}}
 										>
-											<StarIcon
+											<Star
 												size={16}
-												weight={email.starred ? "fill" : "regular"}
+												fill={email.starred ? "currentColor" : "none"}
 												className={
 													email.starred
 														? "text-kumo-warning"
@@ -380,7 +380,7 @@ export default function EmailListRoute() {
 												{email.needs_reply && !email.has_draft && (
 													<Tooltip content="Needs reply" asChild>
 														<span className="shrink-0 text-kumo-warning">
-															<ArrowBendUpLeftIcon size={14} weight="bold" />
+															<Reply size={14} />
 														</span>
 													</Tooltip>
 												)}
@@ -427,7 +427,7 @@ export default function EmailListRoute() {
 													variant="ghost"
 													shape="square"
 													size="sm"
-													icon={email.read ? <EnvelopeSimpleIcon size={14} /> : <EnvelopeOpenIcon size={14} />}
+													icon={email.read ? <Mail size={14} /> : <MailOpen size={14} />}
 													onClick={(e) => {
 														e.stopPropagation();
 														if (mailboxId)
@@ -445,7 +445,7 @@ export default function EmailListRoute() {
 													variant="ghost"
 													shape="square"
 													size="sm"
-													icon={<TrashIcon size={14} />}
+													icon={<Trash2 size={14} />}
 													onClick={(e) => handleDelete(e, email.id)}
 													aria-label="Delete"
 												/>

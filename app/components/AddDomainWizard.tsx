@@ -11,16 +11,16 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
-	CaretRightIcon,
-	CaretLeftIcon,
-	CheckCircleIcon,
-	WarningIcon,
-	GlobeIcon,
-	EnvelopeSimpleIcon,
-	PaperPlaneIcon,
-	CloudIcon,
-	ArrowRightIcon,
-} from "@phosphor-icons/react";
+	ChevronRight,
+	ChevronLeft,
+	CircleCheckBig,
+	TriangleAlert,
+	Globe,
+	Mail,
+	Send,
+	Cloud,
+	ArrowRight,
+} from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { useCreateDomain } from "~/queries/domains";
 import api from "~/services/api";
@@ -121,7 +121,7 @@ function StepIndicator({ currentStep }: { currentStep: WizardStep }) {
 								}`}
 							>
 								{isCompleted ? (
-									<CheckCircleIcon size={14} />
+									<CircleCheckBig size={14} />
 								) : (
 									i + 1
 								)}
@@ -157,7 +157,7 @@ function StepIndicator({ currentStep }: { currentStep: WizardStep }) {
 function ErrorBanner({ message }: { message: string }) {
 	return (
 		<div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
-			<WarningIcon size={14} className="text-red-600 shrink-0" />
+			<TriangleAlert size={14} className="text-red-600 shrink-0" />
 			<span className="text-sm text-red-600">{message}</span>
 		</div>
 	);
@@ -440,7 +440,7 @@ export function AddDomainWizard({
 									disabled={detecting}
 								>
 									Continue
-									<CaretRightIcon size={14} />
+									<ChevronRight size={14} />
 								</Button>
 							</div>
 						</form>
@@ -459,12 +459,12 @@ export function AddDomainWizard({
 								}`}
 							>
 								{isCfManaged ? (
-									<CloudIcon
+									<Cloud
 										size={24}
 										className="text-blue-500"
 									/>
 								) : (
-									<GlobeIcon
+									<Globe
 										size={24}
 										className="text-amber-500"
 									/>
@@ -505,7 +505,7 @@ export function AddDomainWizard({
 								size="sm"
 								onClick={() => setStep("domain")}
 							>
-								<CaretLeftIcon size={14} />
+								<ChevronLeft size={14} />
 								Back
 							</Button>
 							<Button
@@ -514,7 +514,7 @@ export function AddDomainWizard({
 								onClick={handleDomainTypeContinue}
 							>
 								Continue
-								<CaretRightIcon size={14} />
+								<ChevronRight size={14} />
 							</Button>
 						</div>
 					</>
@@ -525,7 +525,7 @@ export function AddDomainWizard({
 					<>
 						<div className="flex justify-center mb-4">
 							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10">
-								<EnvelopeSimpleIcon
+								<Mail
 									size={24}
 									className="text-blue-500"
 								/>
@@ -553,7 +553,7 @@ export function AddDomainWizard({
 							)}
 							{receiveStatus === "success" && (
 								<div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
-									<CheckCircleIcon
+									<CircleCheckBig
 										size={14}
 										className="text-green-600 shrink-0"
 									/>
@@ -602,7 +602,7 @@ export function AddDomainWizard({
 										size="sm"
 										onClick={() => setStep("domain-type")}
 									>
-										<CaretLeftIcon size={14} />
+										<ChevronLeft size={14} />
 										Back
 									</Button>
 									{receiveStatus === "success" ? (
@@ -612,7 +612,7 @@ export function AddDomainWizard({
 											onClick={() => setStep("sending")}
 										>
 											Continue
-											<CaretRightIcon size={14} />
+											<ChevronRight size={14} />
 										</Button>
 									) : receiveStatus === "failed" ? (
 										<>
@@ -645,7 +645,7 @@ export function AddDomainWizard({
 											onClick={() => setStep("sending")}
 										>
 											Continue
-											<CaretRightIcon size={14} />
+											<ChevronRight size={14} />
 										</Button>
 									)}
 								</>
@@ -659,7 +659,7 @@ export function AddDomainWizard({
 					<>
 						<div className="flex justify-center mb-4">
 							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10">
-								<EnvelopeSimpleIcon
+								<Mail
 									size={24}
 									className="text-amber-500"
 								/>
@@ -718,7 +718,7 @@ export function AddDomainWizard({
 								size="sm"
 								onClick={() => setStep("domain-type")}
 							>
-								<CaretLeftIcon size={14} />
+								<ChevronLeft size={14} />
 								Back
 							</Button>
 							<Button
@@ -734,7 +734,7 @@ export function AddDomainWizard({
 								onClick={() => setStep("sending")}
 							>
 								Continue
-								<CaretRightIcon size={14} />
+								<ChevronRight size={14} />
 							</Button>
 						</div>
 					</>
@@ -745,7 +745,7 @@ export function AddDomainWizard({
 					<>
 						<div className="flex justify-center mb-4">
 							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
-								<PaperPlaneIcon
+								<Send
 									size={24}
 									className="text-green-500"
 								/>
@@ -801,7 +801,7 @@ export function AddDomainWizard({
 										);
 									}}
 								>
-									<CaretLeftIcon size={14} />
+									<ChevronLeft size={14} />
 									Back
 								</Button>
 								<Button
@@ -820,7 +820,7 @@ export function AddDomainWizard({
 									disabled={isProcessing}
 								>
 									Create Domain
-									<CaretRightIcon size={14} />
+									<ChevronRight size={14} />
 								</Button>
 							</div>
 						</form>
@@ -940,7 +940,7 @@ export function AddDomainWizard({
 								onClick={handleVerify}
 							>
 								Verify DNS
-								<CheckCircleIcon size={14} />
+								<CircleCheckBig size={14} />
 							</Button>
 						</div>
 
@@ -970,7 +970,7 @@ export function AddDomainWizard({
 					<>
 						<div className="flex justify-center mb-4">
 							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10">
-								<CheckCircleIcon
+								<CircleCheckBig
 									size={24}
 									className="text-green-500"
 								/>
@@ -988,7 +988,7 @@ export function AddDomainWizard({
 
 						<div className="space-y-2 mb-5">
 							<div className="flex items-center gap-2 rounded-lg bg-kumo-fill px-3 py-2">
-								<EnvelopeSimpleIcon
+								<Mail
 									size={14}
 									className="text-kumo-subtle shrink-0"
 								/>
@@ -1012,7 +1012,7 @@ export function AddDomainWizard({
 								</Badge>
 							</div>
 							<div className="flex items-center gap-2 rounded-lg bg-kumo-fill px-3 py-2">
-								<PaperPlaneIcon
+								<Send
 									size={14}
 									className="text-kumo-subtle shrink-0"
 								/>
@@ -1047,7 +1047,7 @@ export function AddDomainWizard({
 								render={(props) => (
 									<Button {...props} variant="primary" size="sm">
 										Done
-										<ArrowRightIcon size={14} />
+										<ArrowRight size={14} />
 									</Button>
 								)}
 							/>

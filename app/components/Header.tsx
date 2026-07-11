@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Button, Input, Tooltip } from "@cloudflare/kumo";
-import { GearSixIcon, ListIcon, MagnifyingGlassIcon, SparkleIcon, XIcon } from "@phosphor-icons/react";
+import { Settings, List, Search, Sparkles, X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -62,7 +62,7 @@ export default function Header() {
 				variant="ghost"
 				shape="square"
 				size="sm"
-				icon={<ListIcon size={20} />}
+				icon={<List size={20} />}
 				onClick={toggleSidebar}
 				aria-label="Toggle sidebar"
 				className="md:hidden shrink-0"
@@ -90,7 +90,7 @@ export default function Header() {
 							className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-kumo-subtle hover:text-kumo-default hover:bg-kumo-tint transition-colors"
 							aria-label="Clear search"
 						>
-							<XIcon size={14} />
+							<X size={14} />
 						</button>
 					)}
 				</div>
@@ -98,7 +98,7 @@ export default function Header() {
 					<Button
 						variant="ghost"
 						shape="square"
-						icon={<MagnifyingGlassIcon size={20} />}
+						icon={<Search size={20} />}
 						onClick={performSearch}
 						aria-label="Search"
 					/>
@@ -111,7 +111,7 @@ export default function Header() {
 					variant="ghost"
 					shape="square"
 					size="sm"
-					icon={<MagnifyingGlassIcon size={20} />}
+					icon={<Search size={20} />}
 					onClick={() => setIsSearchExpanded(true)}
 					aria-label="Search"
 					className="md:hidden shrink-0"
@@ -123,7 +123,7 @@ export default function Header() {
 					<Button
 						variant="ghost"
 						shape="square"
-						icon={<SparkleIcon size={20} />}
+						icon={<Sparkles size={20} />}
 						onClick={toggleAiPanel}
 						aria-label="AI Assistant"
 					/>
@@ -132,7 +132,7 @@ export default function Header() {
 					<Button
 						variant={isSettingsActive ? "secondary" : "ghost"}
 						shape="square"
-						icon={<GearSixIcon size={20} />}
+						icon={<Settings size={20} />}
 						onClick={() =>
 							navigate(
 								isSettingsActive

@@ -10,7 +10,7 @@ import {
 	Toasty,
 	TooltipProvider,
 } from "@cloudflare/kumo";
-import { WarningIcon } from "@phosphor-icons/react";
+import { TriangleAlert } from "lucide-react";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { forwardRef, useState } from "react";
 import {
@@ -162,7 +162,7 @@ export function ErrorBoundary({ error }: { error: unknown }) {
 	return (
 		<div className="flex items-center justify-center min-h-screen p-8">
 			<Empty
-				icon={<WarningIcon size={48} className="text-kumo-inactive" />}
+				icon={<TriangleAlert size={48} className="text-kumo-inactive" />}
 				title={status === 404 ? "404 — Page not found" : title}
 				description={description}
 				contents={

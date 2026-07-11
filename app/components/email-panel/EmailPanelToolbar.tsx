@@ -5,20 +5,20 @@
 import { Button, Tooltip } from "@cloudflare/kumo";
 import { useEffect, useRef, useState } from "react";
 import {
-	ArrowBendUpLeftIcon,
-	ArrowBendUpRightIcon,
-	ArrowLeftIcon,
-	ChatCircleIcon,
-	CodeIcon,
-	EnvelopeOpenIcon,
-	EnvelopeSimpleIcon,
-	FolderSimpleIcon,
-	PaperPlaneTiltIcon,
-	PencilSimpleIcon,
-	StarIcon,
-	TrashIcon,
-	XIcon,
-} from "@phosphor-icons/react";
+	Reply,
+	Forward,
+	ArrowLeft,
+	MessageCircle,
+	Code,
+	MailOpen,
+	Mail,
+	Folder,
+	Send,
+	Pencil,
+	Star,
+	Trash2,
+	X,
+} from "lucide-react";
 import type { Folder, Email } from "~/types";
 
 interface EmailPanelToolbarProps {
@@ -65,7 +65,7 @@ export default function EmailPanelToolbar({
 				variant="ghost"
 				shape="square"
 				size="sm"
-				icon={<ArrowLeftIcon size={18} />}
+				icon={<ArrowLeft size={18} />}
 				onClick={onBack}
 				aria-label="Back to list"
 				className="md:hidden shrink-0"
@@ -76,7 +76,7 @@ export default function EmailPanelToolbar({
 					<Button
 						variant="primary"
 						size="sm"
-						icon={<PaperPlaneTiltIcon size={16} />}
+						icon={<Send size={16} />}
 						onClick={onSendDraft}
 						loading={isSending}
 					>
@@ -85,7 +85,7 @@ export default function EmailPanelToolbar({
 					<Button
 						variant="secondary"
 						size="sm"
-						icon={<PencilSimpleIcon size={16} />}
+						icon={<Pencil size={16} />}
 						onClick={onEditDraft}
 					>
 						Edit
@@ -98,7 +98,7 @@ export default function EmailPanelToolbar({
 							variant="ghost"
 							shape="square"
 							size="sm"
-							icon={<ArrowBendUpLeftIcon size={18} />}
+							icon={<Reply size={18} />}
 							onClick={onReply}
 							aria-label="Reply"
 						/>
@@ -108,7 +108,7 @@ export default function EmailPanelToolbar({
 							variant="ghost"
 							shape="square"
 							size="sm"
-							icon={<ChatCircleIcon size={18} />}
+							icon={<MessageCircle size={18} />}
 							onClick={onReplyAll}
 							aria-label="Reply All"
 						/>
@@ -118,7 +118,7 @@ export default function EmailPanelToolbar({
 							variant="ghost"
 							shape="square"
 							size="sm"
-							icon={<ArrowBendUpRightIcon size={18} />}
+							icon={<Forward size={18} />}
 							onClick={onForward}
 							aria-label="Forward"
 						/>
@@ -134,9 +134,9 @@ export default function EmailPanelToolbar({
 					shape="square"
 					size="sm"
 					icon={
-						<StarIcon
+						<Star
 							size={18}
-							weight={email.starred ? "fill" : "regular"}
+							fill={email.starred ? "currentColor" : "none"}
 							className={email.starred ? "text-kumo-warning" : ""}
 						/>
 					}
@@ -150,7 +150,7 @@ export default function EmailPanelToolbar({
 					variant="ghost"
 					shape="square"
 					size="sm"
-					icon={email.read ? <EnvelopeSimpleIcon size={18} /> : <EnvelopeOpenIcon size={18} />}
+					icon={email.read ? <Mail size={18} /> : <MailOpen size={18} />}
 					onClick={onToggleRead}
 					aria-label={email.read ? "Mark as unread" : "Mark as read"}
 				/>
@@ -164,7 +164,7 @@ export default function EmailPanelToolbar({
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<CodeIcon size={18} />}
+						icon={<Code size={18} />}
 						onClick={onViewSource}
 						aria-label="View source"
 					/>
@@ -174,7 +174,7 @@ export default function EmailPanelToolbar({
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<TrashIcon size={18} />}
+						icon={<Trash2 size={18} />}
 						onClick={onDelete}
 						aria-label="Delete"
 					/>
@@ -184,7 +184,7 @@ export default function EmailPanelToolbar({
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<XIcon size={18} />}
+						icon={<X size={18} />}
 						onClick={onBack}
 						aria-label="Close"
 						className="hidden md:inline-flex"
@@ -215,7 +215,7 @@ function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id:
 					variant="ghost"
 					shape="square"
 					size="sm"
-					icon={<FolderSimpleIcon size={18} />}
+					icon={<Folder size={18} />}
 					onClick={() => setOpen((o) => !o)}
 					aria-label="Move to folder"
 				/>

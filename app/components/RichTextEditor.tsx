@@ -4,19 +4,19 @@
 
 import { Button, Tooltip } from "@cloudflare/kumo";
 import {
-	ArrowClockwiseIcon,
-	ArrowCounterClockwiseIcon,
-	LinkBreakIcon,
-	LinkSimpleIcon,
-	ListBulletsIcon,
-	ListNumbersIcon,
-	MinusIcon,
-	QuotesIcon,
-	TextBIcon,
-	TextItalicIcon,
-	TextStrikethroughIcon,
-	TextUnderlineIcon,
-} from "@phosphor-icons/react";
+	RotateCw,
+	RotateCcw,
+	Unlink,
+	Link,
+	List,
+	ListOrdered,
+	Minus,
+	Quote,
+	Bold,
+	Italic,
+	Strikethrough,
+	Underline,
+} from "lucide-react";
 import { Color } from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
 import TiptapImage from "@tiptap/extension-image";
@@ -97,7 +97,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("bold") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<TextBIcon size={16} />}
+						icon={<Bold size={16} />}
 						onClick={() => editor.chain().focus().toggleBold().run()}
 						aria-label="Bold"
 					/>
@@ -107,7 +107,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("italic") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<TextItalicIcon size={16} />}
+						icon={<Italic size={16} />}
 						onClick={() => editor.chain().focus().toggleItalic().run()}
 						aria-label="Italic"
 					/>
@@ -117,7 +117,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("underline") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<TextUnderlineIcon size={16} />}
+						icon={<Underline size={16} />}
 						onClick={() => editor.chain().focus().toggleUnderline().run()}
 						aria-label="Underline"
 					/>
@@ -127,7 +127,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("strike") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<TextStrikethroughIcon size={16} />}
+						icon={<Strikethrough size={16} />}
 						onClick={() => editor.chain().focus().toggleStrike().run()}
 						aria-label="Strikethrough"
 					/>
@@ -141,7 +141,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("bulletList") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<ListBulletsIcon size={16} />}
+						icon={<List size={16} />}
 						onClick={() => editor.chain().focus().toggleBulletList().run()}
 						aria-label="Bullet list"
 					/>
@@ -151,7 +151,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("orderedList") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<ListNumbersIcon size={16} />}
+						icon={<ListOrdered size={16} />}
 						onClick={() => editor.chain().focus().toggleOrderedList().run()}
 						aria-label="Numbered list"
 					/>
@@ -165,7 +165,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("blockquote") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<QuotesIcon size={16} />}
+						icon={<Quote size={16} />}
 						onClick={() => editor.chain().focus().toggleBlockquote().run()}
 						aria-label="Blockquote"
 					/>
@@ -175,7 +175,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("link") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<LinkSimpleIcon size={16} />}
+						icon={<Link size={16} />}
 						onClick={setLink}
 						aria-label="Link"
 					/>
@@ -186,7 +186,7 @@ export default function RichTextEditor({
 							variant="ghost"
 							shape="square"
 							size="sm"
-							icon={<LinkBreakIcon size={16} />}
+							icon={<Unlink size={16} />}
 							onClick={() => editor.chain().focus().unsetLink().run()}
 							aria-label="Remove link"
 						/>
@@ -197,7 +197,7 @@ export default function RichTextEditor({
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<MinusIcon size={16} />}
+						icon={<Minus size={16} />}
 						onClick={() => editor.chain().focus().setHorizontalRule().run()}
 						aria-label="Horizontal rule"
 					/>
@@ -211,7 +211,7 @@ export default function RichTextEditor({
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<ArrowCounterClockwiseIcon size={16} />}
+						icon={<RotateCcw size={16} />}
 						onClick={() => editor.chain().focus().undo().run()}
 						disabled={!editor.can().undo()}
 						aria-label="Undo"
@@ -222,7 +222,7 @@ export default function RichTextEditor({
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<ArrowClockwiseIcon size={16} />}
+						icon={<RotateCw size={16} />}
 						onClick={() => editor.chain().focus().redo().run()}
 						disabled={!editor.can().redo()}
 						aria-label="Redo"

@@ -11,18 +11,18 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
-	ArrowClockwiseIcon,
-	CheckCircleIcon,
-	DotsThreeVerticalIcon,
-	EnvelopeIcon,
-	GearSixIcon,
-	GlobeIcon,
-	KeyIcon,
-	Spinner,
-	PlusIcon,
-	TrashIcon,
-	WarningIcon,
-} from "@phosphor-icons/react";
+	RotateCw,
+	CircleCheckBig,
+	MoreVertical,
+	Mail,
+	Settings,
+	Globe,
+	Key,
+	Loader2,
+	Plus,
+	Trash2,
+	TriangleAlert,
+} from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import {
@@ -283,11 +283,11 @@ export default function HomeRoute() {
 								className="inline-flex items-center justify-center rounded-lg border border-kumo-line bg-kumo-base p-2 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
 								aria-label="Settings"
 							>
-								<GearSixIcon size={18} />
+								<Settings size={18} />
 							</RouterLink>
 							<Button
 								variant="primary"
-								icon={<PlusIcon size={16} />}
+								icon={<Plus size={16} />}
 								onClick={() => setIsCreateOpen(true)}
 							>
 								New Mailbox
@@ -313,7 +313,7 @@ export default function HomeRoute() {
 									<div className="border-b border-kumo-line bg-kumo-fill/50">
 										{/* Row 1: Domain name, status, count, menu */}
 										<div className="flex items-center gap-3 px-5 py-3">
-											<GlobeIcon
+											<Globe
 												size={16}
 												className="shrink-0 text-kumo-subtle"
 											/>
@@ -335,19 +335,19 @@ export default function HomeRoute() {
 															}
 															aria-label="Domain actions"
 														>
-															<DotsThreeVerticalIcon size={16} />
+															<MoreVertical size={16} />
 														</button>
 														{openMenu === domainId && (
 															<div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-kumo-line bg-kumo-base py-1 shadow-lg">
 																<RouterLink
-																	to="/settings"
+																	to={`/domains/${domainId}`}
 																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
 																	onClick={() => setOpenMenu(null)}
 																>
 																	Edit
 																</RouterLink>
 																<RouterLink
-																	to="/settings"
+																	to={`/domains/${domainId}`}
 																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
 																	onClick={() => setOpenMenu(null)}
 																>
@@ -358,12 +358,12 @@ export default function HomeRoute() {
 																	className="flex items-center gap-2 w-full px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint text-left"
 																	onClick={() => handleApiKeyOpen(domain)}
 																>
-																	<KeyIcon size={14} />
+																	<Key size={14} />
 																	Resend API Key
 																	{(domain as any).resend_api_key ? (
-																		<CheckCircleIcon size={12} className="ml-auto text-green-500" weight="fill" />
+																		<CircleCheckBig size={12} className="ml-auto text-green-500" fill="currentColor" />
 																	) : (
-																		<WarningIcon size={12} className="ml-auto text-amber-500" weight="fill" />
+																		<TriangleAlert size={12} className="ml-auto text-amber-500" fill="currentColor" />
 																	)}
 																</button>
 																{domain.catch_all_mailbox && (
@@ -400,7 +400,7 @@ export default function HomeRoute() {
 											}`}
 										>
 											<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
-												<EnvelopeIcon size={14} className="text-kumo-subtle" />
+												<Mail size={14} className="text-kumo-subtle" />
 											</div>
 											<div className="min-w-0 flex-1">
 												<div className="text-sm font-medium text-kumo-default truncate">
@@ -414,7 +414,7 @@ export default function HomeRoute() {
 												variant="ghost"
 												size="sm"
 												shape="square"
-												icon={<TrashIcon size={16} />}
+												icon={<Trash2 size={16} />}
 												aria-label={`Delete mailbox ${account.email}`}
 												onClick={(e) => {
 													e.preventDefault();
@@ -439,7 +439,7 @@ export default function HomeRoute() {
 												<Button
 													variant="primary"
 													size="sm"
-													icon={<PlusIcon size={14} />}
+													icon={<Plus size={14} />}
 													onClick={() => {
 														setSelectedDomain(domain.name);
 														setIsCreateOpen(true);
@@ -452,7 +452,7 @@ export default function HomeRoute() {
 														to="/settings"
 														className="inline-flex items-center justify-center gap-1.5 rounded-md border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint no-underline"
 													>
-														<ArrowClockwiseIcon size={13} />
+														<RotateCw size={13} />
 														Setup Receiving
 													</RouterLink>
 												)}
@@ -468,9 +468,8 @@ export default function HomeRoute() {
 					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
 						<div className="flex flex-col items-center text-center">
 							<div className="mb-4">
-								<EnvelopeIcon
+								<Mail
 									size={48}
-									weight="thin"
 									className="text-kumo-subtle"
 								/>
 							</div>
@@ -485,7 +484,7 @@ export default function HomeRoute() {
 							to="/settings"
 							className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-kumo-brand text-white hover:bg-kumo-brand/90 no-underline"
 						>
-							<PlusIcon size={16} />
+							<Plus size={16} />
 							Add Domain
 						</RouterLink>
 						</div>
@@ -628,17 +627,17 @@ export default function HomeRoute() {
 					{/* ── 1. API Key 配置状态 ── */}
 					<div className="rounded-lg border px-3 py-2 mb-3">
 						<div className="flex items-center gap-2">
-							<KeyIcon size={14} className="text-kumo-subtle shrink-0" />
+							<Key size={14} className="text-kumo-subtle shrink-0" />
 							<span className="text-xs font-medium text-kumo-default">API Key</span>
 						</div>
 						{apiKeyDomain?.hasKey ? (
 							<div className="flex items-center gap-2 mt-2">
-								<CheckCircleIcon size={12} className="text-green-600 shrink-0" weight="fill" />
+								<CircleCheckBig size={12} className="text-green-600 shrink-0" fill="currentColor" />
 								<span className="text-xs text-green-700">已配置</span>
 							</div>
 						) : (
 							<div className="flex items-center gap-2 mt-2">
-								<WarningIcon size={12} className="text-amber-500 shrink-0" weight="fill" />
+								<TriangleAlert size={12} className="text-amber-500 shrink-0" fill="currentColor" />
 								<span className="text-xs text-amber-700">未配置</span>
 							</div>
 						)}
@@ -648,33 +647,33 @@ export default function HomeRoute() {
 					{apiKeyVerifyStatus !== "idle" && (
 						<div className="rounded-lg border px-3 py-2 mb-3">
 							<div className="flex items-center gap-2">
-								<GlobeIcon size={14} className="text-kumo-subtle shrink-0" />
+								<Globe size={14} className="text-kumo-subtle shrink-0" />
 								<span className="text-xs font-medium text-kumo-default">Domain</span>
 							</div>
 
 							{apiKeyVerifyStatus === "verifying" && (
 								<div className="flex items-center gap-2 mt-2">
-									<Spinner size={12} className="animate-spin text-kumo-subtle shrink-0" />
+									<Loader2 size={12} className="animate-spin text-kumo-subtle shrink-0" />
 									<span className="text-xs text-kumo-subtle">Verifying with Resend...</span>
 								</div>
 							)}
 
 							{apiKeyVerifyStatus === "valid" && apiKeyVerifyResult && (
 								<div className="space-y-1.5 mt-2">
-									<Badge variant="success"><CheckCircleIcon size={12} weight="fill" /> API key verified</Badge>
+									<Badge variant="success"><CircleCheckBig size={12} fill="currentColor" /> API key verified</Badge>
 									{apiKeyVerifyResult.sendingReady ? (
 										<Badge variant="success">Domain verified & ready to send</Badge>
 									) : apiKeyVerifyResult.matchingDomain ? (
-										<Badge variant="warning"><WarningIcon size={12} weight="fill" /> Domain "{apiKeyVerifyResult.matchingDomain.domain}" is "{apiKeyVerifyResult.matchingDomain.status}" — <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">verify DNS records in Resend</a></Badge>
+										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> Domain "{apiKeyVerifyResult.matchingDomain.domain}" is "{apiKeyVerifyResult.matchingDomain.status}" — <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">verify DNS records in Resend</a></Badge>
 									) : (
-										<Badge variant="warning"><WarningIcon size={12} weight="fill" /> No matching domain for {apiKeyDomain?.name} in Resend</Badge>
+										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> No matching domain for {apiKeyDomain?.name} in Resend</Badge>
 									)}
 								</div>
 							)}
 
 							{apiKeyVerifyStatus === "invalid" && (
 								<div className="mt-2">
-									<Badge variant="error"><WarningIcon size={12} weight="fill" /> {apiKeyVerifyResult?.error || "Invalid API key"}</Badge>
+									<Badge variant="error"><TriangleAlert size={12} fill="currentColor" /> {apiKeyVerifyResult?.error || "Invalid API key"}</Badge>
 								</div>
 							)}
 
@@ -728,7 +727,7 @@ export default function HomeRoute() {
 									onClick={handleVerifyApiKey}
 								>
 									{isVerifyingApiKey ? (
-										<><Spinner size={14} className="animate-spin" /> Verifying…</>
+										<><Loader2 size={14} className="animate-spin" /> Verifying…</>
 									) : (
 										<>Verify</>
 									)}

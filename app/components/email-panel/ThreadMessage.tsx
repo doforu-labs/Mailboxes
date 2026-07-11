@@ -4,13 +4,13 @@
 
 import { Badge, Button, Tooltip } from "@cloudflare/kumo";
 import {
-	CaretDownIcon,
-	CaretUpIcon,
-	CodeIcon,
-	PaperPlaneTiltIcon,
-	PencilSimpleIcon,
-	TrashIcon,
-} from "@phosphor-icons/react";
+	ChevronDown,
+	ChevronUp,
+	Code,
+	Send,
+	Pencil,
+	Trash2,
+} from "lucide-react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
 import {
@@ -94,7 +94,7 @@ export default function ThreadMessage({
 							{stripHtml(email.body || "").slice(0, 80)}
 						</p>
 					</div>
-					<CaretDownIcon size={14} className="text-kumo-subtle shrink-0" />
+					<ChevronDown size={14} className="text-kumo-subtle shrink-0" />
 				</button>
 			</div>
 		);
@@ -135,7 +135,7 @@ export default function ThreadMessage({
 									variant="ghost"
 									shape="square"
 									size="sm"
-									icon={<CodeIcon size={14} />}
+									icon={<Code size={14} />}
 									onClick={onViewSource}
 									aria-label="View source"
 									className="transition-opacity !h-6 !w-6"
@@ -148,7 +148,7 @@ export default function ThreadMessage({
 							className="ml-1"
 							aria-label="Collapse message"
 						>
-							<CaretUpIcon
+							<ChevronUp
 								size={14}
 								className="text-kumo-subtle hover:text-kumo-default transition-colors"
 							/>
@@ -174,7 +174,7 @@ export default function ThreadMessage({
 							<Button
 								variant="primary"
 								size="sm"
-								icon={<PaperPlaneTiltIcon size={14} />}
+								icon={<Send size={14} />}
 								onClick={onSendDraft}
 								loading={isSending}
 								disabled={isSending}
@@ -186,7 +186,7 @@ export default function ThreadMessage({
 							<Button
 								variant="secondary"
 								size="sm"
-								icon={<PencilSimpleIcon size={14} />}
+								icon={<Pencil size={14} />}
 								onClick={onEditDraft}
 								disabled={isSending}
 							>
@@ -197,7 +197,7 @@ export default function ThreadMessage({
 							<Button
 								variant="ghost"
 								size="sm"
-								icon={<TrashIcon size={14} />}
+								icon={<Trash2 size={14} />}
 								onClick={onDeleteDraft}
 								disabled={isSending}
 							>

@@ -6,11 +6,11 @@ import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router";
 import { Button } from "@cloudflare/kumo";
 import {
-	SparkleIcon,
-	XIcon,
-	PaperPlaneTiltIcon,
-	TrashIcon,
-} from "@phosphor-icons/react";
+	Sparkles,
+	X,
+	Send,
+	Trash2,
+} from "lucide-react";
 import { useUIStore } from "~/hooks/useUIStore";
 
 interface ChatMessage {
@@ -164,7 +164,7 @@ export default function AiPanel() {
 			{/* Header */}
 			<div className="flex items-center justify-between px-3 py-2.5 border-b border-kumo-line">
 				<div className="flex items-center gap-2">
-					<SparkleIcon size={18} className="text-kumo-brand" />
+					<Sparkles size={18} className="text-kumo-brand" />
 					<span className="font-medium text-sm">AI Assistant</span>
 				</div>
 				<div className="flex items-center gap-1">
@@ -172,7 +172,7 @@ export default function AiPanel() {
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<TrashIcon size={16} />}
+						icon={<Trash2 size={16} />}
 						onClick={clearChat}
 						aria-label="Clear chat"
 					/>
@@ -180,7 +180,7 @@ export default function AiPanel() {
 						variant="ghost"
 						shape="square"
 						size="sm"
-						icon={<XIcon size={16} />}
+						icon={<X size={16} />}
 						onClick={toggleAiPanel}
 						aria-label="Close AI panel"
 					/>
@@ -195,7 +195,7 @@ export default function AiPanel() {
 					</div>
 				) : messages.length === 0 ? (
 					<div className="flex flex-col items-center justify-center h-full text-kumo-subtle text-sm gap-2">
-						<SparkleIcon size={32} className="opacity-50" />
+						<Sparkles size={32} className="opacity-50" />
 						<p>Search your inbox, draft replies, manage folders</p>
 						<p className="text-xs opacity-70">
 							e.g. "Find the latest invoice from Stripe"
@@ -255,7 +255,7 @@ export default function AiPanel() {
 							loading ? (
 								<span className="animate-spin">⟳</span>
 							) : (
-								<PaperPlaneTiltIcon size={16} />
+								<Send size={16} />
 							)
 						}
 						onClick={sendMessage}

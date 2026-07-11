@@ -3,7 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Button, Empty } from "@cloudflare/kumo";
-import { WarningIcon } from "@phosphor-icons/react";
+import { TriangleAlert } from "lucide-react";
 import { useNavigate } from "react-router";
 
 export default function NotFoundRoute() {
@@ -12,7 +12,7 @@ export default function NotFoundRoute() {
 	return (
 		<div className="flex items-center justify-center min-h-screen">
 			<Empty
-				icon={<WarningIcon size={48} className="text-kumo-inactive" />}
+				icon={<TriangleAlert size={48} className="text-kumo-inactive" />}
 				title="404 -- Page Not Found"
 				description="The page you're looking for doesn't exist."
 				contents={

@@ -4,16 +4,16 @@
 
 import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
-	ArchiveIcon,
-	CaretLeftIcon,
-	FileIcon,
-	FolderIcon,
-	PaperPlaneTiltIcon,
-	PencilSimpleIcon,
-	PlusIcon,
-	TrashIcon,
-	TrayIcon,
-} from "@phosphor-icons/react";
+	Archive,
+	ChevronLeft,
+	File,
+	Folder,
+	Send,
+	Pencil,
+	Plus,
+	Trash2,
+	Inbox,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { NavLink, useMatch, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
@@ -22,11 +22,11 @@ import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
 const FOLDER_ICONS: Record<string, React.ReactNode> = {
-	[Folders.INBOX]: <TrayIcon size={18} weight="regular" />,
-	[Folders.SENT]: <PaperPlaneTiltIcon size={18} weight="regular" />,
-	[Folders.DRAFT]: <FileIcon size={18} weight="regular" />,
-	[Folders.ARCHIVE]: <ArchiveIcon size={18} weight="regular" />,
-	[Folders.TRASH]: <TrashIcon size={18} weight="regular" />,
+	[Folders.INBOX]: <Inbox size={18} />,
+	[Folders.SENT]: <Send size={18} />,
+	[Folders.DRAFT]: <File size={18} />,
+	[Folders.ARCHIVE]: <Archive size={18} />,
+	[Folders.TRASH]: <Trash2 size={18} />,
 };
 
 const SYSTEM_FOLDER_LINKS = [
@@ -136,7 +136,7 @@ export default function Sidebar() {
 					}}
 					className="flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors mb-2.5 cursor-pointer bg-transparent border-0 p-0"
 				>
-					<CaretLeftIcon size={14} />
+					<ChevronLeft size={14} />
 					<span>Mailboxes</span>
 				</button>
 				<div className="px-1">
@@ -154,7 +154,7 @@ export default function Sidebar() {
 				<Button
 					variant="primary"
 					size="sm"
-					icon={<PencilSimpleIcon size={14} />}
+					icon={<Pencil size={14} />}
 					onClick={() => startCompose()}
 					className="w-fit"
 				>
@@ -188,7 +188,7 @@ export default function Sidebar() {
 									variant="ghost"
 									shape="square"
 									size="sm"
-									icon={<PlusIcon size={16} />}
+									icon={<Plus size={16} />}
 									onClick={() => setIsCreateFolderOpen(true)}
 									aria-label="Create new folder"
 								/>
@@ -198,7 +198,7 @@ export default function Sidebar() {
 							<FolderLink
 								key={folder.id}
 								to={`/mailbox/${mailboxId}/emails/${folder.id}`}
-								icon={<FolderIcon size={18} />}
+								icon={<Folder size={18} />}
 								label={folder.name}
 								unreadCount={folder.unreadCount}
 								onClick={handleNavClick}
@@ -220,7 +220,7 @@ export default function Sidebar() {
 									variant="ghost"
 									shape="square"
 									size="sm"
-									icon={<PlusIcon size={16} />}
+									icon={<Plus size={16} />}
 									onClick={() => setIsCreateFolderOpen(true)}
 									aria-label="Create new folder"
 								/>

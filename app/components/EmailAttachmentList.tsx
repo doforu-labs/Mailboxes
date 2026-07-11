@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { PaperclipIcon, FileIcon, ImageIcon } from "@phosphor-icons/react";
+import { Paperclip, File, Image } from "lucide-react";
 import { formatBytes, getAttachmentUrl, getNonInlineAttachments } from "~/lib/utils";
 import type { Attachment } from "~/types";
 
@@ -32,7 +32,7 @@ export default function EmailAttachmentList({
 		<div className={className}>
 			{showHeading && (
 				<div className="flex items-center gap-2 mb-2">
-					<PaperclipIcon size={14} className="text-kumo-subtle" />
+					<Paperclip size={14} className="text-kumo-subtle" />
 					<span className="text-sm font-medium text-kumo-default">
 						{files.length} attachment{files.length !== 1 ? "s" : ""}
 					</span>
@@ -51,7 +51,7 @@ export default function EmailAttachmentList({
 								onClick={() => onPreviewImage(url, attachment.filename)}
 								className="flex items-center gap-2 rounded-md border border-kumo-line px-3 py-2 transition-colors hover:bg-kumo-tint text-sm text-left"
 							>
-								<ImageIcon size={16} className="text-kumo-subtle shrink-0" />
+								<Image size={16} className="text-kumo-subtle shrink-0" />
 								<span className="text-kumo-default font-medium truncate max-w-[140px]">
 									{attachment.filename}
 								</span>
@@ -68,7 +68,7 @@ export default function EmailAttachmentList({
 							rel="noopener noreferrer"
 							className="flex items-center gap-2 rounded-md border border-kumo-line px-3 py-2 no-underline transition-colors hover:bg-kumo-tint text-sm"
 						>
-							<FileIcon size={16} className="text-kumo-subtle shrink-0" />
+							<File size={16} className="text-kumo-subtle shrink-0" />
 							<span className="text-kumo-default font-medium truncate max-w-[140px]">
 								{attachment.filename}
 							</span>

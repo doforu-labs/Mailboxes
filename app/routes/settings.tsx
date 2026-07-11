@@ -10,17 +10,17 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
-	CaretDownIcon,
-	CaretRightIcon,
-	GearSixIcon,
-	GlobeIcon,
-	LinkIcon,
-	PlusIcon,
-	TrashIcon,
-	AtIcon,
-	EyeIcon,
-	EyeSlashIcon,
-} from "@phosphor-icons/react";
+	ChevronDown,
+	ChevronRight,
+	Settings,
+	Globe,
+	Link,
+	Plus,
+	Trash2,
+	AtSign,
+	Eye,
+	EyeOff,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
@@ -148,7 +148,7 @@ function PlatformSettingsSection() {
 				onClick={() => setIsExpanded(!isExpanded)}
 			>
 				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-kumo-default">
-					<GearSixIcon size={16} />
+					<Settings size={16} />
 				</div>
 				<div className="min-w-0 flex-1">
 					<span className="text-sm font-medium text-kumo-default">
@@ -162,9 +162,9 @@ function PlatformSettingsSection() {
 					{isConfigured ? "Configured" : "Not configured"}
 				</Badge>
 				{isExpanded ? (
-					<CaretDownIcon size={16} className="text-kumo-muted shrink-0" />
+					<ChevronDown size={16} className="text-kumo-muted shrink-0" />
 				) : (
-					<CaretRightIcon size={16} className="text-kumo-muted shrink-0" />
+					<ChevronRight size={16} className="text-kumo-muted shrink-0" />
 				)}
 			</button>
 
@@ -190,7 +190,7 @@ function PlatformSettingsSection() {
 								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
 								onClick={() => setShowToken(!showToken)}
 							>
-								{showToken ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
+								{showToken ? <EyeOff size={16} /> : <Eye size={16} />}
 							</button>
 						</div>
 					</div>
@@ -214,9 +214,9 @@ function PlatformSettingsSection() {
 								onClick={() => setShowAccountId(!showAccountId)}
 							>
 								{showAccountId ? (
-									<EyeSlashIcon size={16} />
+									<EyeOff size={16} />
 								) : (
-									<EyeIcon size={16} />
+									<Eye size={16} />
 								)}
 							</button>
 						</div>
@@ -230,7 +230,7 @@ function PlatformSettingsSection() {
 								rel="noopener noreferrer"
 								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
 							>
-								<LinkIcon size={12} />
+								<Link size={12} />
 								Create a pre-configured token →
 							</a>
 						</p>
@@ -327,7 +327,7 @@ export default function DomainsRoute() {
 						</div>
 						<Button
 							variant="primary"
-							icon={<PlusIcon size={16} />}
+							icon={<Plus size={16} />}
 							onClick={() => setIsCreateOpen(true)}
 						>
 							Add Domain
@@ -354,7 +354,7 @@ export default function DomainsRoute() {
 								}`}
 							>
 								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
-									<GlobeIcon size={18} />
+									<Globe size={18} />
 								</div>
 								<div className="min-w-0 flex-1">
 									<div className="flex items-center gap-2">
@@ -381,7 +381,7 @@ export default function DomainsRoute() {
 									variant="ghost"
 									size="sm"
 									shape="square"
-									icon={<AtIcon size={16} />}
+									icon={<AtSign size={16} />}
 									aria-label={`Catch-all for ${domain.name}`}
 									title={domain.catch_all_mailbox ? `Catch-all: ${domain.catch_all_mailbox}` : "Set catch-all mailbox"}
 									onClick={(e) => {
@@ -395,7 +395,7 @@ export default function DomainsRoute() {
 									variant="ghost"
 									size="sm"
 									shape="square"
-									icon={<TrashIcon size={16} />}
+									icon={<Trash2 size={16} />}
 									aria-label={`Delete domain ${domain.name}`}
 									onClick={(e) => {
 										e.preventDefault();
@@ -411,9 +411,8 @@ export default function DomainsRoute() {
 					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
 						<div className="flex flex-col items-center text-center">
 							<div className="mb-4">
-								<GlobeIcon
+								<Globe
 									size={48}
-									weight="thin"
 									className="text-kumo-subtle"
 								/>
 							</div>
@@ -426,7 +425,7 @@ export default function DomainsRoute() {
 							</p>
 							<Button
 								variant="primary"
-								icon={<PlusIcon size={16} />}
+								icon={<Plus size={16} />}
 								onClick={() => setIsCreateOpen(true)}
 							>
 								Add Domain
