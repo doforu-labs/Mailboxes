@@ -259,7 +259,24 @@ app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
-	await c.env.BUCKET.delete(key); // TODO: also delete D1 data and R2 attachment blobs
+
+	// Delete all D1 data (emails, attachments, folders, AI chat) and get attachment list
+	const attachments = await db.deleteMailbox(c.env.DB, mailboxId);
+
+	// Delete R2 config JSON
+	await c.env.BUCKET.delete(key);
+
+	// Delete R2 attachment blobs (continue on failure)
+	if (attachments.length > 0) {
+		try {
+			await c.env.BUCKET.delete(
+				attachments.map((att) => `attachments/${att.email_id}/${att.id}/${att.filename}`),
+			);
+		} catch {
+			// Attachment deletion failure should not break the flow
+		}
+	}
+
 	return c.body(null, 204);
 });
 

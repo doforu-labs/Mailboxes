@@ -1248,6 +1248,32 @@ export async function getMailboxDomain(
  * Resolve the Resend API key for a given mailbox.
  * Priority: 1) per-mailbox R2 settings, 2) per-domain resend_api_key
  */
+// ── 27. deleteMailbox ─────────────────────────────────────────
+
+export async function deleteMailbox(
+	db: D1Database,
+	mailboxId: string,
+): Promise<{ id: string; email_id: string; filename: string }[]> {
+	const orm = drizzle(db, { schema });
+
+	// Query all attachments for this mailbox (needed for R2 blob cleanup)
+	const allAttachments = await orm
+		.select({ id: schema.attachments.id, email_id: schema.attachments.email_id, filename: schema.attachments.filename })
+		.from(schema.attachments)
+		.where(eq(schema.attachments.mailbox_id, mailboxId))
+		.all();
+
+	// Delete all D1 data in a single batch
+	const stmts: D1PreparedStatement[] = [];
+	stmts.push(db.prepare(`DELETE FROM emails WHERE mailbox_id = ?`).bind(mailboxId));
+	stmts.push(db.prepare(`DELETE FROM attachments WHERE mailbox_id = ?`).bind(mailboxId));
+	stmts.push(db.prepare(`DELETE FROM folders WHERE mailbox_id = ?`).bind(mailboxId));
+	stmts.push(db.prepare(`DELETE FROM ai_chat_messages WHERE mailbox_id = ?`).bind(mailboxId));
+	await db.batch(stmts);
+
+	return allAttachments;
+}
+
 export async function resolveResendApiKey(
 	env: { DB: D1Database; BUCKET: R2Bucket },
 	mailboxId: string,
