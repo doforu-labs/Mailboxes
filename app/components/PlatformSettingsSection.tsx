@@ -139,49 +139,6 @@ export function PlatformSettingsSection() {
 	const [isVerifying, setIsVerifying] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 
-	// ── Vercel state ───────────────────────────────────────
-	const [isVercelExpanded, setIsVercelExpanded] = useState(false);
-	const [vercelCreds, setVercelCreds] = useState<VercelCredentials>({ vercelApiToken: "", vercelTeamId: "" });
-	const [showVercelToken, setShowVercelToken] = useState(false);
-	const [isVercelSaving, setIsVercelSaving] = useState(false);
-	const [isVercelLoading, setIsVercelLoading] = useState(true);
-
-	useEffect(() => {
-		loadVercelCredentials().then((saved) => {
-			setVercelCreds(saved);
-			setIsVercelLoading(false);
-		});
-	}, []);
-
-	const isVercelConfigured = !!vercelCreds.vercelApiToken.trim();
-
-	const handleVercelSave = async () => {
-		if (!vercelCreds.vercelApiToken.trim()) {
-			toastManager.add({
-				title: "Vercel API Token is required",
-				variant: "error",
-			});
-			return;
-		}
-
-		setIsVercelSaving(true);
-		try {
-			await saveVercelCredentials(vercelCreds);
-		} catch {
-			toastManager.add({
-				title: "Failed to save Vercel credentials",
-				description: "An error occurred while saving. Please try again.",
-				variant: "error",
-			});
-			setIsVercelSaving(false);
-			return;
-		}
-		setIsVercelSaving(false);
-		toastManager.add({
-			title: "Vercel credentials saved successfully",
-		});
-	};
-
 	const handleSave = async () => {
 		if (!creds.cfApiToken.trim() || !creds.cfAccountId.trim()) {
 			toastManager.add({
@@ -234,8 +191,7 @@ export function PlatformSettingsSection() {
 	};
 
 	return (
-		<>
-		<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden mb-6">
+		<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
 			{/* Collapsed header */}
 			<button
 				type="button"
@@ -362,89 +318,5 @@ export function PlatformSettingsSection() {
 				</div>
 			)}
 		</div>
-
-		{/* ── Vercel Credentials Section ───────────────────── */}
-		<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
-			<button
-				type="button"
-				className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-kumo-fill/50"
-				onClick={() => setIsVercelExpanded(!isVercelExpanded)}
-			>
-				<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-500">
-					<Settings size={16} />
-				</div>
-				<div className="min-w-0 flex-1">
-					<span className="text-sm font-medium text-kumo-default">
-						Vercel Credentials
-					</span>
-					<span className="text-xs text-kumo-subtle ml-2">
-						Vercel API Token for DNS management
-					</span>
-				</div>
-				<Badge variant={isVercelConfigured ? "success" : "warning"}>
-					{isVercelLoading ? "Loading…" : isVercelConfigured ? "Configured" : "Not configured"}
-				</Badge>
-				{isVercelExpanded ? (
-					<ChevronDown size={16} className="text-kumo-muted shrink-0" />
-				) : (
-					<ChevronRight size={16} className="text-kumo-muted shrink-0" />
-				)}
-			</button>
-
-			{isVercelExpanded && (
-				<div className="border-t border-kumo-line px-5 py-5 space-y-4">
-					<div>
-						<label className="mb-1 block text-sm font-medium text-kumo-default">
-							Vercel API Token
-						</label>
-						<div className="relative">
-							<input
-								type={showVercelToken ? "text" : "password"}
-								className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-								placeholder="••••••••••••••••••••••••••••••••••••••••"
-								value={vercelCreds.vercelApiToken}
-								onChange={(e) =>
-									setVercelCreds((c) => ({ ...c, vercelApiToken: e.target.value }))
-								}
-							/>
-							<button
-								type="button"
-								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
-								onClick={() => setShowVercelToken(!showVercelToken)}
-							>
-								{showVercelToken ? <EyeOff size={16} /> : <Eye size={16} />}
-							</button>
-						</div>
-					</div>
-					<div>
-						<label className="mb-1 block text-sm font-medium text-kumo-default">
-							Team ID
-						</label>
-						<input
-							type="text"
-							className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-							placeholder="Leave empty for personal accounts"
-							value={vercelCreds.vercelTeamId}
-							onChange={(e) =>
-								setVercelCreds((c) => ({ ...c, vercelTeamId: e.target.value }))
-							}
-						/>
-					</div>
-
-					<div className="flex justify-end">
-						<Button
-							variant="primary"
-							size="sm"
-							onClick={handleVercelSave}
-							disabled={isVercelSaving || !vercelCreds.vercelApiToken.trim()}
-							loading={isVercelSaving}
-						>
-							{isVercelSaving ? "Saving…" : "Save Vercel Credentials"}
-						</Button>
-					</div>
-				</div>
-			)}
-		</div>
-		</>
 	);
 }

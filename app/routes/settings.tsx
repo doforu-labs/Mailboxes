@@ -19,6 +19,7 @@ import { useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { CatchAllDialog } from "~/components/CatchAllDialog";
+import { CredentialsSection } from "~/components/CredentialsSection";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { PlatformSettingsSection } from "~/components/PlatformSettingsSection";
 import {
@@ -30,7 +31,7 @@ import type { Domain } from "~/types";
 // ── Page ───────────────────────────────────────────────────────────
 
 export function meta() {
-	return [{ title: "Domains — Mailboxes" }];
+	return [{ title: "Settings — Mailboxes" }];
 }
 
 export default function DomainsRoute() {
@@ -79,7 +80,7 @@ export default function DomainsRoute() {
 								</RouterLink>
 							</div>
 							<h1 className="text-2xl font-bold text-kumo-default">
-								Domains
+								Settings
 							</h1>
 						</div>
 						<Button
@@ -93,13 +94,24 @@ export default function DomainsRoute() {
 				</div>
 
 				{/* Platform Settings */}
-				<PlatformSettingsSection />
+				<div className="mb-6">
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">Platform Settings</h2>
+					<PlatformSettingsSection />
+				</div>
 
-				{/* Domain List */}
-				{!domainsFetched ? (
-					<div className="flex justify-center py-16">
-						<Loader size="lg" />
-					</div>
+				{/* Credentials */}
+				<div className="mb-6">
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">Credentials</h2>
+					<CredentialsSection />
+				</div>
+
+				{/* Domains */}
+				<div>
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">Domains</h2>
+					{!domainsFetched ? (
+						<div className="flex justify-center py-16">
+							<Loader size="lg" />
+						</div>
 				) : domains.length > 0 ? (
 					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
 						{domains.map((domain, idx) => (
@@ -190,6 +202,7 @@ export default function DomainsRoute() {
 						</div>
 					</div>
 				)}
+				</div>
 			</div>
 
 			{/* Add Domain Wizard */}
