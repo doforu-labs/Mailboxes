@@ -94,6 +94,35 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 	}
 });
 
+// ── Verify MX Records ────────────────────────────────────────────
+setup.post("/api/v1/setup/verify-mx", async (c) => {
+	const { domain } = await c.req.json<{ domain: string }>();
+	if (!domain) {
+		return c.json({ error: "Domain is required" }, 400);
+	}
+
+	try {
+		const mxRecords = await dns.promises.resolveMx(domain);
+		const expectedTarget = "mailboxes.pages.dev";
+		const matched = mxRecords.find(
+			(r) => r.exchange.toLowerCase() === expectedTarget,
+		);
+
+		return c.json({
+			verified: !!matched,
+			records: mxRecords.map((r) => ({
+				priority: r.priority,
+				exchange: r.exchange,
+			})),
+			matched,
+		});
+	} catch (e: unknown) {
+		// DNS query failed — domain may not have MX records yet
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ verified: false, error: msg, records: [] });
+	}
+});
+
 // ── DNS Provider Detection ───────────────────────────────────────
 const DNS_PROVIDERS: Array<{ pattern: RegExp; name: string }> = [
 	{ pattern: /ns\d*\.cloudflare\.com/i, name: "Cloudflare" },

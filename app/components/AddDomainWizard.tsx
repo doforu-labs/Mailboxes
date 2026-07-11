@@ -188,6 +188,11 @@ export function AddDomainWizard({
 	>("idle");
 	const [receiveError, setReceiveError] = useState<string | null>(null);
 
+	// MX verification (receive-external step)
+	const [mxVerifying, setMxVerifying] = useState(false);
+	const [mxVerified, setMxVerified] = useState(false);
+	const [mxError, setMxError] = useState<string | null>(null);
+
 	// DNS records for sending
 	const [dnsRecords, setDnsRecords] = useState<
 		Array<{ name: string; type: string; status: string; value?: string }>
@@ -332,6 +337,26 @@ export function AddDomainWizard({
 				return null;
 		}
 	}
+
+	// ── MX Verification ──
+	const handleVerifyMx = async () => {
+		setMxVerifying(true);
+		setMxError(null);
+		try {
+			const result = await api.verifyMx(domainName.trim());
+			if (result.verified) {
+				setMxVerified(true);
+			} else {
+				setMxError(
+					"MX record not found. Please add the MX record at your DNS provider and try again. DNS changes may take a few minutes to propagate.",
+				);
+			}
+		} catch {
+			setMxError("Failed to verify MX record. Please try again.");
+		} finally {
+			setMxVerifying(false);
+		}
+	};
 
 	// ── Step 2: Domain type → proceed to receiving ──
 	const handleDomainTypeContinue = async () => {
@@ -859,6 +884,19 @@ export function AddDomainWizard({
 							</div>
 						</div>
 
+						{mxError && (
+							<div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 mb-2">
+								<p className="text-xs text-red-700">{mxError}</p>
+							</div>
+						)}
+						{mxVerified && (
+							<div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2.5 mb-2">
+								<p className="text-xs text-green-700 flex items-center gap-1.5">
+									<CircleCheckBig size={14} className="text-green-600" />
+									MX record verified! Your domain is configured to receive email.
+								</p>
+							</div>
+						)}
 						<div className="flex justify-end gap-2">
 							<Button
 								variant="secondary"
@@ -871,11 +909,30 @@ export function AddDomainWizard({
 							<Button
 								variant="primary"
 								size="sm"
-								onClick={() => setStep("sending")}
+								onClick={handleVerifyMx}
+								disabled={mxVerifying || mxVerified}
 							>
-								Continue
-								<ChevronRight size={14} />
+								{mxVerifying ? (
+									<>
+										<Loader2 size={14} className="animate-spin" />
+										Verifying
+									</>
+								) : mxVerified ? (
+									<>Verified</>
+								) : (
+									<>Verify MX Record</>
+								)}
 							</Button>
+							{mxVerified && (
+								<Button
+									variant="primary"
+									size="sm"
+									onClick={() => setStep("sending")}
+								>
+									Continue
+									<ChevronRight size={14} />
+								</Button>
+							)}
 						</div>
 					</>
 				)}

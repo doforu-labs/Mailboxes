@@ -267,6 +267,15 @@ const api = {
 		post<VerifyResendResult>(`/api/v1/mailboxes/${mailboxId}/verify-resend`, { apiKey }),
 
 	// DNS Provider Detection
+	// MX Record Verification
+	verifyMx: (domain: string) =>
+		post<{
+			verified: boolean;
+			records: Array<{ priority: number; exchange: string }>;
+			matched?: { priority: number; exchange: string } | null;
+			error?: string;
+		}>("/api/v1/setup/verify-mx", { domain }),
+
 	detectDnsProvider: (domain: string) =>
 		post<DnsProviderDetection>("/api/v1/setup/detect-dns-provider", { domain }),
 
