@@ -37,7 +37,7 @@ export function StatusBadge({ status }: { status: Domain["status"] }) {
 // Unified status display that replaces StatusBadge + DomainStatusIndicators.
 // Shows one clear badge + descriptive subtitle per domain.
 
-type DomainStatus = "active" | "awaiting_dns" | "sending_only" | "receiving_only" | "receiving" | "failed";
+type DomainStatus = "active" | "awaiting_dns" | "sending_only" | "receiving" | "failed";
 
 function getDomainStatus(domain: Domain): {
 	status: DomainStatus;
@@ -48,7 +48,7 @@ function getDomainStatus(domain: Domain): {
 	const hasKey = !!domain.resend_api_key;
 	const isVerified = domain.status === "verified";
 
-	// Failed
+	// 1. Failed
 	if (domain.status === "failed") {
 		return {
 			status: "failed",
@@ -57,46 +57,31 @@ function getDomainStatus(domain: Domain): {
 		};
 	}
 
-	// Not verified yet — split by receiving capacity
-	if (!isVerified) {
-		if (hasZone) {
-			// Cloudflare zone + Email Routing active → receiving works
+	// 2. 接收已就绪（有 Cloudflare zone）
+	if (hasZone) {
+		if (isVerified && hasKey) {
+			// 收发都正常
 			return {
-				status: "receiving",
-				badge: { label: "Receiving", variant: "success" },
-				subtitle: hasKey
-					? "Receiving emails active. Sending pending DNS verification with Resend"
-					: "Receiving emails active. Add a Resend API key to enable sending",
+				status: "active",
+				badge: { label: "Active", variant: "success" },
+				subtitle: "Sending and receiving emails",
 			};
 		}
-		// No Cloudflare zone → neither receiving nor sending is ready
+		// 只能接收，不能发送 — 用副标题区分原因
 		return {
-			status: "awaiting_dns",
-			badge: { label: "Awaiting DNS", variant: "warning" },
-			subtitle: "Add DNS records and verify to start sending and receiving",
+			status: "receiving",
+			badge: { label: "Receiving", variant: "success" },
+			subtitle: isVerified
+				? "Receiving emails. Add a Resend API key to enable sending"
+				: hasKey
+					? "Receiving emails. Sending pending DNS verification with Resend"
+					: "Receiving emails. Add a Resend API key to enable sending",
 		};
 	}
 
-	// Verified + both
-	if (isVerified && hasZone && hasKey) {
-		return {
-			status: "active",
-			badge: { label: "Active", variant: "success" },
-			subtitle: "Sending and receiving emails",
-		};
-	}
-
-	// Verified + receiving only (no Resend key)
-	if (isVerified && hasZone && !hasKey) {
-		return {
-			status: "receiving_only",
-			badge: { label: "Receiving Only", variant: "warning" },
-			subtitle: "Add a Resend API key to enable sending",
-		};
-	}
-
-	// Verified + sending only (no CF zone)
-	if (isVerified && !hasZone && hasKey) {
+	// 3. 接收未就绪（无 Cloudflare zone）
+	if (isVerified && hasKey) {
+		// 只能发送，不能接收
 		return {
 			status: "sending_only",
 			badge: { label: "Sending Only", variant: "warning" },
@@ -104,11 +89,20 @@ function getDomainStatus(domain: Domain): {
 		};
 	}
 
-	// Verified but nothing configured (edge case)
+	if (isVerified && !hasKey) {
+		// 已验证但什么都没配置
+		return {
+			status: "awaiting_dns",
+			badge: { label: "Verified", variant: "success" },
+			subtitle: "Configure sending and receiving to activate",
+		};
+	}
+
+	// 未验证 + 无 zone — 收发都未就绪
 	return {
 		status: "awaiting_dns",
-		badge: { label: "Verified", variant: "success" },
-		subtitle: "Configure sending and receiving to activate",
+		badge: { label: "Awaiting DNS", variant: "warning" },
+		subtitle: "Add DNS records and verify to start sending and receiving",
 	};
 }
 
