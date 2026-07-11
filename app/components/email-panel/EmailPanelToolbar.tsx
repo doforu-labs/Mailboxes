@@ -8,7 +8,7 @@ import {
 	Reply,
 	Forward,
 	ArrowLeft,
-	MessageCircle,
+	ReplyAll,
 	Code,
 	MailOpen,
 	Mail,
@@ -108,7 +108,7 @@ export default function EmailPanelToolbar({
 							variant="ghost"
 							shape="square"
 							size="sm"
-							icon={<MessageCircle size={18} />}
+							icon={<ReplyAll size={18} />}
 							onClick={onReplyAll}
 							aria-label="Reply All"
 						/>
