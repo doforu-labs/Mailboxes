@@ -352,6 +352,7 @@ export function AddDomainWizard({
 	};
 
 	const MIGRATION_STEPS = [
+		{ id: "verify-token", label: "验证 API Token 权限" },
 		{ id: "cf-zone", label: "添加域名到 Cloudflare" },
 		{ id: "vercel-ns", label: "修改 Vercel NS 记录" },
 		{ id: "dns-propagation", label: "等待 DNS 传播" },
@@ -371,7 +372,19 @@ export function AddDomainWizard({
 			setCfApiToken(cfCreds.cfApiToken);
 			setMigrationStep(0);
 
-			// Step 1: 添加域名到 Cloudflare
+			// Pre-flight: 验证 CF Token 权限
+			const verifyRes = await fetch("/api/v1/setup/cloudflare/verify-token", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ cfApiToken: cfCreds.cfApiToken }),
+			});
+			const verifyData = await verifyRes.json();
+			if (!verifyRes.ok || !verifyData.valid) {
+				throw new Error(verifyData.error || "API Token 权限不足，请检查 Token 配置");
+			}
+			setMigrationStep(1);
+
+			// Step 2: 添加域名到 Cloudflare
 			const zoneRes = await fetch("/api/v1/setup/cloudflare/add-zone", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -379,9 +392,9 @@ export function AddDomainWizard({
 			});
 			const zoneData = await zoneRes.json();
 			if (!zoneRes.ok) throw new Error(zoneData.error || "添加域名到 Cloudflare 失败");
-			setMigrationStep(1);
+			setMigrationStep(2);
 
-			// Step 2: 更新 Vercel NS
+			// Step 3: 更新 Vercel NS
 			const nsRes = await fetch("/api/v1/setup/vercel/update-ns", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -393,9 +406,9 @@ export function AddDomainWizard({
 			});
 			const nsData = await nsRes.json();
 			if (!nsRes.ok) throw new Error(nsData.error || "修改 Vercel NS 记录失败");
-			setMigrationStep(2);
+			setMigrationStep(3);
 
-			// Step 3: 轮询检查 NS 传播（最多 5 分钟）
+			// Step 4: 轮询检查 NS 传播（最多 5 分钟）
 			let propagated = false;
 			for (let i = 0; i < 30; i++) {
 				await new Promise((r) => setTimeout(r, 10000));
@@ -411,9 +424,9 @@ export function AddDomainWizard({
 			if (!propagated) {
 				throw new Error("DNS 传播超时，请稍后在域名详情页重试");
 			}
-			setMigrationStep(3);
+			setMigrationStep(4);
 
-			// Step 4: 启用 Email Routing
+			// Step 5: 启用 Email Routing
 			const erRes = await fetch("/api/v1/setup/email-routing", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -427,9 +440,9 @@ export function AddDomainWizard({
 				const erData = await erRes.json();
 				throw new Error(erData.error || "启用 Email Routing 失败");
 			}
-			setMigrationStep(4);
+			setMigrationStep(5);
 
-			// Step 5: 创建域名记录（仅收件）
+			// Step 6: 创建域名记录（仅收件）
 			const domainRes = await fetch("/api/v1/domains", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },

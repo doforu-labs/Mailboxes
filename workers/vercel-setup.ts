@@ -5,16 +5,63 @@
 /**
  * Vercel → Cloudflare domain migration helpers.
  *
- * Three endpoints:
- *   POST /api/v1/setup/cloudflare/add-zone   – add zone to CF
- *   POST /api/v1/setup/vercel/update-ns      – replace NS in Vercel
- *   GET  /api/v1/setup/check-ns/:domain      – check NS propagation
+ * Four endpoints:
+ *   POST /api/v1/setup/cloudflare/verify-token  – verify CF token permissions
+ *   POST /api/v1/setup/cloudflare/add-zone      – add zone to CF
+ *   POST /api/v1/setup/vercel/update-ns         – replace NS in Vercel
+ *   GET  /api/v1/setup/check-ns/:domain         – check NS propagation
  */
 
 import type { Context } from "hono";
 import type { Env } from "./types";
 
 type AppContext = Context<{ Bindings: Env }>;
+
+// ── Handler: Verify CF Token Permissions ──────────────────────
+
+export async function handleVerifyCfToken(c: AppContext): Promise<Response> {
+	try {
+		const { cfApiToken } = (await c.req.json()) as { cfApiToken: string };
+
+		if (!cfApiToken) {
+			return c.json({ error: "Missing required field: cfApiToken" }, 400);
+		}
+
+		// Call CF API to verify token is valid
+		const verifyRes = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", {
+			method: "GET",
+			headers: { Authorization: `Bearer ${cfApiToken}` },
+		});
+
+		const verifyData = (await verifyRes.json()) as {
+			success: boolean;
+			errors: Array<{ message: string }>;
+		};
+
+		if (!verifyData.success) {
+			const msg = verifyData.errors?.[0]?.message || "Token 无效";
+			return c.json({ valid: false, error: `API Token 无效: ${msg}` }, 400);
+		}
+
+		// Verify Zone list access (proves Zone:Edit permission exists)
+		const zonesRes = await fetch("https://api.cloudflare.com/client/v4/zones?per_page=1", {
+			headers: { Authorization: `Bearer ${cfApiToken}` },
+		});
+		const zonesData = (await zonesRes.json()) as { success: boolean };
+
+		if (!zonesData.success) {
+			return c.json({
+				valid: false,
+				error: "API Token 缺少 Zone 权限。请在 Cloudflare Dashboard → API Tokens 中编辑 Token，添加：\n资源: Zone  权限: Edit",
+			}, 400);
+		}
+
+		return c.json({ valid: true });
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ valid: false, error: `Token 验证失败: ${msg}` }, 500);
+	}
+}
 
 // ── Handler A: Add Cloudflare Zone ─────────────────────────────
 
@@ -41,12 +88,18 @@ export async function handleAddCloudflareZone(c: AppContext): Promise<Response> 
 		const data = (await res.json()) as {
 			success: boolean;
 			result: { id: string; name_servers: string[] };
-			errors: Array<{ message: string }>;
+			errors: Array<{ code: number; message: string }>;
 		};
 
 		if (!data.success) {
-			const msg = data.errors?.[0]?.message || "Cloudflare zone creation failed";
-			return c.json({ error: msg }, 400);
+			const err = data.errors?.[0];
+			// Permission error: 9106 = missing zone.create scope
+			if (err?.code === 9106 || err?.message?.includes("zone.create")) {
+				return c.json({
+					error: "API Token 缺少 Zone 创建权限。\n\n请在 Cloudflare Dashboard → API Tokens 中编辑 Token，添加：\n资源: Zone  权限: Edit\n\n详细步骤：https://dash.cloudflare.com/profile/api-tokens",
+				}, 400);
+			}
+			return c.json({ error: err?.message || "Cloudflare zone creation failed" }, 400);
 		}
 
 		return c.json({
