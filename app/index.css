@@ -6,6 +6,12 @@ body {
   margin: 0;
 }
 
+/* Allow toast text to be selectable (kumo Toast applies select-none on toast items) */
+.fixed.right-4.bottom-4 [class*="select-none"] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
 /* TipTap list styles */
 .ProseMirror ul {
   list-style-type: disc;

@@ -120,8 +120,8 @@ export default function HomeRoute() {
 			});
 		}
 
-		// Only return groups that have mailboxes
-		return [...map.values()].filter((g) => g.mailboxes.length > 0);
+		// Return all groups (including domains with no mailboxes yet)
+		return [...map.values()];
 	}, [domains, mailboxes]);
 
 	const handleCreate = async (e: FormEvent) => {
@@ -434,6 +434,26 @@ export default function HomeRoute() {
 											/>
 										</RouterLink>
 									))}
+
+									{/* Empty domain: prompt to create mailbox */}
+									{!isOther && hasNoMailboxes && (
+										<div className="px-5 py-4 border-t border-kumo-line">
+											<p className="text-sm text-kumo-subtle mb-3">
+												No mailboxes on this domain yet.
+											</p>
+											<Button
+												variant="primary"
+												size="sm"
+												icon={<PlusIcon size={14} />}
+												onClick={() => {
+													setSelectedDomain(domain.name);
+													setIsCreateOpen(true);
+												}}
+											>
+												Create Mailbox
+											</Button>
+										</div>
+									)}
 								</div>
 							);
 						})}
