@@ -179,7 +179,10 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 
 		const domainId = resendData.id;
 
-		// 2. Get Cloudflare zone ID
+		// 2. Get Cloudflare zone ID — try exact match, then parent zones for subdomains
+		let zoneId: string | undefined;
+
+		// Try exact match first
 		const zonesUrl = new URL(
 			`https://api.cloudflare.com/client/v4/zones?name=${domain}&status=active`,
 		);
@@ -191,21 +194,46 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			},
 		});
 
-		if (!zonesRes.ok) {
-			const errBody = await zonesRes.json().catch(() => ({}));
-			const msg =
-				(errBody as any)?.errors?.[0]?.message ||
-				`Cloudflare API error: ${zonesRes.status}`;
-			return c.json({ error: `Failed to find Cloudflare zone: ${msg}` }, 400);
+		if (zonesRes.ok) {
+			const zonesData = (await zonesRes.json()) as {
+				success: boolean;
+				errors: Array<{ message: string }>;
+				result: Array<{ id: string }>;
+			};
+			if (zonesData.success && zonesData.result?.length) {
+				zoneId = zonesData.result[0].id;
+			}
 		}
 
-		const zonesData = (await zonesRes.json()) as {
-			success: boolean;
-			errors: Array<{ message: string }>;
-			result: Array<{ id: string }>;
-		};
+		// If not found, try parent zones for subdomains (e.g. a.example.com → example.com)
+		if (!zoneId) {
+			const parts = domain.split(".");
+			for (let i = 1; i < parts.length - 1; i++) {
+				const parentZone = parts.slice(i).join(".");
+				const parentRes = await fetch(
+					`https://api.cloudflare.com/client/v4/zones?name=${parentZone}&status=active`,
+					{
+						method: "GET",
+						headers: {
+							Authorization: `Bearer ${cfApiToken}`,
+							"Content-Type": "application/json",
+						},
+					},
+				);
+				if (parentRes.ok) {
+					const parentData = (await parentRes.json()) as {
+						success: boolean;
+						result: Array<{ id: string }>;
+				};
+					if (parentData.success && parentData.result?.length) {
+						zoneId = parentData.result[0].id;
+						break;
+					}
+				}
+			}
+		}
 
-		if (!zonesData.success || !zonesData.result?.length) {
+		if (!zoneId) {
 			return c.json(
 				{
 					error:
@@ -214,8 +242,6 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 				400,
 			);
 		}
-
-		const zoneId = zonesData.result[0].id;
 
 		// 3. Add DNS records from Resend verification records
 		const dnsResults: Array<{ name: string; type: string; status: string; value: string }> = [];
