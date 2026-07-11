@@ -483,9 +483,9 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 		// 1. Get zone ID — try exact match first, then parent zone for subdomains
 		let zoneId: string | null = null;
 		
-		// Try exact match
+		// Try exact match (accept any status — zone may still be pending after creation)
 		let zonesUrl = new URL(
-			`https://api.cloudflare.com/client/v4/zones?name=${domain}&status=active`,
+			`https://api.cloudflare.com/client/v4/zones?name=${domain}`,
 		);
 		let zonesRes = await fetch(zonesUrl.toString(), {
 			method: "GET",
@@ -512,7 +512,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			for (let i = 1; i < parts.length - 1; i++) {
 				const parentZone = parts.slice(i).join(".");
 				zonesUrl = new URL(
-					`https://api.cloudflare.com/client/v4/zones?name=${parentZone}&status=active`,
+					`https://api.cloudflare.com/client/v4/zones?name=${parentZone}`,
 				);
 				zonesRes = await fetch(zonesUrl.toString(), {
 					method: "GET",

@@ -426,20 +426,34 @@ export function AddDomainWizard({
 			}
 			setMigrationStep(4);
 
-			// Step 5: 启用 Email Routing
-			const erRes = await fetch("/api/v1/setup/email-routing", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					domain: domainName.trim(),
-					cfApiToken: cfCreds.cfApiToken,
-					cfAccountId: cfCreds.cfAccountId,
-				}),
-			});
-			if (!erRes.ok) {
+			// Step 5: 启用 Email Routing (retry — zone may still be activating)
+			let erOk = false;
+			let erLastErr = "";
+			for (let attempt = 0; attempt < 5; attempt++) {
+				const erRes = await fetch("/api/v1/setup/email-routing", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						domain: domainName.trim(),
+						cfApiToken: cfCreds.cfApiToken,
+						cfAccountId: cfCreds.cfAccountId,
+					}),
+				});
+				if (erRes.ok) {
+					erOk = true;
+					break;
+				}
 				const erData = await erRes.json();
-				throw new Error(erData.error || "启用 Email Routing 失败");
+				erLastErr = erData.error || `HTTP ${erRes.status}`;
+				// Zone not found or not ready — wait 30s and retry
+				if (erRes.status === 400 && erLastErr.includes("not found")) {
+					await new Promise((r) => setTimeout(r, 30000));
+					continue;
+				}
+				// Other errors — don't retry
+				break;
 			}
+			if (!erOk) throw new Error(erLastErr || "启用 Email Routing 失败");
 			setMigrationStep(5);
 
 			// Step 6: 创建域名记录（仅收件）
