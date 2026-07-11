@@ -136,6 +136,24 @@ app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 // ── Setup routes (exempt from JWT — mounted before auth checks) ──
 app.route("/", setup);
 
+// -- Platform Settings ------------------------------------------------
+
+app.get("/api/v1/platform-settings/:key", async (c) => {
+	const key = c.req.param("key")!;
+	const value = await db.getSetting(c.env.DB, key);
+	return c.json({ key, value });
+});
+
+app.put("/api/v1/platform-settings/:key", async (c) => {
+	const key = c.req.param("key")!;
+	const { value } = (await c.req.json()) as { value: string };
+	if (typeof value !== "string") {
+		return c.json({ error: "value must be a string" }, 400);
+	}
+	await db.setSetting(c.env.DB, key, value);
+	return c.json({ key, value });
+});
+
 // -- Config ---------------------------------------------------------
 
 app.get("/api/v1/config", async (c) => {
@@ -1121,7 +1139,10 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 		const domain = mailboxId.split("@")[1];
 		const domainRecord = await db.getDomainByName(env.DB, domain);
 		if (domainRecord?.catch_all_mailbox) {
-			mailboxId = domainRecord.catch_all_mailbox;
+			// Normalize: if stored as @domain (legacy), convert to *@domain
+			mailboxId = domainRecord.catch_all_mailbox.startsWith("@") && !domainRecord.catch_all_mailbox.startsWith("*@")
+				? `*${domainRecord.catch_all_mailbox}`
+				: domainRecord.catch_all_mailbox;
 			console.log(`No exact match for original recipient, routing to catch-all: ${mailboxId}`);
 		} else {
 			console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`);

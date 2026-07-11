@@ -937,6 +937,21 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 					await c.env.BUCKET.put(mailboxKey, JSON.stringify(defaultSettings));
 					await dbService.initMailboxFolders(c.env.DB, resolvedMailbox);
 				}
+			} else if (catch_all_mailbox.startsWith("@")) {
+				// Legacy @domain format -> normalize to *@domain
+				resolvedMailbox = `*${catch_all_mailbox}`;
+				const mailboxKey = `mailboxes/${resolvedMailbox}.json`;
+				if (!(await c.env.BUCKET.head(mailboxKey))) {
+					// Auto-create the catchall mailbox if it does not exist
+					const defaultSettings = {
+						fromName: "Catch-all",
+						forwarding: { enabled: false, email: "" },
+						signature: { enabled: false, text: "" },
+						autoReply: { enabled: false, subject: "", message: "" },
+					};
+					await c.env.BUCKET.put(mailboxKey, JSON.stringify(defaultSettings));
+					await dbService.initMailboxFolders(c.env.DB, resolvedMailbox);
+				}
 			} else {
 				// Traditional input: verify the mailbox exists in R2
 				resolvedMailbox = catch_all_mailbox;

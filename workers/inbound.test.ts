@@ -157,8 +157,6 @@ function createMockEnv(opts: MockEnvOptions = {}) {
 		EMAIL_AGENT: mockAgentNs,
 		EMAIL_MCP: null as any,
 		AI: null as any,
-		POLICY_AUD: "test-aud",
-		TEAM_DOMAIN: "test.cloudflareaccess.com",
 	} as any;
 
 	return {

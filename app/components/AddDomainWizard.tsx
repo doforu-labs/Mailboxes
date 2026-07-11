@@ -25,29 +25,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useCreateDomain } from "~/queries/domains";
 import api from "~/services/api";
 import { ApiError } from "~/services/api";
-
-// ── CF Credentials from localStorage ──────────────────────────────
-
-const CF_CREDENTIALS_KEY = "mailboxes_cf_credentials";
-
-interface CfCredentials {
-	cfApiToken: string;
-	cfAccountId: string;
-}
-
-function loadCfCredentials(): CfCredentials {
-	try {
-		const raw = localStorage.getItem(CF_CREDENTIALS_KEY);
-		if (!raw) return { cfApiToken: "", cfAccountId: "" };
-		const parsed = JSON.parse(raw);
-		return {
-			cfApiToken: parsed.cfApiToken ?? "",
-			cfAccountId: parsed.cfAccountId ?? "",
-		};
-	} catch {
-		return { cfApiToken: "", cfAccountId: "" };
-	}
-}
+import { loadCfCredentials } from "~/components/PlatformSettingsSection";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -229,7 +207,7 @@ export function AddDomainWizard({
 		// Attempt CF detection
 		setDetecting(true);
 		try {
-			const creds = loadCfCredentials();
+			const creds = await loadCfCredentials();
 			if (creds.cfApiToken && creds.cfAccountId) {
 				const result = await api.detectCfDomains(creds);
 				const trimmed = domainName.trim();
@@ -269,7 +247,7 @@ export function AddDomainWizard({
 		const setup = async () => {
 			setReceiveStatus("loading");
 			try {
-				const creds = loadCfCredentials();
+				const creds = await loadCfCredentials();
 				await api.setupEmailRouting({
 					domain: domainName.trim(),
 					cfApiToken: creds.cfApiToken,
@@ -321,7 +299,7 @@ export function AddDomainWizard({
 		setVerifyError(null);
 		setVerifyStatus("verifying");
 		try {
-			const creds = loadCfCredentials();
+			const creds = await loadCfCredentials();
 			const result = await api.verifyDomain({
 				domain: domainName.trim(),
 				resendApiKey: resendApiKey.trim(),

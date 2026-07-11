@@ -23,20 +23,12 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
      [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agentic-inbox)
 
-2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
-3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Configure Resend API Key** -- This fork uses **Resend** for outbound emails. 
+2. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
+3. **Configure Resend API Key** -- This fork uses **Resend** for outbound emails. 
    - Sign up at https://resend.com (free tier: 100 emails/day) and add your domain
    - Get your API key from the Resend dashboard
    - After deploying, go to Settings > Account in the app and enter your API key per-mailbox
-5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
-
-### Troubleshooting Access
-
-1. If you see `Invalid or expired Access token`, that usually means `POLICY_AUD` or `TEAM_DOMAIN` secrets are incorrect.
-   * Resolution: [turn Access off and back on for the Worker to get the Access modal again](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then reset your Worker secrets to the latest `POLICY_AUD` and `TEAM_DOMAIN` values shown there.
-2. If you see `Cloudflare Access must be configured in production`, this application is intentionally enforcing Cloudflare Access so your inbox is not exposed to anyone on the internet.
-   * Resolution: enable Access using [one-click Cloudflare Access for Workers](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/), then set the `POLICY_AUD` and `TEAM_DOMAIN` Worker secrets from the modal values.
+4. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
 
 ## Features
 
@@ -51,7 +43,6 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 - **Frontend:** React 19, React Router v7, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
 - **Backend:** Hono, Cloudflare Workers, Durable Objects (SQLite), R2, Email Routing
 - **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/moonshotai/kimi-k2.5`), `react-markdown` + `remark-gfm`
-- **Auth:** Cloudflare Access JWT validation (required outside local development)
 
 ## Getting Started
 
@@ -68,8 +59,6 @@ npm install
 ```bash
 cp .dev.vars.example .dev.vars
 ```
-
-   Edit `.dev.vars` and fill in the required values (see [Secrets](#secrets) below).
 
 3. Create the D1 database:
 
@@ -120,28 +109,12 @@ Or use the full deploy command that builds, deploys, and applies migrations in o
 npm run deploy:full
 ```
 
-### Secrets
-
-The following secrets must be configured for the Worker. Use `wrangler secret put <KEY>` to set each one.
-
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `POLICY_AUD` | Production only | Cloudflare Access policy audience tag. Shown in the Access modal when enabling one-click Access on the Worker. |
-| `TEAM_DOMAIN` | Production only | Cloudflare Access team domain. Can be the base Access URL (e.g. `https://your-team.cloudflareaccess.com`) or the full `/cdn-cgi/access/certs` URL. |
-
-For local development, these values can be placed in `.dev.vars` instead.
-
-> **Resend API Key**: Configured per-mailbox via the Settings UI (not as a Worker secret).
-
 ## Prerequisites
 
 - Cloudflare account with a domain
 - [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for receiving
 - [Email Service](https://developers.cloudflare.com/email-service/) enabled for sending
 - [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled (for the agent)
-- [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) configured for deployed/shared environments (required in production)
-
-Any user who passes the shared Cloudflare Access policy can access all mailboxes in this app by design. This includes the MCP server at `/mcp` -- external AI tools (Claude Code, Cursor, etc.) connected via MCP can operate on any mailbox by passing a `mailboxId` parameter. There is no per-mailbox authorization; the Cloudflare Access policy is the single trust boundary.
 
 ## Architecture
 

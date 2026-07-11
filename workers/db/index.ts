@@ -1275,6 +1275,34 @@ export async function deleteMailbox(
 	return allAttachments;
 }
 
+// ── 28. Platform Settings (key-value) ─────────────────────────
+
+export async function getSetting(
+	db: D1Database,
+	key: string,
+): Promise<string | null> {
+	const result = await db
+		.prepare("SELECT value FROM platform_settings WHERE key = ?")
+		.bind(key)
+		.first<{ value: string }>();
+	return result?.value ?? null;
+}
+
+export async function setSetting(
+	db: D1Database,
+	key: string,
+	value: string,
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO platform_settings (key, value, updated_at)
+			 VALUES (?1, ?2, datetime('now'))
+			 ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = datetime('now')`,
+		)
+		.bind(key, value)
+		.run();
+}
+
 export async function resolveResendApiKey(
 	env: { DB: D1Database; BUCKET: R2Bucket },
 	mailboxId: string,

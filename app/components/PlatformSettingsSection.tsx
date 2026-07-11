@@ -7,31 +7,36 @@ import { ChevronDown, ChevronRight, Settings, Link, Eye, EyeOff } from "lucide-r
 import { useEffect, useState } from "react";
 import api from "~/services/api";
 
-// ── CF Credentials (localStorage) ────────────────────────────────
+// ── CF Credentials (D1 via API) ──────────────────────────────────
 
-const CF_CREDENTIALS_KEY = "mailboxes_cf_credentials";
+const CF_API_TOKEN_KEY = "cf_api_token";
+const CF_ACCOUNT_ID_KEY = "cf_account_id";
 
 export interface CfCredentials {
 	cfApiToken: string;
 	cfAccountId: string;
 }
 
-export function loadCfCredentials(): CfCredentials {
+export async function loadCfCredentials(): Promise<CfCredentials> {
 	try {
-		const raw = localStorage.getItem(CF_CREDENTIALS_KEY);
-		if (!raw) return { cfApiToken: "", cfAccountId: "" };
-		const parsed = JSON.parse(raw);
+		const [tokenRes, accountRes] = await Promise.all([
+			api.getPlatformSetting(CF_API_TOKEN_KEY),
+			api.getPlatformSetting(CF_ACCOUNT_ID_KEY),
+		]);
 		return {
-			cfApiToken: parsed.cfApiToken ?? "",
-			cfAccountId: parsed.cfAccountId ?? "",
+			cfApiToken: tokenRes.value ?? "",
+			cfAccountId: accountRes.value ?? "",
 		};
 	} catch {
 		return { cfApiToken: "", cfAccountId: "" };
 	}
 }
 
-export function saveCfCredentials(creds: CfCredentials): void {
-	localStorage.setItem(CF_CREDENTIALS_KEY, JSON.stringify(creds));
+export async function saveCfCredentials(creds: CfCredentials): Promise<void> {
+	await Promise.all([
+		api.setPlatformSetting(CF_API_TOKEN_KEY, creds.cfApiToken),
+		api.setPlatformSetting(CF_ACCOUNT_ID_KEY, creds.cfAccountId),
+	]);
 }
 
 // ── CF Token Template URL ────────────────────────────────────────
@@ -51,21 +56,32 @@ export const CF_TOKEN_TEMPLATE_URL = (() => {
 export function PlatformSettingsSection() {
 	const toastManager = useKumoToastManager();
 	const [isExpanded, setIsExpanded] = useState(false);
-	const [creds, setCreds] = useState<CfCredentials>(loadCfCredentials);
+	const [creds, setCreds] = useState<CfCredentials>({ cfApiToken: "", cfAccountId: "" });
 	const [showToken, setShowToken] = useState(false);
 	const [showAccountId, setShowAccountId] = useState(false);
 	const [hasChanges, setHasChanges] = useState(false);
+	const [isLoading, setIsLoading] = useState(true);
+
+	// Load credentials from D1 on mount
+	useEffect(() => {
+		loadCfCredentials().then((saved) => {
+			setCreds(saved);
+			setIsLoading(false);
+		});
+	}, []);
 
 	const isConfigured = !!(creds.cfApiToken.trim() && creds.cfAccountId.trim());
 
-	// Track changes
+	// Track changes against saved state
 	useEffect(() => {
-		const saved = loadCfCredentials();
-		setHasChanges(
-			creds.cfApiToken !== saved.cfApiToken ||
-				creds.cfAccountId !== saved.cfAccountId
-		);
-	}, [creds]);
+		if (isLoading) return;
+		loadCfCredentials().then((saved) => {
+			setHasChanges(
+				creds.cfApiToken !== saved.cfApiToken ||
+					creds.cfAccountId !== saved.cfAccountId
+			);
+		});
+	}, [creds, isLoading]);
 
 	const [isVerifying, setIsVerifying] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
@@ -98,9 +114,19 @@ export function PlatformSettingsSection() {
 		}
 		setIsVerifying(false);
 
-		// Save after verification
+		// Save to D1 via API
 		setIsSaving(true);
-		saveCfCredentials(creds);
+		try {
+			await saveCfCredentials(creds);
+		} catch {
+			toastManager.add({
+				title: "Failed to save credentials",
+				description: "An error occurred while saving to the database. Please try again.",
+				variant: "error",
+			});
+			setIsSaving(false);
+			return;
+		}
 		setIsSaving(false);
 		setHasChanges(false);
 		toastManager.add({
@@ -131,7 +157,7 @@ export function PlatformSettingsSection() {
 					</span>
 				</div>
 				<Badge variant={isConfigured ? "success" : "warning"}>
-					{isConfigured ? "Configured" : "Not configured"}
+					{isLoading ? "Loading…" : isConfigured ? "Configured" : "Not configured"}
 				</Badge>
 				{isExpanded ? (
 					<ChevronDown size={16} className="text-kumo-muted shrink-0" />

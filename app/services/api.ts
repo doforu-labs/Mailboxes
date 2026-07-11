@@ -256,6 +256,12 @@ const api = {
 		post<VerifyResult>("/api/v1/setup/verify-domain", data),
 	setupEmailRouting: (data: SetupEmailRoutingRequest) =>
 		post<SetupResult>("/api/v1/setup/email-routing", data),
+
+	// Platform Settings
+	getPlatformSetting: (key: string) =>
+		get<{ key: string; value: string | null }>(`/api/v1/platform-settings/${key}`),
+	setPlatformSetting: (key: string, value: string) =>
+		put<{ key: string; value: string }>(`/api/v1/platform-settings/${key}`, { value }),
 };
 
 export default api;

@@ -3,7 +3,6 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Hono } from "hono";
-import { jwtVerify, createRemoteJWKSet } from "jose";
 import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import type { Env } from "./types";
@@ -22,67 +21,8 @@ const requestHandler = createRequestHandler(
 	import.meta.env.MODE,
 );
 
-function getAccessUrls(teamDomain: string) {
-	const certsPath = "/cdn-cgi/access/certs";
-	const teamUrl = new URL(teamDomain);
-	const issuer = teamUrl.origin;
-	const certsUrl = teamUrl.pathname.endsWith(certsPath)
-		? teamUrl
-		: new URL(certsPath, issuer);
-
-	return { issuer, certsUrl };
-}
-
 // Main app that wraps the API and adds React Router fallback
 const app = new Hono<{ Bindings: Env }>();
-
-// Cloudflare Access JWT validation middleware (production only)
-app.use("*", async (c, next) => {
-	// Skip validation in development (DEV env may not be set in Workers runtime)
-	if (import.meta.env.DEV || !c.env.POLICY_AUD || c.env.POLICY_AUD === "dev-placeholder") {
-		return next();
-	}
-
-	// Skip JWT for Resend inbound webhook — called by Resend servers, not browsers
-	if (c.req.path.startsWith("/api/v1/inbound/")) {
-		return next();
-	}
-
-	// Skip JWT for setup routes — first-time users have no Access policy yet
-	if (c.req.path.startsWith("/api/v1/setup/")) {
-		return next();
-	}
-
-	const { POLICY_AUD, TEAM_DOMAIN } = c.env;
-
-	// Fail closed in production if Access is not configured.
-	if (!POLICY_AUD || !TEAM_DOMAIN) {
-		return c.text(
-			"Cloudflare Access must be configured in production. Set POLICY_AUD and TEAM_DOMAIN.",
-			500,
-		);
-	}
-
-	const token = c.req.header("cf-access-jwt-assertion");
-	if (!token) {
-		return c.text("Missing required CF Access JWT", 403);
-	}
-
-	try {
-		const { issuer, certsUrl } = getAccessUrls(TEAM_DOMAIN);
-		const JWKS = createRemoteJWKSet(certsUrl);
-		await jwtVerify(token, JWKS, {
-			issuer,
-			audience: POLICY_AUD,
-		});
-	} catch {
-		return c.text("Invalid or expired Access token", 403);
-	}
-
-	// Authorization model note: once a teammate passes the shared Cloudflare
-	// Access policy, they can access all mailboxes in this app by design.
-	return next();
-});
 
 // Mount the API routes
 app.route("/", apiApp);

@@ -155,7 +155,10 @@ export async function handleResendInbound(
 		const domain = mailboxId.split("@")[1];
 		const domainRecord = await dbService.getDomainByName(env.DB, domain);
 		if (domainRecord?.catch_all_mailbox) {
-			mailboxId = domainRecord.catch_all_mailbox;
+			// Normalize: if stored as @domain (legacy), convert to *@domain
+			mailboxId = domainRecord.catch_all_mailbox.startsWith("@") && !domainRecord.catch_all_mailbox.startsWith("*@")
+				? `*${domainRecord.catch_all_mailbox}`
+				: domainRecord.catch_all_mailbox;
 			console.log(
 				`No exact match for Resend inbound, routing to catch-all: ${mailboxId}`,
 			);
