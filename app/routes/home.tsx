@@ -7,6 +7,7 @@ import {
 	Button,
 	Dialog,
 	Input,
+	Loader,
 	Text,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
@@ -52,7 +53,7 @@ export default function HomeRoute() {
 	const [localPart, setLocalPart] = useState("");
 	const [selectedDomain, setSelectedDomain] = useState("");
 	const [newName, setNewName] = useState("");
-	const { data: domains = [] } = useDomains();
+	const { data: domains = [], isFetched: domainsFetched } = useDomains();
 	const [isCreating, setIsCreating] = useState(false);
 	const [createError, setCreateError] = useState<string | null>(null);
 	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -296,8 +297,15 @@ export default function HomeRoute() {
 					</div>
 				</div>
 
+				{/* Loading state */}
+				{(!mailboxesFetched || !domainsFetched) && (
+					<div className="flex items-center justify-center py-24">
+						<Loader size="lg" />
+					</div>
+				)}
+
 				{/* Content */}
-				{!isEmpty ? (
+				{mailboxesFetched && domainsFetched && !isEmpty ? (
 					<div className="space-y-4">
 						{groupedMailboxes.map(({ domain, mailboxes: groupMailboxes }) => {
 							const domainId = domain?.id ?? "__other__";
@@ -511,18 +519,18 @@ export default function HomeRoute() {
 							<div className="flex items-center">
 								<input
 									type="text"
-									className="h-6.5 min-w-0 flex-1 rounded-l-md border border-kumo-hairline border-r-0 bg-kumo-control px-2 text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none"
+									className="h-7 min-w-0 flex-1 rounded-l-md border border-kumo-hairline border-r-0 bg-kumo-control px-2 text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none"
 									placeholder="hello"
 									value={localPart}
 									onChange={(e) => setLocalPart(e.target.value)}
 									required
 								/>
-								<span className="flex h-6.5 shrink-0 items-center border-y border-kumo-hairline bg-kumo-control px-1 text-xs text-kumo-subtle">
+								<span className="flex h-7 shrink-0 items-center border-y border-kumo-hairline bg-kumo-control px-1 text-xs text-kumo-subtle">
 									@
 								</span>
 								{domains.length > 0 ? (
 									<select
-										className="h-6.5 min-w-0 flex-1 appearance-none rounded-r-md border border-kumo-hairline border-l-0 bg-kumo-control px-2 pr-4 text-xs text-kumo-default focus:outline-none"
+										className="h-7 min-w-0 flex-1 appearance-none rounded-r-md border border-kumo-hairline border-l-0 bg-kumo-control px-2 pr-4 text-xs text-kumo-default focus:outline-none"
 										value={selectedDomain}
 										onChange={(e) => setSelectedDomain(e.target.value)}
 										required
@@ -624,7 +632,7 @@ export default function HomeRoute() {
 						Configure the Resend API key for this domain.
 					</p>
 
-					{/* ── 1. API Key 配置状态 ── */}
+					{/* ── 1. API Key Configuration Status ── */}
 					<div className="rounded-lg border px-3 py-2 mb-3">
 						<div className="flex items-center gap-2">
 							<Key size={14} className="text-kumo-subtle shrink-0" />
@@ -633,17 +641,17 @@ export default function HomeRoute() {
 						{apiKeyDomain?.hasKey ? (
 							<div className="flex items-center gap-2 mt-2">
 								<CircleCheckBig size={12} className="text-green-600 shrink-0" fill="currentColor" />
-								<span className="text-xs text-green-700">已配置</span>
+								<span className="text-xs text-green-700">Configured</span>
 							</div>
 						) : (
 							<div className="flex items-center gap-2 mt-2">
 								<TriangleAlert size={12} className="text-amber-500 shrink-0" fill="currentColor" />
-								<span className="text-xs text-amber-700">未配置</span>
+								<span className="text-xs text-amber-700">Not Configured</span>
 							</div>
 						)}
 					</div>
 
-					{/* ── 2. Domain 验证状态（仅在验证后显示） ── */}
+					{/* ── 2. Domain Verification Status (shown only after verification) ── */}
 					{apiKeyVerifyStatus !== "idle" && (
 						<div className="rounded-lg border px-3 py-2 mb-3">
 							<div className="flex items-center gap-2">

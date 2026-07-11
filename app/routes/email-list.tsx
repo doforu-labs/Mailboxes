@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
+import { Button, Dialog, Pagination, Tooltip } from "@cloudflare/kumo";
 import {
 	Archive,
 	Reply,
@@ -153,6 +153,8 @@ export default function EmailListRoute() {
 		startCompose,
 	} = useUIStore();
 	const [page, setPage] = useState(1);
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+	const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -213,12 +215,17 @@ export default function EmailListRoute() {
 	const handleDelete = (e: React.MouseEvent, emailId: string) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (mailboxId) {
-			const confirmed = window.confirm("Are you sure you want to delete this email?");
-			if (!confirmed) return;
-			deleteEmail.mutate({ mailboxId, id: emailId });
-			if (selectedEmailId === emailId) closePanel();
+		setPendingDeleteId(emailId);
+		setDeleteConfirmOpen(true);
+	};
+
+	const confirmDelete = () => {
+		if (mailboxId && pendingDeleteId) {
+			deleteEmail.mutate({ mailboxId, id: pendingDeleteId });
+			if (selectedEmailId === pendingDeleteId) closePanel();
 		}
+		setDeleteConfirmOpen(false);
+		setPendingDeleteId(null);
 	};
 
 	const handleRefresh = () => {
@@ -295,7 +302,7 @@ export default function EmailListRoute() {
 								size="sm"
 								icon={
 									<RefreshCw
-										size={18}
+										size={16}
 										className={isRefreshing ? "animate-spin" : ""}
 									/>
 								}
@@ -349,7 +356,7 @@ export default function EmailListRoute() {
 											}}
 										>
 											<Star
-												size={16}
+												size={14}
 												fill={email.starred ? "currentColor" : "none"}
 												className={
 													email.starred
@@ -427,7 +434,7 @@ export default function EmailListRoute() {
 													variant="ghost"
 													shape="square"
 													size="sm"
-													icon={email.read ? <Mail size={14} /> : <MailOpen size={14} />}
+													icon={email.read ? <Mail size={16} /> : <MailOpen size={16} />}
 													onClick={(e) => {
 														e.stopPropagation();
 														if (mailboxId)
@@ -445,7 +452,7 @@ export default function EmailListRoute() {
 													variant="ghost"
 													shape="square"
 													size="sm"
-													icon={<Trash2 size={14} />}
+													icon={<Trash2 size={16} />}
 													onClick={(e) => handleDelete(e, email.id)}
 													aria-label="Delete"
 												/>
@@ -463,7 +470,43 @@ export default function EmailListRoute() {
 					)}
 				</div>
 
-				{/* Pagination */}
+				{/* Delete confirmation dialog */}
+				<Dialog.Root
+					open={deleteConfirmOpen}
+					onOpenChange={(isOpen) => {
+						if (!isOpen) {
+							setDeleteConfirmOpen(false);
+							setPendingDeleteId(null);
+						}
+					}}
+				>
+					<Dialog size="sm" className="p-6">
+						<Dialog.Title className="text-base font-semibold mb-1">
+							Delete Email
+						</Dialog.Title>
+						<p className="text-sm text-kumo-subtle mb-5">
+							Are you sure you want to delete this email? This action cannot be undone.
+						</p>
+						<div className="flex justify-end gap-2">
+							<Dialog.Close
+								render={(props) => (
+									<Button {...props} variant="secondary" size="sm">
+										Cancel
+								</Button>
+								)}
+							/>
+							<Button
+								variant="destructive"
+								size="sm"
+								onClick={confirmDelete}
+							>
+								Delete
+							</Button>
+						</div>
+					</Dialog>
+				</Dialog.Root>
+
+			{/* Pagination */}
 				{totalCount > PAGE_SIZE && (
 					<div className="flex justify-center py-3 border-t border-kumo-line shrink-0">
 						<Pagination

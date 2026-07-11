@@ -154,7 +154,7 @@ export default function Sidebar() {
 				<Button
 					variant="primary"
 					size="sm"
-					icon={<Pencil size={14} />}
+					icon={<Pencil size={16} />}
 					onClick={() => startCompose()}
 					className="w-fit"
 				>
@@ -250,7 +250,7 @@ export default function Sidebar() {
 						<div className="flex justify-end gap-2">
 							<Dialog.Close
 								render={(props) => (
-									<Button {...props} variant="secondary">
+									<Button {...props} variant="secondary" size="sm">
 										Cancel
 									</Button>
 								)}
@@ -258,6 +258,7 @@ export default function Sidebar() {
 							<Button
 								type="submit"
 								variant="primary"
+								size="sm"
 								disabled={!newFolderName.trim()}
 							>
 								Create

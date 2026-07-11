@@ -5,7 +5,9 @@
 import {
 	Badge,
 	Button,
+	Dialog,
 	Input,
+	Loader,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
@@ -139,52 +141,45 @@ function DeleteDomainDialog({
 	isDeleting: boolean;
 }) {
 	return (
-		<>
-			{open && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center">
-					<div
-						className="fixed inset-0 bg-black/40"
-						onClick={onClose}
-						onKeyDown={(e) => {
-							if (e.key === "Escape") onClose();
-						}}
-					/>
-					<div className="relative z-10 w-full max-w-sm rounded-xl border border-kumo-line bg-kumo-base p-6 shadow-xl">
-						<div className="flex items-center gap-3 mb-4">
-							<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
-								<TriangleAlert size={20} />
-							</div>
-							<h3 className="text-base font-semibold text-kumo-default">
-								Delete Domain
-							</h3>
-						</div>
-						<p className="text-sm text-kumo-subtle mb-5">
-							Are you sure you want to delete{" "}
-							<strong className="text-kumo-default">{domainName}</strong>?
-							This will remove all DNS records and cannot be undone.
-						</p>
-						<div className="flex justify-end gap-2">
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={onClose}
-								disabled={isDeleting}
-							>
+		<Dialog.Root
+			open={open}
+			onOpenChange={(isOpen) => {
+				if (!isOpen) onClose();
+			}}
+		>
+			<Dialog size="sm" className="p-6">
+				<div className="flex items-center gap-3 mb-4">
+					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+						<TriangleAlert size={20} />
+					</div>
+					<Dialog.Title className="text-base font-semibold text-kumo-default">
+						Delete Domain
+					</Dialog.Title>
+				</div>
+				<p className="text-sm text-kumo-subtle mb-5">
+					Are you sure you want to delete{" "}
+					<strong className="text-kumo-default">{domainName}</strong>?
+					This will remove all DNS records and cannot be undone.
+				</p>
+				<div className="flex justify-end gap-2">
+					<Dialog.Close
+						render={(props) => (
+							<Button {...props} variant="secondary" size="sm" disabled={isDeleting}>
 								Cancel
 							</Button>
-							<Button
-								variant="destructive"
-								size="sm"
-								loading={isDeleting}
-								onClick={onDelete}
-							>
-								Delete
-							</Button>
-						</div>
-					</div>
+						)}
+					/>
+					<Button
+						variant="destructive"
+						size="sm"
+						loading={isDeleting}
+						onClick={onDelete}
+					>
+						Delete
+					</Button>
 				</div>
-			)}
-		</>
+			</Dialog>
+		</Dialog.Root>
 	);
 }
 
@@ -314,7 +309,7 @@ export default function DomainDetailsRoute() {
 	if (!domainsFetched) {
 		return (
 			<div className="min-h-screen bg-kumo-recessed flex items-center justify-center">
-				<div className="text-sm text-kumo-subtle">Loading…</div>
+				<div className="flex items-center justify-center"><Loader size="lg" /></div>
 			</div>
 		);
 	}
@@ -326,9 +321,10 @@ export default function DomainDetailsRoute() {
 					<div className="mb-6">
 						<RouterLink
 							to="/"
-							className="text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
+							className="inline-flex items-center gap-1.5 text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
 						>
-							← Back to Mailboxes
+							<ArrowLeft size={14} />
+							Back to Mailboxes
 						</RouterLink>
 					</div>
 					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6 text-center">

@@ -118,6 +118,19 @@ export default function Header() {
 				/>
 			)}
 
+			{/* Close search button - mobile only, visible when search is expanded */}
+			{isSearchExpanded && (
+				<Button
+					variant="ghost"
+					shape="square"
+					size="sm"
+					icon={<X size={20} />}
+					onClick={() => setIsSearchExpanded(false)}
+					aria-label="Close search"
+					className="md:hidden shrink-0"
+				/>
+			)}
+
 			<div className="flex items-center gap-1 ml-auto shrink-0">
 				<Tooltip content="AI Assistant" side="bottom" asChild>
 					<Button
