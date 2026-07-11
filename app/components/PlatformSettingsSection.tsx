@@ -330,7 +330,7 @@ export function PlatformSettingsSection() {
 							</a>
 						</p>
 						<p className="text-xs text-kumo-subtle mt-2">
-							点击上方链接会自动勾选以下权限（全部 4 项）：
+							点击上方链接会自动勾选前 3 项权限。还需手动添加第 4 项：
 						</p>
 						<ul className="text-xs text-kumo-subtle list-disc list-inside mt-1 space-y-0.5">
 							<li>
@@ -343,11 +343,13 @@ export function PlatformSettingsSection() {
 								Zone Settings Edit — 区域设置
 							</li>
 							<li>
-								Email Routing Rules Edit — 邮件路由
+								Email Routing Rules Edit — 邮件路由（⚠️ 需手动添加）
 							</li>
 						</ul>
 						<p className="text-xs text-kumo-subtle mt-2">
-							Token 创建后复制粘贴到上方输入框即可。
+							链接已自动勾选前 3 项权限。请额外点击"添加更多"，手动添加：
+								区域 → 电子邮件路由规则 → 编辑
+								然后复制 Token 粘贴到上方输入框。
 						</p>
 					</div>
 
