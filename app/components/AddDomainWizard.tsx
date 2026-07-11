@@ -43,7 +43,6 @@ type WizardStep =
 	| "domain"
 	| "domain-type"
 	| "receive-cf"
-	| "migrate-vercel"
 	| "receive-external"
 	| "sending"
 	| "dns-records"
@@ -61,7 +60,6 @@ function positionForStep(step: WizardStep): StepPosition {
 		case "domain-type":
 			return "domain";
 		case "receive-cf":
-		case "migrate-vercel":
 		case "receive-external":
 			return "receive";
 		case "sending":
@@ -84,7 +82,6 @@ const STEP_LABELS: Record<StepPosition, string> = {
 function getDnsProviderGuide(provider: string): string | null {
 	const guides: Record<string, string> = {
 		Cloudflare: "https://developers.cloudflare.com/email-routing/get-started/",
-		Vercel: "https://vercel.com/docs/domains/manage-a-domain#configuring-dns-records",
 		GoDaddy: "https://www.godaddy.com/help/add-or-edit-mx-records-19238",
 		Namecheap: "https://www.namecheap.com/support/knowledgebase/article.aspx/223/22/how-do-i-set-up-mail-forwarding-for-my-domain/",
 	};
@@ -181,8 +178,6 @@ export function AddDomainWizard({
 	const [cfZoneName, setCfZoneName] = useState<string | null>(null);
 	const [detecting, setDetecting] = useState(false);
 	const [detectedDnsProvider, setDetectedDnsProvider] = useState<DnsProviderDetection | null>(null);
-	const [matchedProvider, setMatchedProvider] = useState<string | null>(null);
-	const [matchedProviderCreds, setMatchedProviderCreds] = useState<Record<string, string> | null>(null);
 
 	// Receiving setup
 	const [receiveStatus, setReceiveStatus] = useState<
@@ -208,18 +203,6 @@ export function AddDomainWizard({
 		"idle" | "verifying" | "verified" | "failed"
 	>("idle");
 	const [verifyError, setVerifyError] = useState<string | null>(null);
-
-	// Summary
-	// Vercel migration
-	const [vercelToken, setVercelToken] = useState("");
-	const [migrationStatus, setMigrationStatus] = useState<
-		"idle" | "migrating" | "success" | "failed"
-	>("idle");
-	const [migrationStep, setMigrationStep] = useState(0);
-	const [migrationError, setMigrationError] = useState<string | null>(null);
-	const [cfApiToken, setCfApiToken] = useState("");
-	const [pendingRootNsNameservers, setPendingRootNsNameservers] = useState<string[] | null>(null);
-	const [pendingZoneId, setPendingZoneId] = useState("");
 
 	const [summary, setSummary] = useState<{
 		receiving: "configured" | "skipped" | "failed";
@@ -292,58 +275,6 @@ export function AddDomainWizard({
 		}
 	};
 
-	// Provider ID mapping from DNS detection name to our provider ID
-	const PROVIDER_MAP: Record<string, string> = {
-		"Vercel": "vercel",
-		"Gandi": "gandi",
-		"Porkbun": "porkbun",
-		"Name.com": "name",
-		"DNSimple": "dnsimple",
-	};
-
-	const PROVIDER_DISPLAY: Record<string, string> = {
-		vercel: "Vercel",
-		gandi: "Gandi",
-		porkbun: "Porkbun",
-		name: "Name.com",
-		dnsimple: "DNSimple",
-	};
-	async function loadProviderCreds(providerId: string): Promise<Record<string, string> | null> {
-		const settingApi = (await import("~/services/api")).default;
-		switch (providerId) {
-			case "vercel": {
-				const [t, team] = await Promise.all([
-					settingApi.getPlatformSetting("vercel_api_token"),
-					settingApi.getPlatformSetting("vercel_team_id"),
-				]);
-				return t.value ? { apiToken: t.value || "", teamId: team.value || "" } : null;
-			}
-			case "gandi": {
-				const t = await settingApi.getPlatformSetting("gandi_api_token");
-				return t.value ? { apiToken: t.value || "" } : null;
-			}
-			case "porkbun": {
-				const [k, s] = await Promise.all([
-					settingApi.getPlatformSetting("porkbun_api_key"),
-					settingApi.getPlatformSetting("porkbun_secret_api_key"),
-				]);
-				return k.value && s.value ? { apiKey: k.value || "", secretApiKey: s.value || "" } : null;
-			}
-			case "name": {
-				const [u, t] = await Promise.all([
-					settingApi.getPlatformSetting("namecom_username"),
-					settingApi.getPlatformSetting("namecom_api_token"),
-				]);
-				return u.value && t.value ? { username: u.value || "", apiToken: t.value || "" } : null;
-			}
-			case "dnsimple": {
-				const t = await settingApi.getPlatformSetting("dnsimple_api_token");
-				return t.value ? { apiToken: t.value || "" } : null;
-			}
-			default:
-				return null;
-		}
-	}
 
 	// ── MX Verification ──
 	const handleVerifyMx = async () => {
@@ -365,265 +296,6 @@ export function AddDomainWizard({
 		}
 	};
 
-	const MIGRATION_STEPS = [
-		{ id: "verify-token", label: "验证 API Token 权限" },
-		{ id: "cf-zone", label: "添加域名到 Cloudflare" },
-		{ id: "vercel-ns", label: "修改 Vercel NS 记录" },
-		{ id: "dns-propagation", label: "等待 DNS 传播" },
-		{ id: "email-routing", label: "启用 Email Routing" },
-		{ id: "dns-records", label: "配置 DNS 记录" },
-	];
-
-	const handleStartMigration = async () => {
-		setMigrationStatus("migrating");
-		setMigrationError(null);
-
-		try {
-			const cfCreds = await loadCfCredentials();
-			if (!cfCreds.cfApiToken) {
-				throw new Error("请先在平台设置中配置 Cloudflare API Token");
-			}
-			setCfApiToken(cfCreds.cfApiToken);
-			setMigrationStep(0);
-
-			// Pre-flight: 验证 CF Token 权限
-			const verifyRes = await fetch("/api/v1/setup/cloudflare/verify-token", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ cfApiToken: cfCreds.cfApiToken }),
-			});
-			const verifyData = await verifyRes.json();
-			if (!verifyRes.ok || !verifyData.valid) {
-				throw new Error(verifyData.error || "API Token 权限不足，请检查 Token 配置");
-			}
-			setMigrationStep(1);
-
-			// Step 2: 添加域名到 Cloudflare
-			const zoneRes = await fetch("/api/v1/setup/cloudflare/add-zone", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ domain: domainName.trim(), cfApiToken: cfCreds.cfApiToken }),
-			});
-			const zoneData = await zoneRes.json();
-			if (!zoneRes.ok) throw new Error(zoneData.error || "添加域名到 Cloudflare 失败");
-			setMigrationStep(2);
-
-			// Step 3: 更新 Vercel NS
-			const nsRes = await fetch("/api/v1/setup/vercel/update-ns", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					domain: domainName.trim(),
-					vercelToken,
-					nameservers: zoneData.nameservers,
-				}),
-			});
-			const nsData = await nsRes.json();
-			if (!nsRes.ok) {
-				if (nsData.error === "root_domain_ns") {
-					// Root domain — Vercel API cannot change NS, user must do it manually
-					setPendingRootNsNameservers(nsData.nameservers);
-					setPendingZoneId(zoneData.zoneId);
-					setCfApiToken(cfCreds.cfApiToken);
-					return;
-				}
-				throw new Error(nsData.error || "修改 Vercel NS 记录失败");
-			}
-			setMigrationStep(3);
-
-			// Step 4: 轮询检查 NS 传播（最多 5 分钟）
-			let propagated = false;
-			for (let i = 0; i < 30; i++) {
-				await new Promise((r) => setTimeout(r, 10000));
-				const checkRes = await fetch(
-					`/api/v1/setup/check-ns/${domainName.trim()}?expected=${zoneData.nameservers.join(",")}`
-				);
-				const checkData = await checkRes.json();
-				if (checkData.propagated) {
-					propagated = true;
-					break;
-				}
-			}
-			if (!propagated) {
-				throw new Error("DNS 传播超时，请稍后在域名详情页重试");
-			}
-			setMigrationStep(4);
-
-			// Step 4.5: Wait for Cloudflare zone to become active
-			let zoneActive = false;
-			for (let i = 0; i < 30; i++) {
-				await new Promise((r) => setTimeout(r, 10000)); // 10s intervals
-				const zsRes = await fetch(
-					`/api/v1/setup/check-zone-status/${zoneData.zoneId}?cfApiToken=${encodeURIComponent(cfCreds.cfApiToken)}`
-				);
-				const zsData = await zsRes.json();
-				if (zsData.active) {
-					zoneActive = true;
-					break;
-				}
-			}
-			if (!zoneActive) {
-				throw new Error("Cloudflare Zone 激活超时，请稍后在域名详情页重试");
-			}
-
-			// Step 5: 启用 Email Routing
-			let erOk = false;
-			let erLastErr = "";
-			for (let attempt = 0; attempt < 5; attempt++) {
-				const erRes = await fetch("/api/v1/setup/email-routing", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						domain: domainName.trim(),
-						cfApiToken: cfCreds.cfApiToken,
-						cfAccountId: cfCreds.cfAccountId,
-					}),
-				});
-				if (erRes.ok) {
-					erOk = true;
-					break;
-				}
-				const erData = await erRes.json();
-				erLastErr = erData.error || `HTTP ${erRes.status}`;
-				// Zone not found or not ready — wait 30s and retry
-				if (erRes.status === 400 && erLastErr.includes("not found")) {
-					await new Promise((r) => setTimeout(r, 30000));
-					continue;
-				}
-				// Other errors — don't retry
-				break;
-			}
-			if (!erOk) throw new Error(erLastErr || "启用 Email Routing 失败");
-			setMigrationStep(5);
-
-			// Step 6: 创建域名记录（仅收件）
-			const domainRes = await fetch("/api/v1/domains", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					domain: domainName.trim(),
-					cfAccountId: cfCreds.cfAccountId.trim(),
-					cfZoneId: zoneData.zoneId,
-				}),
-			});
-			if (!domainRes.ok && domainRes.status !== 409) {
-				const domainData = await domainRes.json();
-				throw new Error(domainData.error || "创建域名记录失败");
-			}
-
-			setMigrationStatus("success");
-			setSummary({ receiving: "configured", sending: "skipped" });
-			setStep("done");
-			toastManager.add({ title: `域名 ${domainName} 自动迁移完成！` });
-			onSuccess();
-			onComplete?.();
-		} catch (err: unknown) {
-			setMigrationStatus("failed");
-			setMigrationError(err instanceof Error ? err.message : "迁移失败");
-		}
-	};
-
-	// Continue migration after user manually changes NS for root domain
-	const handleContinueRootNsMigration = async () => {
-		const nameservers = pendingRootNsNameservers;
-		const zoneId = pendingZoneId;
-		const cfToken = cfApiToken;
-		if (!nameservers?.length || !zoneId || !cfToken) return;
-
-		setPendingRootNsNameservers(null);
-		setMigrationStep(3);
-
-		try {
-			// Step 4: 轮询检查 NS 传播
-			let propagated = false;
-			for (let i = 0; i < 30; i++) {
-				await new Promise((r) => setTimeout(r, 10000));
-				const checkRes = await fetch(
-					`/api/v1/setup/check-ns/${domainName.trim()}?expected=${nameservers.join(",")}`
-				);
-				const checkData = await checkRes.json();
-				if (checkData.propagated) {
-					propagated = true;
-					break;
-				}
-			}
-			if (!propagated) {
-				throw new Error("DNS 传播超时，请稍后在域名详情页重试");
-			}
-			setMigrationStep(4);
-
-			// Step 4.5: Wait for Cloudflare zone to become active
-			let zoneActive = false;
-			for (let i = 0; i < 30; i++) {
-				await new Promise((r) => setTimeout(r, 10000));
-				const zsRes = await fetch(
-					`/api/v1/setup/check-zone-status/${zoneId}?cfApiToken=${encodeURIComponent(cfToken)}`
-				);
-				const zsData = await zsRes.json();
-				if (zsData.active) {
-					zoneActive = true;
-					break;
-				}
-			}
-			if (!zoneActive) {
-				throw new Error("Cloudflare Zone 激活超时，请稍后在域名详情页重试");
-			}
-
-			// Step 5: 启用 Email Routing
-			let erOk = false;
-			let erLastErr = "";
-			for (let attempt = 0; attempt < 5; attempt++) {
-				const erRes = await fetch("/api/v1/setup/email-routing", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						domain: domainName.trim(),
-						cfApiToken: cfToken,
-						cfAccountId: (await loadCfCredentials()).cfAccountId,
-					}),
-				});
-				if (erRes.ok) {
-					erOk = true;
-					break;
-				}
-				const erData = await erRes.json();
-				erLastErr = erData.error || `HTTP ${erRes.status}`;
-				if (erRes.status === 400 && erLastErr.includes("not found")) {
-					await new Promise((r) => setTimeout(r, 30000));
-					continue;
-				}
-				break;
-			}
-			if (!erOk) throw new Error(erLastErr || "启用 Email Routing 失败");
-			setMigrationStep(5);
-
-			// Step 6: 创建域名记录
-			const cfCreds = await loadCfCredentials();
-			const domainRes = await fetch("/api/v1/domains", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					domain: domainName.trim(),
-					cfAccountId: cfCreds.cfAccountId.trim(),
-					cfZoneId: zoneId,
-				}),
-			});
-			if (!domainRes.ok && domainRes.status !== 409) {
-				const domainData = await domainRes.json();
-				throw new Error(domainData.error || "创建域名记录失败");
-			}
-
-			setMigrationStatus("success");
-			setSummary({ receiving: "configured", sending: "skipped" });
-			setStep("done");
-			toastManager.add({ title: `域名 ${domainName} 自动迁移完成！` });
-			onSuccess();
-			onComplete?.();
-		} catch (err: unknown) {
-			setMigrationStatus("failed");
-			setMigrationError(err instanceof Error ? err.message : "迁移失败");
-		}
-	};
 
 	// ── Step 2: Domain type → proceed to receiving ──
 	const handleDomainTypeContinue = async () => {
@@ -631,23 +303,9 @@ export function AddDomainWizard({
 			setStep("receive-cf");
 		} else {
 			const providerName = detectedDnsProvider?.provider;
-			const providerId = providerName ? PROVIDER_MAP[providerName] : undefined;
-			if (providerId) {
-				const creds = await loadProviderCreds(providerId);
-				if (creds) {
-					setMatchedProvider(providerId);
-					setMatchedProviderCreds(creds);
-
-					// 如果是 Vercel 且有 Token，进入自动迁移流程
-					if (providerId === "vercel" && creds.apiToken) {
-						setVercelToken(creds.apiToken);
-						setStep("migrate-vercel");
-						return;
-					}
-
-					setStep("receive-external");
-					return;
-				}
+			if (providerName) {
+				setStep("receive-external");
+				return;
 			}
 			setStep("receive-external");
 		}
@@ -687,8 +345,6 @@ export function AddDomainWizard({
 			const result = await createDomain.mutateAsync({
 				domain: domainName.trim(),
 				resendApiKey: resendApiKey.trim() || undefined,
-				provider: matchedProvider ?? undefined,
-				providerCredentials: matchedProviderCreds ?? undefined,
 			});
 			setDnsRecords(result.dnsRecords);
 			if (result.warnings && result.warnings.length > 0) {
@@ -1077,143 +733,6 @@ export function AddDomainWizard({
 
 
 
-				{/* ── Step 3c: Auto-Migrate from Vercel ──── */}
-				{step === "migrate-vercel" && (
-					<>
-						<div className="flex justify-center mb-4">
-							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10">
-								<Globe size={24} className="text-amber-500" />
-							</div>
-						</div>
-						<Dialog.Title className="text-base font-semibold text-center mb-1">
-							自动迁移 DNS
-						</Dialog.Title>
-						<p className="text-sm text-kumo-subtle text-center mb-5">
-							将 <strong className="text-kumo-default">{domainName}</strong> 的 DNS
-							从 Vercel 迁移到 Cloudflare，以启用邮件接收功能。
-						</p>
-
-						{migrationStatus === "idle" && (
-							<>
-								<div className="rounded-lg bg-kumo-fill px-3 py-2.5 mb-4">
-									<p className="text-xs text-kumo-subtle">
-										此操作将自动完成以下步骤：
-									</p>
-									<ul className="text-xs text-kumo-subtle mt-2 space-y-1 list-disc list-inside">
-										<li>将域名添加到 Cloudflare</li>
-										<li>修改 Vercel DNS 的 NS 记录</li>
-										<li>等待 DNS 传播（约 2-5 分钟）</li>
-										<li>启用 Cloudflare Email Routing</li>
-										<li>配置 MX / SPF / DKIM 记录</li>
-									</ul>
-								</div>
-								<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 mb-4">
-									<p className="text-xs text-kumo-subtle">
-										ℹ️ 此操作不会影响您在 Vercel 上的其他 DNS 记录和网站托管。
-										仅修改 NS 记录以将邮件路由切换到 Cloudflare。
-									</p>
-								</div>
-								<div className="flex justify-end gap-2">
-									<Button
-										variant="secondary"
-										size="sm"
-										onClick={() => setStep("domain-type")}
-									>
-										<ChevronLeft size={14} />
-										Back
-									</Button>
-									<Button
-										variant="primary"
-										size="sm"
-										onClick={handleStartMigration}
-									>
-										开始迁移
-										<ArrowRight size={14} />
-									</Button>
-								</div>
-							</>
-						)}
-
-						{migrationStatus === "migrating" && (
-							<>
-								<div className="space-y-3 mb-5">
-									{MIGRATION_STEPS.map((s, i) => (
-										<div key={s.id} className="flex items-center gap-3">
-											{i < migrationStep ? (
-												<CircleCheckBig size={16} className="text-green-500 shrink-0" />
-											) : i === migrationStep ? (
-												<Loader2 size={16} className="text-blue-500 animate-spin shrink-0" />
-											) : (
-												<div className="h-4 w-4 rounded-full border-2 border-kumo-line shrink-0" />
-											)}
-											<span className={`text-sm ${i < migrationStep ? "text-green-600" : i === migrationStep ? "text-blue-600" : "text-kumo-muted"}`}>
-												{s.label}
-											</span>
-										</div>
-									))}
-								</div>
-								{migrationStep === 2 && (
-									<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 mb-4">
-										<p className="text-xs text-kumo-subtle">
-											⏳ 正在等待 DNS 传播，这通常需要 2-5 分钟...
-										</p>
-									</div>
-								)}
-							</>
-						)}
-
-						{migrationStatus === "migrating" && pendingRootNsNameservers && (
-							<>
-								<div className="space-y-3 mb-5">
-									{MIGRATION_STEPS.map((s, i) => (
-										<div key={s.id} className="flex items-center gap-3">
-											{i < 3 ? (
-												<CircleCheckBig size={16} className="text-green-500 shrink-0" />
-											) : i === 3 ? (
-												<Loader2 size={16} className="text-blue-500 animate-spin shrink-0" />
-											) : (
-												<div className="h-4 w-4 rounded-full border-2 border-kumo-line shrink-0" />
-											)}
-											<span className={`text-sm ${i < 3 ? "text-green-600" : i === 3 ? "text-blue-600" : "text-kumo-muted"}`}>
-												{s.id === "vercel-ns" ? "修改域名 NS 记录" : s.label}
-											</span>
-										</div>
-									))}
-								</div>
-								<div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
-									<p className="text-sm font-medium text-amber-800 mb-2">
-										⚠️ 请在域名注册商控制台修改 NS 记录
-									</p>
-									<p className="text-xs text-amber-700 mb-3">
-										Vercel API 不支持在根域名上修改 NS。请前往你的域名注册商（如 Namecheap、GoDaddy、Namesilo 等），将以下 NS 记录替换为：
-									</p>
-									<div className="bg-white rounded border border-amber-100 p-2.5 font-mono text-xs text-kumo-text mb-3">
-										{pendingRootNsNameservers.map((ns, i) => (
-											<div key={i}>{ns}</div>
-										))}
-									</div>
-									<p className="text-xs text-amber-600 mb-3">
-										修改后 DNS 传播可能需要 1-24 小时。
-									</p>
-									<Button
-									variant="primary"
-									size="sm"
-								onClick={handleContinueRootNsMigration}
-									>
-										已完成 NS 修改，继续 <ArrowRight size={14} />
-									</Button>
-									<Button
-										variant="secondary"
-										size="sm"
-										onClick={() => setStep("receive-external")}
-									>
-										手动配置
-									</Button>
-								</div>
-							</>
-						)}
-					</>
-				)}
 
 				{/* ── Step 3b: Receiving – External Domain ──── */}
 				{step === "receive-external" && (

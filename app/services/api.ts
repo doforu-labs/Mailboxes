@@ -163,19 +163,6 @@ export interface DnsProviderDetection {
 	nameservers: string[];
 }
 
-export interface VercelVerifyDomainRequest {
-	domain: string;
-	resendApiKey?: string;
-	vercelApiToken: string;
-	vercelTeamId?: string;
-}
-
-export interface VercelVerifyDomainResult {
-	success: boolean;
-	dnsRecords?: DnsRecord[];
-	warnings?: string[];
-}
-
 // ---------- API client ----------
 
 export interface CreateDomainResponse {
@@ -287,23 +274,6 @@ const api = {
 		post<VerifyResult>("/api/v1/setup/verify-domain", data),
 	setupEmailRouting: (data: SetupEmailRoutingRequest) =>
 		post<SetupResult>("/api/v1/setup/email-routing", data),
-	vercelVerifyDomain: (data: VercelVerifyDomainRequest) =>
-		post<VercelVerifyDomainResult>("/api/v1/setup/vercel-verify-domain", data),
-
-	// Unified DNS Provider
-	detectProviderDomains: (provider: string, credentials: Record<string, string>) =>
-		post<{ domains: Array<{ name: string; createdAt: string }>; teamName: string | null }>(
-			"/api/v1/setup/detect-provider-domains",
-			{ provider, credentials },
-		),
-	providerVerifyDomain: (data: {
-		provider: string;
-		domain: string;
-		resendApiKey: string;
-		credentials: Record<string, string>;
-	}) =>
-		post<VercelVerifyDomainResult>("/api/v1/setup/provider-verify-domain", data),
-
 	// Platform Settings
 	getPlatformSetting: (key: string) =>
 		get<{ key: string; value: string | null }>(`/api/v1/platform-settings/${key}`),

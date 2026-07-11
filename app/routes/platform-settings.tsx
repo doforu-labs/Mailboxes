@@ -15,7 +15,6 @@ import {
 import { useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
-import { CredentialsSection } from "~/components/CredentialsSection";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { PlatformSettingsSection } from "~/components/PlatformSettingsSection";
 import { useDomains } from "~/queries/domains";
@@ -160,11 +159,6 @@ export default function SettingsRoute() {
 					<DomainsSection />
 				</div>
 
-				{/* Credentials */}
-				<div>
-					<h2 className="text-sm font-semibold text-kumo-default mb-3">Credentials</h2>
-					<CredentialsSection />
-				</div>
 			</div>
 		</div>
 	);

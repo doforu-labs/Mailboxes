@@ -19,7 +19,6 @@ import { useState } from "react";
 import { Link as RouterLink } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { CatchAllDialog } from "~/components/CatchAllDialog";
-import { CredentialsSection } from "~/components/CredentialsSection";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { PlatformSettingsSection } from "~/components/PlatformSettingsSection";
 import {
@@ -99,11 +98,6 @@ export default function DomainsRoute() {
 					<PlatformSettingsSection />
 				</div>
 
-				{/* Credentials */}
-				<div className="mb-6">
-					<h2 className="text-sm font-semibold text-kumo-default mb-3">Credentials</h2>
-					<CredentialsSection />
-				</div>
 
 				{/* Domains */}
 				<div>

@@ -101,7 +101,7 @@ async function runTests() {
     console.log("  📸 Screenshot saved: e2e/settings-page.png");
 
     // Verify CredentialsSection rendered (check for provider labels)
-    const credSection = page.locator("text=API Credentials, text=Cloudflare API Token, text=Vercel API Token");
+    const credSection = page.locator("text=API Credentials, text=Cloudflare API Token");
     const credCount = await credSection.count();
     console.log(`  CredentialsSection rendered: ${credCount > 0 ? "YES" : "NO"} (${credCount} elements found)`);
 

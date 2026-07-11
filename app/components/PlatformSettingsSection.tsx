@@ -74,39 +74,6 @@ export const CF_TOKEN_TEMPLATE_URL = (() => {
 	)}&accountId=*&zoneId=all&name=Mailboxes%20Token`;
 })();
 
-// ── Vercel Credentials (D1 via API) ──────────────────────────────
-// Kept here as shared utilities. UI is in CredentialsSection.
-
-const VERCEL_API_TOKEN_KEY = "vercel_api_token";
-const VERCEL_TEAM_ID_KEY = "vercel_team_id";
-
-export interface VercelCredentials {
-	vercelApiToken: string;
-	vercelTeamId: string;
-}
-
-export async function loadVercelCredentials(): Promise<VercelCredentials> {
-	try {
-		const [tokenRes, teamRes] = await Promise.all([
-			api.getPlatformSetting(VERCEL_API_TOKEN_KEY),
-			api.getPlatformSetting(VERCEL_TEAM_ID_KEY),
-		]);
-		return {
-			vercelApiToken: tokenRes.value ?? "",
-			vercelTeamId: teamRes.value ?? "",
-		};
-	} catch {
-		return { vercelApiToken: "", vercelTeamId: "" };
-	}
-}
-
-export async function saveVercelCredentials(creds: VercelCredentials): Promise<void> {
-	await Promise.all([
-		api.setPlatformSetting(VERCEL_API_TOKEN_KEY, creds.vercelApiToken),
-		api.setPlatformSetting(VERCEL_TEAM_ID_KEY, creds.vercelTeamId),
-	]);
-}
-
 // ── Platform Settings Section ────────────────────────────────────
 
 export function PlatformSettingsSection() {
