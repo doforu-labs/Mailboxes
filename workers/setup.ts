@@ -568,7 +568,10 @@ setup.post("/api/v1/domains", async (c) => {
 
 				resendDomainId = resendData.id;
 
-				// 2. Get Cloudflare zone ID
+				// 2. Get Cloudflare zone ID — try exact match, then parent zones for subdomains
+				let zoneId: string | undefined;
+
+				// Try exact match first
 				const zonesRes = await fetch(
 					`https://api.cloudflare.com/client/v4/zones?name=${domain}&status=active`,
 					{
@@ -580,7 +583,6 @@ setup.post("/api/v1/domains", async (c) => {
 					},
 				);
 
-				let zoneId: string | undefined;
 				if (zonesRes.ok) {
 					const zonesData = (await zonesRes.json()) as {
 						success: boolean;
@@ -590,6 +592,35 @@ setup.post("/api/v1/domains", async (c) => {
 						zoneId = zonesData.result[0].id;
 					}
 				}
+
+				// If not found, try parent zones for subdomains (e.g. a.example.com → example.com)
+				if (!zoneId) {
+					const parts = domain.split(".");
+					for (let i = 1; i < parts.length - 1; i++) {
+						const parentZone = parts.slice(i).join(".");
+						const parentRes = await fetch(
+							`https://api.cloudflare.com/client/v4/zones?name=${parentZone}&status=active`,
+							{
+								method: "GET",
+								headers: {
+									Authorization: `Bearer ${cfApiToken}`,
+									"Content-Type": "application/json",
+								},
+							},
+						);
+						if (parentRes.ok) {
+							const parentData = (await parentRes.json()) as {
+								success: boolean;
+								result: Array<{ id: string }>;
+							};
+							if (parentData.success && parentData.result?.length) {
+								zoneId = parentData.result[0].id;
+								break;
+							}
+						}
+					}
+				}
+
 				if (!zoneId) {
 					warnings.push("Could not find Cloudflare zone for this domain — DNS records must be added manually");
 				}
