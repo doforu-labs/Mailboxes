@@ -646,6 +646,7 @@ setup.post("/api/v1/domains", async (c) => {
 	try {
 		const body = await c.req.json<{
 			domain: string;
+			cfZoneId?: string;
 			resendApiKey?: string;
 			cfApiToken?: string;
 			cfAccountId?: string;
@@ -653,7 +654,7 @@ setup.post("/api/v1/domains", async (c) => {
 			providerCredentials?: Record<string, string>;
 		}>();
 
-		const { domain, resendApiKey, cfApiToken, cfAccountId, provider, providerCredentials } = body;
+		const { domain, resendApiKey, cfApiToken, cfAccountId, cfZoneId, provider, providerCredentials } = body;
 
 		if (!domain) {
 			return c.json({ error: "Missing required field: domain" }, 400);
@@ -674,6 +675,8 @@ setup.post("/api/v1/domains", async (c) => {
 			name: domain.toLowerCase(),
 			status: "pending",
 			resend_api_key: resendApiKey || null,
+			cf_zone_id: cfZoneId || null,
+			cf_account_id: cfAccountId || null,
 			created_at: now,
 		});
 
@@ -880,7 +883,11 @@ setup.post("/api/v1/domains", async (c) => {
 				});
 			} else {
 				const errBody = await resendRes.json().catch(() => ({}));
-				// Domain record created but Resend setup failed — leave as pending
+				// Resend API failed — roll back the D1 record to avoid zombie
+				await dbService.deleteDomain(c.env.DB, domainId);
+				return c.json({
+					error: `Failed to create domain on Resend: ${(errBody as any)?.message || resendRes.statusText || resendRes.status}`,
+				}, 400);
 			}
 	} else if (resendApiKey) {
 		// Resend-only mode: create Resend domain, return DNS records for user to add manually
@@ -974,6 +981,8 @@ setup.post("/api/v1/domains", async (c) => {
 		} else {
 			const errBody = await resendRes.json().catch(() => ({}));
 			const msg = (errBody as any).message || `Resend API error: ${resendRes.status}`;
+			// Resend API failed — roll back the D1 record to avoid zombie
+			await dbService.deleteDomain(c.env.DB, domainId);
 			return c.json({ error: `Failed to create Resend domain: ${msg}` }, 400);
 		}
 	}

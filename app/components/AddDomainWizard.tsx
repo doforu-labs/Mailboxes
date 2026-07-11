@@ -218,6 +218,8 @@ export function AddDomainWizard({
 	const [migrationStep, setMigrationStep] = useState(0);
 	const [migrationError, setMigrationError] = useState<string | null>(null);
 	const [cfApiToken, setCfApiToken] = useState("");
+	const [pendingRootNsNameservers, setPendingRootNsNameservers] = useState<string[] | null>(null);
+	const [pendingZoneId, setPendingZoneId] = useState("");
 
 	const [summary, setSummary] = useState<{
 		receiving: "configured" | "skipped" | "failed";
@@ -248,9 +250,21 @@ export function AddDomainWizard({
 					(z) => z.name === trimmed || trimmed.endsWith(`.${z.name}`),
 				);
 				if (match) {
-					setIsCfManaged(true);
-					setCfZoneName(match.name);
-					setDetectedDnsProvider(null);
+					if (match.status === "active") {
+						// Zone fully configured — go to Email Routing setup
+						setIsCfManaged(true);
+						setCfZoneName(match.name);
+						setDetectedDnsProvider(null);
+					} else {
+						// Zone exists but pending (NS not switched) — guide through migration
+						setIsCfManaged(false);
+						try {
+							const dnsResult = await api.detectDnsProvider(trimmed);
+							setDetectedDnsProvider(dnsResult);
+						} catch {
+							setDetectedDnsProvider({ provider: "Other", nameservers: [] });
+						}
+					}
 				} else {
 					setIsCfManaged(false);
 					try {
@@ -405,7 +419,16 @@ export function AddDomainWizard({
 				}),
 			});
 			const nsData = await nsRes.json();
-			if (!nsRes.ok) throw new Error(nsData.error || "修改 Vercel NS 记录失败");
+			if (!nsRes.ok) {
+				if (nsData.error === "root_domain_ns") {
+					// Root domain — Vercel API cannot change NS, user must do it manually
+					setPendingRootNsNameservers(nsData.nameservers);
+					setPendingZoneId(zoneData.zoneId);
+					setCfApiToken(cfCreds.cfApiToken);
+					return;
+				}
+				throw new Error(nsData.error || "修改 Vercel NS 记录失败");
+			}
 			setMigrationStep(3);
 
 			// Step 4: 轮询检查 NS 传播（最多 5 分钟）
@@ -426,7 +449,24 @@ export function AddDomainWizard({
 			}
 			setMigrationStep(4);
 
-			// Step 5: 启用 Email Routing (retry — zone may still be activating)
+			// Step 4.5: Wait for Cloudflare zone to become active
+			let zoneActive = false;
+			for (let i = 0; i < 30; i++) {
+				await new Promise((r) => setTimeout(r, 10000)); // 10s intervals
+				const zsRes = await fetch(
+					`/api/v1/setup/check-zone-status/${zoneData.zoneId}?cfApiToken=${encodeURIComponent(cfCreds.cfApiToken)}`
+				);
+				const zsData = await zsRes.json();
+				if (zsData.active) {
+					zoneActive = true;
+					break;
+				}
+			}
+			if (!zoneActive) {
+				throw new Error("Cloudflare Zone 激活超时，请稍后在域名详情页重试");
+			}
+
+			// Step 5: 启用 Email Routing
 			let erOk = false;
 			let erLastErr = "";
 			for (let attempt = 0; attempt < 5; attempt++) {
@@ -460,7 +500,113 @@ export function AddDomainWizard({
 			const domainRes = await fetch("/api/v1/domains", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ domain: domainName.trim() }),
+				body: JSON.stringify({
+					domain: domainName.trim(),
+					cfAccountId: cfCreds.cfAccountId.trim(),
+					cfZoneId: zoneData.zoneId,
+				}),
+			});
+			if (!domainRes.ok && domainRes.status !== 409) {
+				const domainData = await domainRes.json();
+				throw new Error(domainData.error || "创建域名记录失败");
+			}
+
+			setMigrationStatus("success");
+			setSummary({ receiving: "configured", sending: "skipped" });
+			setStep("done");
+			toastManager.add({ title: `域名 ${domainName} 自动迁移完成！` });
+			onSuccess();
+			onComplete?.();
+		} catch (err: unknown) {
+			setMigrationStatus("failed");
+			setMigrationError(err instanceof Error ? err.message : "迁移失败");
+		}
+	};
+
+	// Continue migration after user manually changes NS for root domain
+	const handleContinueRootNsMigration = async () => {
+		const nameservers = pendingRootNsNameservers;
+		const zoneId = pendingZoneId;
+		const cfToken = cfApiToken;
+		if (!nameservers?.length || !zoneId || !cfToken) return;
+
+		setPendingRootNsNameservers(null);
+		setMigrationStep(3);
+
+		try {
+			// Step 4: 轮询检查 NS 传播
+			let propagated = false;
+			for (let i = 0; i < 30; i++) {
+				await new Promise((r) => setTimeout(r, 10000));
+				const checkRes = await fetch(
+					`/api/v1/setup/check-ns/${domainName.trim()}?expected=${nameservers.join(",")}`
+				);
+				const checkData = await checkRes.json();
+				if (checkData.propagated) {
+					propagated = true;
+					break;
+				}
+			}
+			if (!propagated) {
+				throw new Error("DNS 传播超时，请稍后在域名详情页重试");
+			}
+			setMigrationStep(4);
+
+			// Step 4.5: Wait for Cloudflare zone to become active
+			let zoneActive = false;
+			for (let i = 0; i < 30; i++) {
+				await new Promise((r) => setTimeout(r, 10000));
+				const zsRes = await fetch(
+					`/api/v1/setup/check-zone-status/${zoneId}?cfApiToken=${encodeURIComponent(cfToken)}`
+				);
+				const zsData = await zsRes.json();
+				if (zsData.active) {
+					zoneActive = true;
+					break;
+				}
+			}
+			if (!zoneActive) {
+				throw new Error("Cloudflare Zone 激活超时，请稍后在域名详情页重试");
+			}
+
+			// Step 5: 启用 Email Routing
+			let erOk = false;
+			let erLastErr = "";
+			for (let attempt = 0; attempt < 5; attempt++) {
+				const erRes = await fetch("/api/v1/setup/email-routing", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						domain: domainName.trim(),
+						cfApiToken: cfToken,
+						cfAccountId: (await loadCfCredentials()).cfAccountId,
+					}),
+				});
+				if (erRes.ok) {
+					erOk = true;
+					break;
+				}
+				const erData = await erRes.json();
+				erLastErr = erData.error || `HTTP ${erRes.status}`;
+				if (erRes.status === 400 && erLastErr.includes("not found")) {
+					await new Promise((r) => setTimeout(r, 30000));
+					continue;
+				}
+				break;
+			}
+			if (!erOk) throw new Error(erLastErr || "启用 Email Routing 失败");
+			setMigrationStep(5);
+
+			// Step 6: 创建域名记录
+			const cfCreds = await loadCfCredentials();
+			const domainRes = await fetch("/api/v1/domains", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					domain: domainName.trim(),
+					cfAccountId: cfCreds.cfAccountId.trim(),
+					cfZoneId: zoneId,
+				}),
 			});
 			if (!domainRes.ok && domainRes.status !== 409) {
 				const domainData = await domainRes.json();
@@ -1016,20 +1162,45 @@ export function AddDomainWizard({
 							</>
 						)}
 
-						{migrationStatus === "failed" && (
+						{migrationStatus === "migrating" && pendingRootNsNameservers && (
 							<>
-								<ErrorBanner message={migrationError ?? "迁移失败"} />
-								<div className="flex justify-end gap-2 mt-4">
+								<div className="space-y-3 mb-5">
+									{MIGRATION_STEPS.map((s, i) => (
+										<div key={s.id} className="flex items-center gap-3">
+											{i < 3 ? (
+												<CircleCheckBig size={16} className="text-green-500 shrink-0" />
+											) : i === 3 ? (
+												<Loader2 size={16} className="text-blue-500 animate-spin shrink-0" />
+											) : (
+												<div className="h-4 w-4 rounded-full border-2 border-kumo-line shrink-0" />
+											)}
+											<span className={`text-sm ${i < 3 ? "text-green-600" : i === 3 ? "text-blue-600" : "text-kumo-muted"}`}>
+												{s.id === "vercel-ns" ? "修改域名 NS 记录" : s.label}
+											</span>
+										</div>
+									))}
+								</div>
+								<div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+									<p className="text-sm font-medium text-amber-800 mb-2">
+										⚠️ 请在域名注册商控制台修改 NS 记录
+									</p>
+									<p className="text-xs text-amber-700 mb-3">
+										Vercel API 不支持在根域名上修改 NS。请前往你的域名注册商（如 Namecheap、GoDaddy、Namesilo 等），将以下 NS 记录替换为：
+									</p>
+									<div className="bg-white rounded border border-amber-100 p-2.5 font-mono text-xs text-kumo-text mb-3">
+										{pendingRootNsNameservers.map((ns, i) => (
+											<div key={i}>{ns}</div>
+										))}
+									</div>
+									<p className="text-xs text-amber-600 mb-3">
+										修改后 DNS 传播可能需要 1-24 小时。
+									</p>
 									<Button
-										variant="secondary"
-										size="sm"
-										onClick={() => {
-											setMigrationStatus("idle");
-											setMigrationStep(0);
-											setMigrationError(null);
-										}}
+									variant="primary"
+									size="sm"
+								onClick={handleContinueRootNsMigration}
 									>
-										重试
+										已完成 NS 修改，继续 <ArrowRight size={14} />
 									</Button>
 									<Button
 										variant="secondary"

@@ -22,7 +22,7 @@ import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
 import { handleResendInbound } from "./inbound";
-import { handleVerifyCfToken, handleAddCloudflareZone, handleUpdateVercelNS, handleCheckNS } from "./vercel-setup";
+import { handleVerifyCfToken, handleAddCloudflareZone, handleUpdateVercelNS, handleCheckNS, handleCheckZoneStatus } from "./vercel-setup";
 import * as db from "./db";
 import type { SearchFilterOptions, EmailFull } from "./db";
 import {
@@ -142,6 +142,7 @@ app.post("/api/v1/setup/cloudflare/verify-token", handleVerifyCfToken as any);
 app.post("/api/v1/setup/cloudflare/add-zone", handleAddCloudflareZone as any);
 app.post("/api/v1/setup/vercel/update-ns", handleUpdateVercelNS as any);
 app.get("/api/v1/setup/check-ns/:domain", handleCheckNS as any);
+app.get("/api/v1/setup/check-zone-status/:zoneId", handleCheckZoneStatus as any);
 
 // -- Platform Settings ------------------------------------------------
 
