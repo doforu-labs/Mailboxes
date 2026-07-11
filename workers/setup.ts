@@ -1384,9 +1384,9 @@ setup.post("/api/v1/setup/vercel-verify-domain", async (c) => {
 				ttl: record.ttl ? Number(record.ttl) : 60,
 			};
 
-			// MX records require priority
+			// MX records require priority (Vercel uses mxPriority, not priority)
 			if (record.priority !== undefined) {
-				recordBody.priority = record.priority;
+				recordBody.mxPriority = record.priority;
 			}
 
 			// Build Vercel DNS record creation URL
@@ -1521,7 +1521,7 @@ async function createProviderDnsRecords(
 						ttl: record.ttl ? Number(record.ttl) : 60,
 					};
 					if (record.priority !== undefined) {
-						recordBody.priority = record.priority;
+						recordBody.mxPriority = record.priority;
 					}
 					const recordUrl = new URL(`https://api.vercel.com/v2/domains/${domain}/records`);
 					if (credentials.teamId) {
