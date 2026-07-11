@@ -3,6 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import {
+	Badge,
 	Button,
 	Dialog,
 	Input,
@@ -12,21 +13,26 @@ import {
 } from "@cloudflare/kumo";
 import {
 	RotateCw,
+	CircleCheckBig,
+	MoreVertical,
 	Mail,
 	Settings,
 	Globe,
+	Key,
+	Loader2,
 	Plus,
 	Trash2,
+	TriangleAlert,
 } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import {
 	useCreateMailbox,
 	useDeleteMailbox,
 	useMailboxes,
 } from "~/queries/mailboxes";
-import { useDomains } from "~/queries/domains";
-import api from "~/services/api";
+import { useDomains, useUpdateDomainApiKey } from "~/queries/domains";
+import api, { type VerifyResendResult } from "~/services/api";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import type { Domain, Mailbox } from "~/types";
 
@@ -56,6 +62,32 @@ export default function HomeRoute() {
 		email: string;
 	} | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [openMenu, setOpenMenu] = useState<string | null>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	// Domain API Key dialog state
+	const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
+	const [apiKeyDomain, setApiKeyDomain] = useState<{ id: string; name: string; hasKey: boolean } | null>(null);
+	const [apiKeyValue, setApiKeyValue] = useState("");
+	const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+	const [isVerifyingApiKey, setIsVerifyingApiKey] = useState(false);
+	type ApiKeyVerifyStatus = "idle" | "verifying" | "valid" | "invalid" | "error";
+	const [apiKeyVerifyStatus, setApiKeyVerifyStatus] = useState<ApiKeyVerifyStatus>("idle");
+	const [apiKeyVerifyResult, setApiKeyVerifyResult] = useState<VerifyResendResult | null>(null);
+	const updateApiKey = useUpdateDomainApiKey();
+
+	// Close menu on outside click
+	useEffect(() => {
+		function handleClick(e: MouseEvent) {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				setOpenMenu(null);
+			}
+		}
+		if (openMenu) {
+			document.addEventListener("mousedown", handleClick);
+			return () => document.removeEventListener("mousedown", handleClick);
+		}
+	}, [openMenu]);
 
 	// Group mailboxes by domain
 	const groupedMailboxes = useMemo(() => {
@@ -160,6 +192,63 @@ export default function HomeRoute() {
 		}
 	};
 
+	const handleApiKeyOpen = (domain: Domain) => {
+		const hasKey = !!(domain as any).resend_api_key;
+		setApiKeyDomain({ id: domain.id, name: domain.name, hasKey });
+		// Pre-fill with masked key so user knows one is already set
+		setApiKeyValue(hasKey ? "••••••••••••••••••••" : "");
+		setApiKeyVerifyStatus("idle");
+		setApiKeyVerifyResult(null);
+		setIsApiKeyOpen(true);
+		setOpenMenu(null);
+	};
+
+	const handleVerifyApiKey = async () => {
+		if (!apiKeyDomain || !apiKeyValue || apiKeyValue === "••••••••••••••••••••") return;
+		setIsVerifyingApiKey(true);
+		setApiKeyVerifyStatus("verifying");
+		setApiKeyVerifyResult(null);
+		try {
+			// Use any mailbox from this domain to verify the key
+			const domainMailboxes = mailboxes.filter((m) => m.email.endsWith(`@${apiKeyDomain.name}`));
+			if (domainMailboxes.length === 0) {
+				setApiKeyVerifyStatus("error");
+				return;
+			}
+			const result = await api.verifyResendKey(domainMailboxes[0].id, apiKeyValue.trim());
+			setApiKeyVerifyResult(result);
+			setApiKeyVerifyStatus(result.valid ? "valid" : "invalid");
+		} catch {
+			setApiKeyVerifyStatus("error");
+		} finally {
+			setIsVerifyingApiKey(false);
+		}
+	};
+
+	const handleApiKeySave = async () => {
+		if (!apiKeyDomain) return;
+		const value = apiKeyValue.trim();
+		// If user didn't change the masked placeholder, treat as "keep existing"
+		const finalKey = value === "•••••••••••••••••••" ? "" : value;
+		setIsSavingApiKey(true);
+		try {
+			await updateApiKey.mutateAsync({
+				domainId: apiKeyDomain.id,
+				apiKey: finalKey,
+			});
+			toastManager.add({ title: `Resend API Key updated for ${apiKeyDomain.name}` });
+			setIsApiKeyOpen(false);
+			setApiKeyDomain(null);
+		} catch {
+			toastManager.add({
+				title: "Failed to update Resend API Key",
+				variant: "error",
+			});
+		} finally {
+			setIsSavingApiKey(false);
+		}
+	};
+
 	const handleDelete = async () => {
 		if (!mailboxToDelete) return;
 		setIsDeleting(true);
@@ -228,12 +317,9 @@ export default function HomeRoute() {
 									key={domainId}
 									className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden"
 								>
-									{/* Clickable domain header */}
-									<RouterLink
-										to={`/domains/${domainId}`}
-										className="block border-b border-kumo-line bg-kumo-fill/50 no-underline transition-colors hover:bg-kumo-tint"
-									>
-										{/* Row 1: Domain name, status, count */}
+									{/* Domain header row */}
+									<div className="border-b border-kumo-line bg-kumo-fill/50">
+										{/* Row 1: Domain name, status, count, menu */}
 										<div className="flex items-center gap-3 px-5 py-3">
 											<Globe
 												size={16}
@@ -246,8 +332,60 @@ export default function HomeRoute() {
 											<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
 												{groupMailboxes.length}
 											</span>
+											<div className="ml-auto" ref={menuRef}>
+												{!isOther && (
+													<div className="relative">
+														<button
+															type="button"
+															className="inline-flex items-center justify-center rounded-md p-1 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
+															onClick={() =>
+																setOpenMenu(openMenu === domainId ? null : domainId)
+															}
+															aria-label="Domain actions"
+														>
+															<MoreVertical size={16} />
+														</button>
+														{openMenu === domainId && (
+															<div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-kumo-line bg-kumo-base py-1 shadow-lg">
+																<RouterLink
+																	to={`/domains/${domainId}`}
+																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
+																	onClick={() => setOpenMenu(null)}
+																>
+																	Edit
+																</RouterLink>
+																<RouterLink
+																	to={`/domains/${domainId}`}
+																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
+																	onClick={() => setOpenMenu(null)}
+																>
+																	Manage DNS
+																</RouterLink>
+																<button
+																	type="button"
+																	className="flex items-center gap-2 w-full px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint text-left"
+																	onClick={() => handleApiKeyOpen(domain)}
+																>
+																	<Key size={14} />
+																	Resend API Key
+																	{(domain as any).resend_api_key ? (
+																		<CircleCheckBig size={12} className="ml-auto text-green-500" fill="currentColor" />
+																	) : (
+																		<TriangleAlert size={12} className="ml-auto text-amber-500" fill="currentColor" />
+																	)}
+																</button>
+																{domain.catch_all_mailbox && (
+																	<div className="px-3 py-2 text-xs text-kumo-subtle">
+																		Catch-all: {domain.catch_all_mailbox}
+																	</div>
+																)}
+															</div>
+														)}
+													</div>
+												)}
+											</div>
 										</div>
-										{/* Row 2: Added date, catch-all */}
+										{/* Row 2: Added date, receiving/sending status, catch-all */}
 										{!isOther && (
 											<div className="flex items-center gap-3 px-5 pb-2.5 text-[11px]">
 												<span className="text-kumo-subtle">
@@ -258,7 +396,7 @@ export default function HomeRoute() {
 												)}
 											</div>
 										)}
-									</RouterLink>
+									</div>
 
 									{/* Mailbox rows */}
 									{groupMailboxes.map((account, idx) => (
@@ -297,7 +435,7 @@ export default function HomeRoute() {
 												}}
 											/>
 										</RouterLink>
-									))}
+										))}
 
 									{/* Empty domain: prompt to create mailbox */}
 									{!isOther && hasNoMailboxes && (
@@ -351,12 +489,12 @@ export default function HomeRoute() {
 								mailbox.
 							</p>
 							<RouterLink
-								to="/settings"
-								className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-kumo-brand text-white hover:bg-kumo-brand/90 no-underline"
-							>
-								<Plus size={16} />
-								Add Domain
-							</RouterLink>
+							to="/settings"
+							className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-kumo-brand text-white hover:bg-kumo-brand/90 no-underline"
+						>
+							<Plus size={16} />
+							Add Domain
+						</RouterLink>
 						</div>
 					</div>
 				)}
@@ -483,6 +621,140 @@ export default function HomeRoute() {
 					</div>
 				</Dialog>
 			</Dialog.Root>
+
+			{/* API Key Dialog */}
+			<Dialog.Root open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen}>
+				<Dialog size="sm" className="p-6">
+					<Dialog.Title className="text-base font-semibold mb-1">
+						Resend API Key — {apiKeyDomain?.name}
+					</Dialog.Title>
+					<p className="text-sm text-kumo-subtle mb-5">
+						Configure the Resend API key for this domain.
+					</p>
+
+					{/* ── 1. API Key Configuration Status ── */}
+					<div className="rounded-lg border px-3 py-2 mb-3">
+						<div className="flex items-center gap-2">
+							<Key size={14} className="text-kumo-subtle shrink-0" />
+							<span className="text-xs font-medium text-kumo-default">API Key</span>
+						</div>
+						{apiKeyDomain?.hasKey ? (
+							<div className="flex items-center gap-2 mt-2">
+								<CircleCheckBig size={12} className="text-green-600 shrink-0" fill="currentColor" />
+								<span className="text-xs text-green-700">Configured</span>
+							</div>
+						) : (
+							<div className="flex items-center gap-2 mt-2">
+								<TriangleAlert size={12} className="text-amber-500 shrink-0" fill="currentColor" />
+								<span className="text-xs text-amber-700">Not Configured</span>
+							</div>
+						)}
+					</div>
+
+					{/* ── 2. Domain Verification Status (shown only after verification) ── */}
+					{apiKeyVerifyStatus !== "idle" && (
+						<div className="rounded-lg border px-3 py-2 mb-3">
+							<div className="flex items-center gap-2">
+								<Globe size={14} className="text-kumo-subtle shrink-0" />
+								<span className="text-xs font-medium text-kumo-default">Domain</span>
+							</div>
+
+							{apiKeyVerifyStatus === "verifying" && (
+								<div className="flex items-center gap-2 mt-2">
+									<Loader2 size={12} className="animate-spin text-kumo-subtle shrink-0" />
+									<span className="text-xs text-kumo-subtle">Verifying with Resend...</span>
+								</div>
+							)}
+
+							{apiKeyVerifyStatus === "valid" && apiKeyVerifyResult && (
+								<div className="space-y-1.5 mt-2">
+									<Badge variant="success"><CircleCheckBig size={12} fill="currentColor" /> API key verified</Badge>
+									{apiKeyVerifyResult.sendingReady ? (
+										<Badge variant="success">Domain verified & ready to send</Badge>
+									) : apiKeyVerifyResult.matchingDomain ? (
+										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> Domain "{apiKeyVerifyResult.matchingDomain.domain}" is "{apiKeyVerifyResult.matchingDomain.status}" — <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">verify DNS records in Resend</a></Badge>
+									) : (
+										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> No matching domain for {apiKeyDomain?.name} in Resend</Badge>
+									)}
+								</div>
+							)}
+
+							{apiKeyVerifyStatus === "invalid" && (
+								<div className="mt-2">
+									<Badge variant="error"><TriangleAlert size={12} fill="currentColor" /> {apiKeyVerifyResult?.error || "Invalid API key"}</Badge>
+								</div>
+							)}
+
+							{apiKeyVerifyStatus === "error" && (
+								<div className="mt-2">
+									<Badge variant="error">Verification failed — try again</Badge>
+								</div>
+							)}
+						</div>
+					)}
+
+					<div className="space-y-4">
+						<div className="relative">
+							<Input
+								label="Resend API Key"
+								type="text"
+								placeholder="re_..."
+								value={apiKeyValue}
+								onFocus={() => {
+									// Auto-clear mask so user can type a new key
+									if (apiKeyValue === "••••••••••••••••••••") {
+										setApiKeyValue("");
+									}
+								}}
+								onChange={(e) => {
+								setApiKeyValue(e.target.value);
+								setApiKeyVerifyStatus("idle");
+								setApiKeyVerifyResult(null);
+							}}
+							/>
+						</div>
+						{apiKeyDomain?.hasKey && apiKeyValue === "••••••••••••••••••••" && (
+							<p className="text-xs text-kumo-subtle mt-1">
+								Click the input to enter a new key.
+							</p>
+						)}
+
+						<div className="flex justify-end gap-2 pt-2">
+							<Dialog.Close
+								render={(props) => (
+									<Button {...props} variant="secondary" size="sm">
+										Cancel
+									</Button>
+								)}
+							/>
+							{apiKeyValue && apiKeyValue !== "••••••••••••••••••••" && (
+								<Button
+									variant="secondary"
+									size="sm"
+									loading={isVerifyingApiKey}
+									onClick={handleVerifyApiKey}
+								>
+									{isVerifyingApiKey ? (
+										<><Loader2 size={14} className="animate-spin" /> Verifying…</>
+									) : (
+										<>Verify</>
+									)}
+								</Button>
+							)}
+							<Button
+								variant="primary"
+								size="sm"
+								loading={isSavingApiKey}
+								onClick={handleApiKeySave}
+							>
+								Save
+							</Button>
+						</div>
+					</div>
+				</Dialog>
+			</Dialog.Root>
+
+
 		</div>
 	);
 }
