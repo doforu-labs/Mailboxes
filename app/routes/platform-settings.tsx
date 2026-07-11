@@ -154,16 +154,16 @@ export default function SettingsRoute() {
 					<PlatformSettingsSection />
 				</div>
 
-				{/* Credentials */}
-				<div className="mb-6">
-					<h2 className="text-sm font-semibold text-kumo-default mb-3">Credentials</h2>
-					<CredentialsSection />
-				</div>
-
 				{/* Domain Management */}
-				<div>
+				<div className="mb-6">
 					<h2 className="text-sm font-semibold text-kumo-default mb-3">Domains</h2>
 					<DomainsSection />
+				</div>
+
+				{/* Credentials */}
+				<div>
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">Credentials</h2>
+					<CredentialsSection />
 				</div>
 			</div>
 		</div>
