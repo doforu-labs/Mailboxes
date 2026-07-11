@@ -22,6 +22,7 @@ import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
 import { handleResendInbound } from "./inbound";
+import { fetchWithTimeout } from "./lib/fetch-with-timeout";
 import * as db from "./db";
 import type { SearchFilterOptions, EmailFull } from "./db";
 import {
@@ -248,7 +249,7 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 		}
 
 		// Call Resend GET /domains to verify the key is valid
-		const res = await fetch("https://api.resend.com/domains", {
+		const res = await fetchWithTimeout("https://api.resend.com/domains", {
 			method: "GET",
 			headers: {
 				Authorization: `Bearer ${apiKey}`,
@@ -300,7 +301,8 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ valid: false, error: `Verification failed: ${msg}` }, 200);
+		console.error("verify-resend (mailbox) failed:", msg);
+		return c.json({ valid: false, error: "Verification failed" }, 200);
 	}
 });
 
@@ -378,7 +380,8 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ valid: false, error: `Verification failed: ${msg}` }, 200);
+		console.error("verify-resend failed:", msg);
+		return c.json({ valid: false, error: "Verification failed" }, 200);
 	}
 });
 
@@ -414,7 +417,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 		}
 
 		// 2. Create Resend domain
-		const resendRes = await fetch("https://api.resend.com/domains", {
+		const resendRes = await fetchWithTimeout("https://api.resend.com/domains", {
 			method: "POST",
 			headers: {
 				Authorization: `Bearer ${apiKey}`,
@@ -540,7 +543,8 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ success: false, error: `Setup failed: ${msg}` }, 200);
+		console.error("setup-resend-sending failed:", msg);
+		return c.json({ success: false, error: "Setup failed" }, 200);
 	}
 });
 
@@ -663,7 +667,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	} catch (e) {
 		console.error("Email delivery failed:", (e as Error).message);
 		await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "failed").catch(() => {});
-		return c.json({ id: messageId, status: "failed", error: (e as Error).message || "Failed to send email." }, 500);
+		return c.json({ id: messageId, status: "failed", error: "Failed to send email." }, 500);
 	}
 });
 
@@ -1084,7 +1088,8 @@ async function executeToolCall(
 				return { error: `Unknown tool: ${name}` };
 		}
 	} catch (e: any) {
-		return { error: `Tool ${name} failed: ${e.message}` };
+		console.error(`Tool ${name} failed:`, e.message);
+		return { error: `Tool ${name} failed` };
 	}
 }
 

@@ -31,7 +31,17 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 			cfAccountId: string;
 		}>();
 
-		const { cfApiToken, cfAccountId } = body;
+		let { cfApiToken, cfAccountId } = body;
+
+		// Fall back to platform settings if CF credentials not provided
+		if (!cfApiToken) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_api_token");
+			if (saved) cfApiToken = saved;
+		}
+		if (!cfAccountId) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
+			if (saved) cfAccountId = saved;
+		}
 
 		if (!cfApiToken || !cfAccountId) {
 			return c.json(
@@ -92,7 +102,8 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 		return c.json({ zones, accountName });
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Failed to detect CF domains: ${msg}` }, 500);
+		console.error("detectCfDomains failed:", msg);
+		return c.json({ error: "Failed to detect Cloudflare domains" }, 500);
 	}
 });
 
@@ -138,7 +149,8 @@ setup.post("/api/v1/setup/verify-mx", async (c) => {
 	} catch (e: unknown) {
 		// DNS query failed — domain may not have MX records yet
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ verified: false, error: msg, records: [] });
+		console.error("verifyMx failed:", msg);
+		return c.json({ verified: false, error: "DNS lookup failed", records: [] });
 	}
 });
 
@@ -197,7 +209,8 @@ setup.post("/api/v1/setup/detect-dns-provider", async (c) => {
 		return c.json({ provider, nameservers });
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `DNS provider detection failed: ${msg}` }, 500);
+		console.error("detectDnsProvider failed:", msg);
+		return c.json({ error: "DNS provider detection failed" }, 500);
 	}
 });
 
@@ -243,7 +256,17 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			cfAccountId: string;
 		}>();
 
-		const { domain, resendApiKey, cfApiToken, cfAccountId } = body;
+		let { domain, resendApiKey, cfApiToken, cfAccountId } = body;
+
+		// Fall back to platform settings if CF credentials not provided
+		if (!cfApiToken) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_api_token");
+			if (saved) cfApiToken = saved;
+		}
+		if (!cfAccountId) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
+			if (saved) cfAccountId = saved;
+		}
 
 		if (!domain || !resendApiKey || !cfApiToken || !cfAccountId) {
 			return c.json(
@@ -451,7 +474,8 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Setup failed: ${msg}` }, 500);
+		console.error("verifyDomain failed:", msg);
+		return c.json({ error: "Domain verification setup failed" }, 500);
 	}
 });
 
@@ -466,7 +490,13 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			cfAccountId: string;
 		}>();
 
-		const { domain, cfApiToken, cfAccountId } = body;
+		let { domain, cfApiToken, cfAccountId } = body;
+
+		// Fall back to platform settings if CF credentials not provided
+		if (!cfApiToken) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_api_token");
+			if (saved) cfApiToken = saved;
+		}
 
 		if (!domain || !cfApiToken) {
 			return c.json(
@@ -607,7 +637,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 					name: domain.toLowerCase(),
 					cf_zone_id: zoneId,
 					cf_account_id: cfAccountId,
-					status: "active",
+					status: "pending",
 					created_at: new Date().toISOString(),
 				});
 			}
@@ -619,7 +649,8 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 		return c.json({ success: true });
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Email routing setup failed: ${msg}` }, 500);
+		console.error("emailRouting failed:", msg);
+		return c.json({ error: "Failed to setup email routing" }, 500);
 	}
 });
 
@@ -632,7 +663,8 @@ setup.get("/api/v1/domains", async (c) => {
 		return c.json(domains);
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Failed to list domains: ${msg}` }, 500);
+		console.error("listDomains failed:", msg);
+		return c.json({ error: "Failed to list domains" }, 500);
 	}
 });
 
@@ -647,7 +679,17 @@ setup.post("/api/v1/domains", async (c) => {
 			cfAccountId?: string;
 		}>();
 
-		const { domain, resendApiKey, cfApiToken, cfAccountId, cfZoneId } = body;
+		let { domain, resendApiKey, cfApiToken, cfAccountId, cfZoneId } = body;
+
+		// Fall back to platform settings if CF credentials not provided
+		if (!cfApiToken) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_api_token");
+			if (saved) cfApiToken = saved;
+		}
+		if (!cfAccountId) {
+			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
+			if (saved) cfAccountId = saved;
+		}
 
 		if (!domain) {
 			return c.json({ error: "Missing required field: domain" }, 400);
@@ -897,7 +939,7 @@ setup.post("/api/v1/domains", async (c) => {
 				// Resend API failed — roll back the D1 record or revert to original status
 				if (domainWasReused) {
 					await dbService.updateDomain(c.env.DB, domainId, {
-						status: originalStatus,
+						status: originalStatus ?? "pending",
 						resend_api_key: null,
 					});
 				} else {
@@ -970,7 +1012,8 @@ setup.post("/api/v1/domains", async (c) => {
 		return c.json({ domain: updatedDomain, dnsRecords: dnsResults, warnings }, 201);
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Failed to add domain: ${msg}` }, 500);
+		console.error("addDomain failed:", msg);
+		return c.json({ error: "Failed to add domain" }, 500);
 	}
 });
 
@@ -1011,7 +1054,9 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 					}
 				}
 			} catch (e) {
-				errors.push(`Failed to delete mailbox ${mailbox.id}: ${e instanceof Error ? e.message : "unknown"}`);
+				const mailboxMsg = e instanceof Error ? e.message : "unknown";
+				console.error(`Failed to delete mailbox ${mailbox.id}:`, mailboxMsg);
+				errors.push(`Failed to delete mailbox ${mailbox.id}`);
 			}
 		}
 
@@ -1031,7 +1076,9 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 					errors.push(`Resend domain deletion returned ${resendRes.status}`);
 				}
 			} catch (e) {
-				errors.push(`Resend cleanup failed: ${e instanceof Error ? e.message : "unknown"}`);
+				const resendMsg = e instanceof Error ? e.message : "unknown";
+				console.error("Resend cleanup failed:", resendMsg);
+				errors.push("Resend cleanup failed");
 			}
 		}
 
@@ -1056,7 +1103,8 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Failed to delete domain: ${msg}` }, 500);
+		console.error("deleteDomain failed:", msg);
+		return c.json({ error: "Failed to delete domain" }, 500);
 	}
 });
 
@@ -1139,7 +1187,8 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 	return c.json(updated);
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Failed to update catch-all: ${msg}` }, 500);
+		console.error("updateCatchAll failed:", msg);
+		return c.json({ error: "Failed to update catch-all" }, 500);
 	}
 });
 
@@ -1164,7 +1213,8 @@ setup.put("/api/v1/domains/:id/api-key", async (c) => {
 		return c.json(updated);
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Failed to update API key: ${msg}` }, 500);
+		console.error("updateApiKey failed:", msg);
+		return c.json({ error: "Failed to update API key" }, 500);
 	}
 });
 
@@ -1228,7 +1278,8 @@ setup.get("/api/v1/setup/verify-domain/:domainId", async (c) => {
 		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
-		return c.json({ error: `Failed to verify domain: ${msg}` }, 500);
+		console.error("verifyDomainPoll failed:", msg);
+		return c.json({ error: "Failed to verify domain" }, 500);
 	}
 });
 

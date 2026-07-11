@@ -1120,7 +1120,7 @@ export interface DomainData {
 	resend_domain_id?: string | null;
 	cf_zone_id?: string | null;
 	cf_account_id?: string | null;
-	status: string;
+	status: "pending" | "verified" | "failed";
 	catch_all_mailbox?: string | null;
 	resend_api_key?: string | null;
 	created_at: string;
@@ -1130,7 +1130,7 @@ export interface DomainUpdate {
 	resend_domain_id?: string | null;
 	cf_zone_id?: string | null;
 	cf_account_id?: string | null;
-	status?: string;
+	status?: "pending" | "verified" | "failed";
 	catch_all_mailbox?: string | null;
 	resend_api_key?: string | null;
 }
