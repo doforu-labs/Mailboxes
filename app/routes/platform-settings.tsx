@@ -440,9 +440,12 @@ function DomainsSection() {
 									size={16}
 									className="shrink-0 text-kumo-subtle"
 								/>
-								<span className="text-sm font-semibold text-kumo-default">
+								<RouterLink
+									to={`/domains/${domain.id}`}
+									className="text-sm font-semibold text-kumo-default hover:underline no-underline"
+								>
 									{domain.name}
-								</span>
+								</RouterLink>
 								<div className="ml-auto" ref={openMenu === domain.id ? menuRef : undefined}>
 									<div className="relative">
 										<button

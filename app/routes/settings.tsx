@@ -346,9 +346,10 @@ export default function DomainsRoute() {
 				) : domains.length > 0 ? (
 					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
 						{domains.map((domain, idx) => (
-							<div
+							<RouterLink
 								key={domain.id}
-								className={`group flex items-center gap-4 px-5 py-4 transition-colors ${
+								to={`/domains/${domain.id}`}
+								className={`group flex items-center gap-4 px-5 py-4 transition-colors no-underline ${
 									idx > 0 ? "border-t border-kumo-line" : ""
 								}`}
 							>
@@ -383,7 +384,9 @@ export default function DomainsRoute() {
 									icon={<AtIcon size={16} />}
 									aria-label={`Catch-all for ${domain.name}`}
 									title={domain.catch_all_mailbox ? `Catch-all: ${domain.catch_all_mailbox}` : "Set catch-all mailbox"}
-									onClick={() => {
+									onClick={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
 										setCatchAllDomain(domain);
 										setIsCatchAllOpen(true);
 									}}
@@ -394,12 +397,14 @@ export default function DomainsRoute() {
 									shape="square"
 									icon={<TrashIcon size={16} />}
 									aria-label={`Delete domain ${domain.name}`}
-									onClick={() => {
+									onClick={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
 										setDomainToDelete(domain);
 										setIsDeleteOpen(true);
 									}}
 								/>
-							</div>
+							</RouterLink>
 						))}
 					</div>
 				) : (
