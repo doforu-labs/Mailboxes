@@ -281,6 +281,20 @@ const api = {
 	vercelVerifyDomain: (data: VercelVerifyDomainRequest) =>
 		post<VercelVerifyDomainResult>("/api/v1/setup/vercel-verify-domain", data),
 
+	// Unified DNS Provider
+	detectProviderDomains: (provider: string, credentials: Record<string, string>) =>
+		post<{ domains: Array<{ name: string; createdAt: string }>; teamName: string | null }>(
+			"/api/v1/setup/detect-provider-domains",
+			{ provider, credentials },
+		),
+	providerVerifyDomain: (data: {
+		provider: string;
+		domain: string;
+		resendApiKey: string;
+		credentials: Record<string, string>;
+	}) =>
+		post<VercelVerifyDomainResult>("/api/v1/setup/provider-verify-domain", data),
+
 	// Platform Settings
 	getPlatformSetting: (key: string) =>
 		get<{ key: string; value: string | null }>(`/api/v1/platform-settings/${key}`),

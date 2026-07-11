@@ -25,7 +25,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useCreateDomain } from "~/queries/domains";
 import api from "~/services/api";
 import { ApiError } from "~/services/api";
-import { loadCfCredentials, loadVercelCredentials } from "~/components/PlatformSettingsSection";
+import { loadCfCredentials } from "~/components/PlatformSettingsSection";
 import type { DnsProviderDetection } from "~/services/api";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ type WizardStep =
 	| "domain"
 	| "domain-type"
 	| "receive-cf"
-	| "receive-vercel"
+	| "receive-provider"
 	| "receive-external"
 	| "sending"
 	| "dns-records"
@@ -60,7 +60,7 @@ function positionForStep(step: WizardStep): StepPosition {
 		case "domain-type":
 			return "domain";
 		case "receive-cf":
-		case "receive-vercel":
+		case "receive-provider":
 		case "receive-external":
 			return "receive";
 		case "sending":
@@ -181,6 +181,8 @@ export function AddDomainWizard({
 	const [cfZoneName, setCfZoneName] = useState<string | null>(null);
 	const [detecting, setDetecting] = useState(false);
 	const [detectedDnsProvider, setDetectedDnsProvider] = useState<DnsProviderDetection | null>(null);
+	const [matchedProvider, setMatchedProvider] = useState<string | null>(null);
+	const [matchedProviderCreds, setMatchedProviderCreds] = useState<Record<string, string> | null>(null);
 
 	// Receiving setup
 	const [receiveStatus, setReceiveStatus] = useState<
@@ -262,26 +264,96 @@ export function AddDomainWizard({
 		}
 	};
 
+	// Provider ID mapping from DNS detection name to our provider ID
+	const PROVIDER_MAP: Record<string, string> = {
+		"Vercel": "vercel",
+		"DigitalOcean": "digitalocean",
+		"Hetzner": "hetzner",
+		"Netlify": "netlify",
+		"Gandi": "gandi",
+		"Porkbun": "porkbun",
+		"Name.com": "name",
+		"DNSimple": "dnsimple",
+	};
+
+	const PROVIDER_DISPLAY: Record<string, string> = {
+		vercel: "Vercel",
+		digitalocean: "DigitalOcean",
+		hetzner: "Hetzner",
+		netlify: "Netlify",
+		gandi: "Gandi",
+		porkbun: "Porkbun",
+		name: "Name.com",
+		dnsimple: "DNSimple",
+	};
+	async function loadProviderCreds(providerId: string): Promise<Record<string, string> | null> {
+		const settingApi = (await import("~/services/api")).default;
+		switch (providerId) {
+			case "vercel": {
+				const [t, team] = await Promise.all([
+					settingApi.getPlatformSetting("vercel_api_token"),
+					settingApi.getPlatformSetting("vercel_team_id"),
+				]);
+				return t.value ? { apiToken: t.value || "", teamId: team.value || "" } : null;
+			}
+			case "digitalocean": {
+				const t = await settingApi.getPlatformSetting("do_api_token");
+				return t.value ? { apiToken: t.value || "" } : null;
+			}
+			case "hetzner": {
+				const t = await settingApi.getPlatformSetting("hetzner_api_token");
+				return t.value ? { apiToken: t.value || "" } : null;
+			}
+			case "netlify": {
+				const t = await settingApi.getPlatformSetting("netlify_api_token");
+				return t.value ? { apiToken: t.value || "" } : null;
+			}
+			case "gandi": {
+				const t = await settingApi.getPlatformSetting("gandi_api_token");
+				return t.value ? { apiToken: t.value || "" } : null;
+			}
+			case "porkbun": {
+				const [k, s] = await Promise.all([
+					settingApi.getPlatformSetting("porkbun_api_key"),
+					settingApi.getPlatformSetting("porkbun_secret_api_key"),
+				]);
+				return k.value && s.value ? { apiKey: k.value || "", secretApiKey: s.value || "" } : null;
+			}
+			case "name": {
+				const [u, t] = await Promise.all([
+					settingApi.getPlatformSetting("namecom_username"),
+					settingApi.getPlatformSetting("namecom_api_token"),
+				]);
+				return u.value && t.value ? { username: u.value || "", apiToken: t.value || "" } : null;
+			}
+			case "dnsimple": {
+				const t = await settingApi.getPlatformSetting("dnsimple_api_token");
+				return t.value ? { apiToken: t.value || "" } : null;
+			}
+			default:
+				return null;
+		}
+	}
+
 	// ── Step 2: Domain type → proceed to receiving ──
 	const handleDomainTypeContinue = async () => {
 		if (isCfManaged) {
 			setStep("receive-cf");
 		} else {
-			// Check if Vercel credentials are configured
-			try {
-				const vercelCreds = await loadVercelCredentials();
-				if (vercelCreds.vercelApiToken) {
-					setStep("receive-vercel");
-				} else {
-					setStep("receive-external");
+			const providerName = detectedDnsProvider?.provider;
+			const providerId = providerName ? PROVIDER_MAP[providerName] : undefined;
+			if (providerId) {
+				const creds = await loadProviderCreds(providerId);
+				if (creds) {
+					setMatchedProvider(providerId);
+					setMatchedProviderCreds(creds);
+					setStep("receive-provider");
+					return;
 				}
-			} catch {
-				setStep("receive-external");
 			}
+			setStep("receive-external");
 		}
 	};
-
-	// ── Step 3a: Receiving – CF auto-setup ──
 	useEffect(() => {
 		if (step !== "receive-cf" || receiveStatus !== "idle") return;
 
@@ -307,22 +379,18 @@ export function AddDomainWizard({
 		setup();
 	}, [step, receiveStatus, domainName]);
 
-	// ── Step 3c: Receiving – Vercel auto-setup ──
+	// ── Step 3c: Receiving – Provider auto-setup ──
 	useEffect(() => {
-		if (step !== "receive-vercel" || receiveStatus !== "idle") return;
+		if (step !== "receive-provider" || receiveStatus !== "idle" || !matchedProvider || !matchedProviderCreds) return;
 
 		const setup = async () => {
 			setReceiveStatus("loading");
 			try {
-				const vercelCreds = await loadVercelCredentials();
-				if (!vercelCreds.vercelApiToken) {
-					throw new Error("Vercel API Token not configured");
-				}
-				const result = await api.vercelVerifyDomain({
+				const result = await api.providerVerifyDomain({
+					provider: matchedProvider,
 					domain: domainName.trim(),
-					resendApiKey: resendApiKey.trim() || undefined,
-					vercelApiToken: vercelCreds.vercelApiToken,
-					vercelTeamId: vercelCreds.vercelTeamId || undefined,
+					resendApiKey: resendApiKey.trim() || "",
+					credentials: matchedProviderCreds,
 				});
 				if (result.dnsRecords) {
 					setDnsRecords(result.dnsRecords);
@@ -336,12 +404,12 @@ export function AddDomainWizard({
 				setReceiveError(
 					err instanceof Error
 						? err.message
-						: "Failed to configure Vercel DNS",
+						: "Failed to configure DNS records",
 				);
 			}
 		};
 		setup();
-	}, [step, receiveStatus, domainName, resendApiKey]);
+	}, [step, receiveStatus, domainName, resendApiKey, matchedProvider, matchedProviderCreds]);
 
 	// ── Step 4: Sending – Resend API Key → create domain ──
 	const handleSendingSubmit = async (e: FormEvent) => {
@@ -738,8 +806,8 @@ export function AddDomainWizard({
 					</>
 				)}
 
-				{/* ── Step 3c: Receiving – Vercel Auto-Setup ── */}
-				{step === "receive-vercel" && (
+				{/* ── Step 3c: Receiving – Provider Auto-Setup ── */}
+				{step === "receive-provider" && (
 					<>
 						<div className="flex justify-center mb-4">
 							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/10">
@@ -750,14 +818,14 @@ export function AddDomainWizard({
 							</div>
 						</div>
 						<Dialog.Title className="text-base font-semibold text-center mb-1">
-							Configuring Vercel DNS
+							Configuring {matchedProvider ? PROVIDER_DISPLAY[matchedProvider] || matchedProvider : "DNS"}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle text-center mb-5">
 							Configuring DNS records for{" "}
 							<strong className="text-kumo-default">
 								{domainName}
 							</strong>
-							via Vercel API...
+							via {matchedProvider ? PROVIDER_DISPLAY[matchedProvider] || matchedProvider : "DNS provider"} API…
 						</p>
 
 						<div className="space-y-3 mb-5">
@@ -765,7 +833,7 @@ export function AddDomainWizard({
 								<div className="flex flex-col items-center gap-3 py-4">
 									<Loader size="base" />
 									<p className="text-sm text-kumo-subtle">
-										Setting up DNS records via Vercel API…
+										Setting up DNS records via {matchedProvider ? PROVIDER_DISPLAY[matchedProvider] || matchedProvider : "provider"} API…
 									</p>
 								</div>
 							)}
@@ -1041,7 +1109,7 @@ export function AddDomainWizard({
 											isCfManaged
 												? "receive-cf"
 												: detectedDnsProvider?.provider === "Vercel"
-													? "receive-vercel"
+													? "receive-provider"
 													: "receive-external",
 										);
 									}}
