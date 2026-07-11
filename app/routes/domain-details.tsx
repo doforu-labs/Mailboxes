@@ -210,6 +210,9 @@ export default function DomainDetailsRoute() {
 	type ApiKeyVerifyStatus = "idle" | "verifying" | "valid" | "invalid" | "error";
 	const [apiKeyVerifyStatus, setApiKeyVerifyStatus] = useState<ApiKeyVerifyStatus>("idle");
 	const [apiKeyVerifyResult, setApiKeyVerifyResult] = useState<VerifyResendResult | null>(null);
+	const [isSettingUpResend, setIsSettingUpResend] = useState(false);
+	const [showCfTokenDialog, setShowCfTokenDialog] = useState(false);
+	const [cfTokenInput, setCfTokenInput] = useState("");
 
 	// Catch-all dialog
 	const [isCatchAllOpen, setIsCatchAllOpen] = useState(false);
@@ -275,6 +278,57 @@ export default function DomainDetailsRoute() {
 				title: "Failed to update API key",
 				variant: "error",
 			});
+		}
+	};
+
+	const handleSetupResendSending = async () => {
+		if (!domain || !apiKeyInput.trim()) return;
+
+		// If domain has a CF zone, ask for CF API token
+		if (domain.cf_zone_id) {
+			setShowCfTokenDialog(true);
+			return;
+		}
+
+		// No CF zone — just create the Resend domain directly
+		await doSetupResendSending();
+	};
+
+	const handleCfTokenDialogConfirm = async () => {
+		setShowCfTokenDialog(false);
+		await doSetupResendSending(cfTokenInput.trim() || undefined);
+	};
+
+	const doSetupResendSending = async (cfApiToken?: string) => {
+		if (!domain) return;
+		setIsSettingUpResend(true);
+		try {
+			const result = await api.setupResendSending(domain.id, {
+				apiKey: apiKeyInput.trim(),
+				cfApiToken,
+			});
+			if (result.success && result.verification) {
+				setApiKeyVerifyResult(result.verification);
+				setApiKeyVerifyStatus(result.verification.valid ? "valid" : "invalid");
+				toastManager.add({
+					title: result.dnsResults?.some(r => r.status === "created")
+						? "Resend domain created and DNS records configured"
+						: "Resend domain created. Add DNS records manually to enable sending",
+				});
+			} else {
+				toastManager.add({
+					title: result.error || "Failed to setup Resend domain",
+					variant: "error",
+				});
+			}
+		} catch {
+			toastManager.add({
+				title: "Failed to setup Resend domain",
+				variant: "error",
+			});
+		} finally {
+			setIsSettingUpResend(false);
+			setCfTokenInput("");
 		}
 	};
 
@@ -485,7 +539,16 @@ export default function DomainDetailsRoute() {
 											) : apiKeyVerifyResult.matchingDomain ? (
 												<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> Domain "{apiKeyVerifyResult.matchingDomain.domain}" is "{apiKeyVerifyResult.matchingDomain.status}" — <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">verify DNS records in Resend</a></Badge>
 											) : (
-												<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> No matching domain for {domain.name} in Resend</Badge>
+												<div className="space-y-2">
+													<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> No matching domain for {domain.name} in Resend</Badge>
+													<Button size="xs" onClick={handleSetupResendSending} disabled={isSettingUpResend}>
+														{isSettingUpResend ? (
+															<><Loader2 size={12} className="animate-spin" /> Setting up...</>
+														) : (
+															"Create & Configure in Resend"
+														)}
+													</Button>
+												</div>
 											)}
 										</div>
 									)}
@@ -634,6 +697,29 @@ export default function DomainDetailsRoute() {
 				onDelete={handleDelete}
 				isDeleting={isDeleting}
 			/>
+
+			{/* ── CF API Token Dialog ── */}
+			<Dialog open={showCfTokenDialog} onClose={() => setShowCfTokenDialog(false)} title="Cloudflare API Token">
+				<div className="space-y-3">
+					<p className="text-xs text-kumo-subtle">
+						Enter your Cloudflare API Token to automatically add DNS records for {domain?.name} in Cloudflare.
+					</p>
+					<Input
+						type="password"
+						placeholder="Cloudflare API Token"
+						value={cfTokenInput}
+						onChange={(e) => setCfTokenInput(e.target.value)}
+					/>
+					<div className="flex gap-2 justify-end">
+						<Button variant="secondary" onClick={() => { setShowCfTokenDialog(false); doSetupResendSending(); }}>
+							Skip — I'll add DNS manually
+						</Button>
+						<Button onClick={handleCfTokenDialogConfirm} disabled={!cfTokenInput.trim()}>
+							Add DNS & Verify
+						</Button>
+					</div>
+				</div>
+			</Dialog>
 		</div>
 	);
 }

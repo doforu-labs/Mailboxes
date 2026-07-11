@@ -113,6 +113,12 @@ function boolQuery(c: AppContext, key: string): boolean | undefined {
 	return v === "true" || v === "1";
 }
 
+const normalizeDomainStatus = (status: string | undefined): "pending" | "verified" | "failed" => {
+	if (status === "verified") return "verified";
+	if (status === "failed" || status === "temporary_failure") return "failed";
+	return "pending";
+};
+
 // -- App & middleware -----------------------------------------------
 
 const app = new Hono<D1MailboxContext>();
@@ -328,6 +334,156 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ valid: false, error: `Verification failed: ${msg}` }, 200);
+	}
+});
+
+// POST /api/v1/domains/:domainId/setup-resend-sending — create Resend domain + optionally add DNS records
+app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext) => {
+	try {
+		const { apiKey, cfApiToken } = await c.req.json() as { 
+			apiKey: string; 
+			cfApiToken?: string; 
+		};
+
+		if (!apiKey) {
+			return c.json({ success: false, error: "Missing API key" }, 400);
+		}
+
+		// 1. Get domain from DB
+		const domainId = c.req.param("domainId");
+		const domain = await db.getDomain(c.env.DB, domainId);
+		if (!domain) {
+			return c.json({ success: false, error: "Domain not found" }, 404);
+		}
+
+		// 2. Create Resend domain
+		const resendRes = await fetch("https://api.resend.com/domains", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ name: domain.name, region: "us-east-1" }),
+		});
+
+		if (!resendRes.ok) {
+			const errBody = await resendRes.json().catch(() => ({})) as { message?: string };
+			return c.json({ 
+				success: false, 
+				error: `Failed to create Resend domain: ${errBody.message || `HTTP ${resendRes.status}`}` 
+			}, 200);
+		}
+
+		const resendData = await resendRes.json() as {
+			id: string;
+			name: string;
+			status: string;
+			records: Array<{
+				record: string;
+				name: string;
+				type: string;
+				ttl: string;
+				status: string;
+				value: string;
+				priority?: number;
+			}>;
+		};
+
+		// 3. Optionally add DNS records to Cloudflare if cfApiToken provided
+		const dnsResults: Array<{ name: string; type: string; status: string; value: string }> = [];
+		const zoneId = domain.cf_zone_id;
+
+		if (cfApiToken && zoneId) {
+			for (const record of resendData.records) {
+				const dnsBody: Record<string, string | number> = {
+					type: record.type,
+					name: record.name,
+					content: record.value,
+					ttl: record.ttl ? Number(record.ttl) : 1,
+				};
+				if (record.priority !== undefined) {
+					dnsBody.priority = record.priority;
+				}
+
+				const dnsRes = await fetch(
+					`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
+					{
+						method: "POST",
+						headers: {
+							Authorization: `Bearer ${cfApiToken}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ ...dnsBody, proxied: false }),
+					},
+				);
+
+				if (!dnsRes.ok) {
+					const errBody = await dnsRes.json().catch(() => ({})) as { errors?: Array<{ message: string }> };
+					dnsResults.push({
+						name: record.name,
+						type: record.type,
+						status: `error: ${errBody?.errors?.[0]?.message || "unknown"}`,
+						value: record.value || "",
+					});
+				} else {
+					dnsResults.push({
+						name: record.name,
+						type: record.type,
+						status: "created",
+						value: record.value || "",
+					});
+				}
+			}
+		}
+
+		// 4. Wait 2s then trigger Resend verify
+		await new Promise((r) => setTimeout(r, 2000));
+
+		const verifyRes = await fetch(
+			`https://api.resend.com/domains/${resendData.id}/verify`,
+			{
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${apiKey}`,
+					"Content-Type": "application/json",
+				},
+			},
+		);
+		const verifyData = await verifyRes.json() as { status: string };
+
+		// 5. Update DB
+		await db.updateDomain(c.env.DB, domainId, {
+			resend_domain_id: resendData.id,
+			status: normalizeDomainStatus(verifyData.status),
+		});
+
+		// 6. Re-fetch Resend domain list to get up-to-date verification result
+		const listRes = await fetch("https://api.resend.com/domains", {
+			method: "GET",
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+		const listData = await listRes.json() as { data: Array<{ id: string; name: string; status: string }> };
+		const domainsList = listData.data ?? [];
+		const emailDomain = domain.name.toLowerCase();
+		const matchingDomain = domainsList.find((d) => d.name.toLowerCase() === emailDomain);
+
+		return c.json({
+			success: true,
+			resendDomainId: resendData.id,
+			resendDomainStatus: normalizeDomainStatus(verifyData.status),
+			dnsResults,
+			verification: {
+				valid: true,
+				domains: domainsList.map((d) => ({ id: d.id, domain: d.name, status: d.status })),
+				matchingDomain: matchingDomain
+					? { domain: matchingDomain.name, status: matchingDomain.status }
+					: null,
+				sendingReady: !!matchingDomain && (matchingDomain.status === "valid" || matchingDomain.status === "verified"),
+			},
+		});
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Unknown error";
+		return c.json({ success: false, error: `Setup failed: ${msg}` }, 200);
 	}
 });
 

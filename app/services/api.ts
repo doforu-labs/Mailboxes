@@ -142,6 +142,22 @@ export interface VerifyResendResult {
 	sendingReady?: boolean;
 }
 
+export interface DnsRecordResult {
+	name: string;
+	type: string;
+	status: string;
+	value: string;
+}
+
+export interface SetupResendSendingResult {
+	success: boolean;
+	error?: string;
+	resendDomainId?: string;
+	resendDomainStatus?: string;
+	dnsResults?: DnsRecordResult[];
+	verification?: VerifyResendResult;
+}
+
 export interface DetectCfDomainsRequest {
 	cfApiToken: string;
 	cfAccountId: string;
@@ -255,6 +271,9 @@ const api = {
 
 	verifyDomainResendKey: (domainId: string, apiKey: string) =>
 		post<VerifyResendResult>(`/api/v1/domains/${domainId}/verify-resend`, { apiKey }),
+
+	setupResendSending: (domainId: string, data: { apiKey: string; cfApiToken?: string }) =>
+		post<SetupResendSendingResult>(`/api/v1/domains/${domainId}/setup-resend-sending`, data),
 
 	// DNS Provider Detection
 	// MX Record Verification
