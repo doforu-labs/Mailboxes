@@ -4,6 +4,8 @@
 
 import { Hono } from "hono";
 import dns from "node:dns";
+// NOTE: dns.promises.resolveMx is kept for detect-dns-provider;
+// verify-mx uses DoH directly to avoid Workers polyfill issues.
 import { listMailboxes } from "./lib/email-helpers";
 import type { Env } from "./types";
 import * as dbService from "./db";
@@ -102,7 +104,27 @@ setup.post("/api/v1/setup/verify-mx", async (c) => {
 	}
 
 	try {
-		const mxRecords = await dns.promises.resolveMx(domain);
+		// Use Cloudflare DoH API directly instead of dns.promises.resolveMx
+		// to avoid node:dns polyfill compatibility issues in Workers runtime
+		const dohRes = await fetch(
+			`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`,
+			{ headers: { Accept: "application/dns-json" } },
+		);
+		const dnsJson = (await dohRes.json()) as {
+			Answer?: Array<{ type: number; data: string; TTL: number }>;
+			Status?: number;
+		};
+
+		const mxRecords = (dnsJson.Answer || [])
+			.filter((a) => a.type === 15) // MX record type = 15
+			.map((a) => {
+				const [priority, ...exchangeParts] = a.data.split(" ");
+				return {
+					priority: parseInt(priority, 10),
+					exchange: exchangeParts.join("").replace(/\.$/, ""), // remove trailing dot
+				};
+		});
+
 		const expectedTarget = "mailboxes.pages.dev";
 		const matched = mxRecords.find(
 			(r) => r.exchange.toLowerCase() === expectedTarget,
@@ -110,11 +132,8 @@ setup.post("/api/v1/setup/verify-mx", async (c) => {
 
 		return c.json({
 			verified: !!matched,
-			records: mxRecords.map((r) => ({
-				priority: r.priority,
-				exchange: r.exchange,
-			})),
-			matched,
+			records: mxRecords,
+			matched: matched || null,
 		});
 	} catch (e: unknown) {
 		// DNS query failed — domain may not have MX records yet
@@ -130,14 +149,11 @@ const DNS_PROVIDERS: Array<{ pattern: RegExp; name: string }> = [
 	{ pattern: /googledomains\.com/i, name: "Google Cloud DNS" },
 	{ pattern: /ns\d*\.google\.com/i, name: "Google Cloud DNS" },
 	{ pattern: /vercel-dns\.com/i, name: "Vercel" },
-	{ pattern: /digitalocean\.com/i, name: "DigitalOcean" },
 	{ pattern: /domaincontrol\.com/i, name: "GoDaddy" },
 	{ pattern: /godaddy\.com/i, name: "GoDaddy" },
 	{ pattern: /registrar-servers\.com/i, name: "Namecheap" },
-	{ pattern: /ns\d*\.hetzner\.com/i, name: "Hetzner" },
 	{ pattern: /dnsimple-edge\.(com|net|io|org)/i, name: "DNSimple" },
 	{ pattern: /dnsmadeeasy\.com/i, name: "DNS Made Easy" },
-	{ pattern: /dns\.netlify\.com|netlify\.com/i, name: "Netlify" },
 	{ pattern: /squarespace\.com/i, name: "Squarespace" },
 	{ pattern: /gandi\.net/i, name: "Gandi" },
 	{ pattern: /name\.com/i, name: "Name.com" },
@@ -664,6 +680,16 @@ setup.post("/api/v1/domains", async (c) => {
 		let resendDomainId: string | undefined;
 		const dnsResults: Array<{ name: string; type: string; status: string; value: string }> = [];
 		const warnings: string[] = [];
+
+		// If no Resend API key provided (send-only skipped), mark domain as
+		// verified immediately so the UI shows the correct status for receive-only
+		// setups.  The full DNS verification path below only runs when all three
+		// credentials (resendApiKey + cfApiToken + cfAccountId) are present.
+		if (!resendApiKey) {
+			await dbService.updateDomain(c.env.DB, domainId, {
+				status: "verified",
+			});
+		}
 
 		// If API keys provided, perform DNS setup automatically
 		if (resendApiKey && cfApiToken && cfAccountId) {
@@ -1543,104 +1569,6 @@ async function createProviderDnsRecords(
 					break;
 				}
 
-				case "digitalocean": {
-					const res = await fetch(
-						`https://api.digitalocean.com/v2/domains/${domain}/records`,
-						{
-							method: "POST",
-							headers: {
-								"Authorization": `Bearer ${credentials.apiToken}`,
-								"Content-Type": "application/json",
-							},
-							body: JSON.stringify({
-								type: record.type,
-								name: record.name,
-								data: record.value,
-								priority: record.priority,
-								ttl: Number(record.ttl) || 1800,
-							}),
-						},
-					);
-					if (!res.ok)
-						warnings.push(
-							`Failed to create ${record.type} record via DigitalOcean`,
-						);
-					break;
-				}
-
-				case "hetzner": {
-					// First get zone_id
-					const zoneRes = await fetch(
-						`https://api.hetzner.com/v1/zones?name=${domain}`,
-						{
-							headers: {
-								"Authorization": `Bearer ${credentials.apiToken}`,
-								"Content-Type": "application/json",
-							},
-						},
-					);
-					const zoneData = (await zoneRes.json()) as {
-						zones: Array<{ id: string }>;
-					};
-					const zoneId = zoneData.zones?.[0]?.id;
-					if (!zoneId) {
-						warnings.push(`Zone not found for ${domain} on Hetzner`);
-						break;
-					}
-					const value =
-						record.type === "MX"
-							? `${record.priority} ${record.value}`
-							: record.value;
-					const res = await fetch(
-						`https://api.hetzner.com/v1/zones/${zoneId}/rrsets`,
-						{
-							method: "POST",
-							headers: {
-								"Authorization": `Bearer ${credentials.apiToken}`,
-								"Content-Type": "application/json",
-							},
-							body: JSON.stringify({
-								name: record.name,
-								type: record.type,
-								ttl: Number(record.ttl) || 300,
-								records: [{ value, comment: "" }],
-								labels: {},
-							}),
-						},
-					);
-					if (!res.ok)
-						warnings.push(
-							`Failed to create ${record.type} record via Hetzner`,
-						);
-					break;
-				}
-
-				case "netlify": {
-					const zoneId = domain.replace(/\./g, "_");
-					const res = await fetch(
-						`https://api.netlify.com/api/v1/dns_zones/${zoneId}/dns_records`,
-						{
-							method: "POST",
-							headers: {
-								"Authorization": `Bearer ${credentials.apiToken}`,
-								"Content-Type": "application/json",
-							},
-							body: JSON.stringify({
-								type: record.type,
-								hostname: record.name,
-								value: record.value,
-								priority: record.priority,
-								ttl: Number(record.ttl) || 3600,
-							}),
-						},
-					);
-					if (!res.ok)
-						warnings.push(
-							`Failed to create ${record.type} record via Netlify`,
-						);
-					break;
-				}
-
 				case "gandi": {
 					const value =
 						record.type === "MX"
@@ -1819,48 +1747,6 @@ setup.post("/api/v1/setup/detect-provider-domains", async (c) => {
 				domains = (data.domains || []).map((d) => ({
 					name: d.name,
 					createdAt: d.createdAt,
-				}));
-				break;
-			}
-			case "digitalocean": {
-				const token = credentials.apiToken;
-				if (!token) return c.json({ error: "apiToken is required" }, 400);
-				const res = await fetch("https://api.digitalocean.com/v2/domains", {
-					headers: bearerHeaders(token),
-				});
-				if (!res.ok) return c.json({ error: "Invalid API token" }, 400);
-				const data = (await res.json()) as { domains: Array<{ name: string; created_at: string }> };
-				domains = (data.domains || []).map((d) => ({
-					name: d.name,
-					createdAt: d.created_at,
-				}));
-				break;
-			}
-			case "hetzner": {
-				const token = credentials.apiToken;
-				if (!token) return c.json({ error: "apiToken is required" }, 400);
-				const res = await fetch("https://api.hetzner.com/v1/zones", {
-					headers: bearerHeaders(token),
-				});
-				if (!res.ok) return c.json({ error: "Invalid API token" }, 400);
-				const data = (await res.json()) as { zones: Array<{ name: string; created: string }> };
-				domains = (data.zones || []).map((z) => ({
-					name: z.name,
-					createdAt: z.created,
-				}));
-				break;
-			}
-			case "netlify": {
-				const token = credentials.apiToken;
-				if (!token) return c.json({ error: "apiToken is required" }, 400);
-				const res = await fetch("https://api.netlify.com/api/v1/dns_zones", {
-					headers: bearerHeaders(token),
-				});
-				if (!res.ok) return c.json({ error: "Invalid API token" }, 400);
-				const data = (await res.json()) as Array<{ name: string; created_at: string }>;
-				domains = (data || []).map((z) => ({
-					name: z.name,
-					createdAt: z.created_at || "",
 				}));
 				break;
 			}

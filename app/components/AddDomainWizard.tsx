@@ -16,6 +16,7 @@ import {
 	CircleCheckBig,
 	TriangleAlert,
 	Globe,
+	Loader2,
 	Mail,
 	Send,
 	Cloud,
@@ -84,7 +85,6 @@ function getDnsProviderGuide(provider: string): string | null {
 		Vercel: "https://vercel.com/docs/domains/manage-a-domain#configuring-dns-records",
 		GoDaddy: "https://www.godaddy.com/help/add-or-edit-mx-records-19238",
 		Namecheap: "https://www.namecheap.com/support/knowledgebase/article.aspx/223/22/how-do-i-set-up-mail-forwarding-for-my-domain/",
-		DigitalOcean: "https://docs.digitalocean.com/products/networking/dns/how-to/manage-records/",
 	};
 	return guides[provider] ?? null;
 }
@@ -270,9 +270,6 @@ export function AddDomainWizard({
 	// Provider ID mapping from DNS detection name to our provider ID
 	const PROVIDER_MAP: Record<string, string> = {
 		"Vercel": "vercel",
-		"DigitalOcean": "digitalocean",
-		"Hetzner": "hetzner",
-		"Netlify": "netlify",
 		"Gandi": "gandi",
 		"Porkbun": "porkbun",
 		"Name.com": "name",
@@ -281,9 +278,6 @@ export function AddDomainWizard({
 
 	const PROVIDER_DISPLAY: Record<string, string> = {
 		vercel: "Vercel",
-		digitalocean: "DigitalOcean",
-		hetzner: "Hetzner",
-		netlify: "Netlify",
 		gandi: "Gandi",
 		porkbun: "Porkbun",
 		name: "Name.com",
@@ -298,18 +292,6 @@ export function AddDomainWizard({
 					settingApi.getPlatformSetting("vercel_team_id"),
 				]);
 				return t.value ? { apiToken: t.value || "", teamId: team.value || "" } : null;
-			}
-			case "digitalocean": {
-				const t = await settingApi.getPlatformSetting("do_api_token");
-				return t.value ? { apiToken: t.value || "" } : null;
-			}
-			case "hetzner": {
-				const t = await settingApi.getPlatformSetting("hetzner_api_token");
-				return t.value ? { apiToken: t.value || "" } : null;
-			}
-			case "netlify": {
-				const t = await settingApi.getPlatformSetting("netlify_api_token");
-				return t.value ? { apiToken: t.value || "" } : null;
 			}
 			case "gandi": {
 				const t = await settingApi.getPlatformSetting("gandi_api_token");

@@ -83,42 +83,7 @@ const PROVIDERS: ProviderDef[] = [
 			});
 		},
 	},
-	{
-		id: "digitalocean",
-		name: "DigitalOcean",
-		description: "Personal Access Token for DNS management",
-		icon: <Globe size={16} />,
-		colorClass: "bg-blue-500/10 text-blue-500",
-		fields: [
-			{ key: "apiToken", label: "Personal Access Token", type: "password", placeholder: "••••••••••••••••" },
-		],
-		storageKeys: ["do_api_token"],
-		...makeStorageHelpers("do", ["api_token"]),
-	},
-	{
-		id: "hetzner",
-		name: "Hetzner",
-		description: "API Token for DNS management",
-		icon: <Globe size={16} />,
-		colorClass: "bg-red-500/10 text-red-500",
-		fields: [
-			{ key: "apiToken", label: "API Token", type: "password", placeholder: "••••••••••••••••" },
-		],
-		storageKeys: ["hetzner_api_token"],
-		...makeStorageHelpers("hetzner", ["api_token"]),
-	},
-	{
-		id: "netlify",
-		name: "Netlify",
-		description: "Personal Access Token for DNS management",
-		icon: <Globe size={16} />,
-		colorClass: "bg-teal-500/10 text-teal-500",
-		fields: [
-			{ key: "apiToken", label: "Personal Access Token", type: "password", placeholder: "••••••••••••••••" },
-		],
-		storageKeys: ["netlify_api_token"],
-		...makeStorageHelpers("netlify", ["api_token"]),
-	},
+
 	{
 		id: "gandi",
 		name: "Gandi",
