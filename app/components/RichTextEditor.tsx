@@ -15,7 +15,7 @@ import {
 	Bold,
 	Italic,
 	Strikethrough,
-	Underline,
+	Underline as UnderlineIcon,
 } from "lucide-react";
 import { Color } from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
@@ -117,7 +117,7 @@ export default function RichTextEditor({
 						variant={editor.isActive("underline") ? "secondary" : "ghost"}
 						shape="square"
 						size="sm"
-						icon={<Underline size={16} />}
+						icon={<UnderlineIcon size={16} />}
 						onClick={() => editor.chain().focus().toggleUnderline().run()}
 						aria-label="Underline"
 					/>
