@@ -43,6 +43,7 @@ type WizardStep =
 	| "domain"
 	| "domain-type"
 	| "receive-cf"
+	| "migrate-vercel"
 	| "receive-external"
 	| "sending"
 	| "dns-records"
@@ -60,6 +61,7 @@ function positionForStep(step: WizardStep): StepPosition {
 		case "domain-type":
 			return "domain";
 		case "receive-cf":
+		case "migrate-vercel":
 		case "receive-external":
 			return "receive";
 		case "sending":
@@ -208,6 +210,15 @@ export function AddDomainWizard({
 	const [verifyError, setVerifyError] = useState<string | null>(null);
 
 	// Summary
+	// Vercel migration
+	const [vercelToken, setVercelToken] = useState("");
+	const [migrationStatus, setMigrationStatus] = useState<
+		"idle" | "migrating" | "success" | "failed"
+	>("idle");
+	const [migrationStep, setMigrationStep] = useState(0);
+	const [migrationError, setMigrationError] = useState<string | null>(null);
+	const [cfApiToken, setCfApiToken] = useState("");
+
 	const [summary, setSummary] = useState<{
 		receiving: "configured" | "skipped" | "failed";
 		sending: "configured" | "skipped" | "failed";
@@ -340,6 +351,107 @@ export function AddDomainWizard({
 		}
 	};
 
+	const MIGRATION_STEPS = [
+		{ id: "cf-zone", label: "添加域名到 Cloudflare" },
+		{ id: "vercel-ns", label: "修改 Vercel NS 记录" },
+		{ id: "dns-propagation", label: "等待 DNS 传播" },
+		{ id: "email-routing", label: "启用 Email Routing" },
+		{ id: "dns-records", label: "配置 DNS 记录" },
+	];
+
+	const handleStartMigration = async () => {
+		setMigrationStatus("migrating");
+		setMigrationError(null);
+
+		try {
+			const cfCreds = await loadCfCredentials();
+			if (!cfCreds.cfApiToken) {
+				throw new Error("请先在平台设置中配置 Cloudflare API Token");
+			}
+			setCfApiToken(cfCreds.cfApiToken);
+			setMigrationStep(0);
+
+			// Step 1: 添加域名到 Cloudflare
+			const zoneRes = await fetch("/api/v1/setup/cloudflare/add-zone", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ domain: domainName.trim(), cfApiToken: cfCreds.cfApiToken }),
+			});
+			const zoneData = await zoneRes.json();
+			if (!zoneRes.ok) throw new Error(zoneData.error || "添加域名到 Cloudflare 失败");
+			setMigrationStep(1);
+
+			// Step 2: 更新 Vercel NS
+			const nsRes = await fetch("/api/v1/setup/vercel/update-ns", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					domain: domainName.trim(),
+					vercelToken,
+					nameservers: zoneData.nameservers,
+				}),
+			});
+			const nsData = await nsRes.json();
+			if (!nsRes.ok) throw new Error(nsData.error || "修改 Vercel NS 记录失败");
+			setMigrationStep(2);
+
+			// Step 3: 轮询检查 NS 传播（最多 5 分钟）
+			let propagated = false;
+			for (let i = 0; i < 30; i++) {
+				await new Promise((r) => setTimeout(r, 10000));
+				const checkRes = await fetch(
+					`/api/v1/setup/check-ns/${domainName.trim()}?expected=${zoneData.nameservers.join(",")}`
+				);
+				const checkData = await checkRes.json();
+				if (checkData.propagated) {
+					propagated = true;
+					break;
+				}
+			}
+			if (!propagated) {
+				throw new Error("DNS 传播超时，请稍后在域名详情页重试");
+			}
+			setMigrationStep(3);
+
+			// Step 4: 启用 Email Routing
+			const erRes = await fetch("/api/v1/setup/email-routing", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					domain: domainName.trim(),
+					cfApiToken: cfCreds.cfApiToken,
+					cfAccountId: cfCreds.cfAccountId,
+				}),
+			});
+			if (!erRes.ok) {
+				const erData = await erRes.json();
+				throw new Error(erData.error || "启用 Email Routing 失败");
+			}
+			setMigrationStep(4);
+
+			// Step 5: 创建域名记录（仅收件）
+			const domainRes = await fetch("/api/v1/domains", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ domain: domainName.trim() }),
+			});
+			if (!domainRes.ok && domainRes.status !== 409) {
+				const domainData = await domainRes.json();
+				throw new Error(domainData.error || "创建域名记录失败");
+			}
+
+			setMigrationStatus("success");
+			setSummary({ receiving: "configured", sending: "skipped" });
+			setStep("done");
+			toastManager.add({ title: `域名 ${domainName} 自动迁移完成！` });
+			onSuccess();
+			onComplete?.();
+		} catch (err: unknown) {
+			setMigrationStatus("failed");
+			setMigrationError(err instanceof Error ? err.message : "迁移失败");
+		}
+	};
+
 	// ── Step 2: Domain type → proceed to receiving ──
 	const handleDomainTypeContinue = async () => {
 		if (isCfManaged) {
@@ -352,7 +464,14 @@ export function AddDomainWizard({
 				if (creds) {
 					setMatchedProvider(providerId);
 					setMatchedProviderCreds(creds);
-					// Provider credentials available — will be passed to backend during sending step
+
+					// 如果是 Vercel 且有 Token，进入自动迁移流程
+					if (providerId === "vercel" && creds.apiToken) {
+						setVercelToken(creds.apiToken);
+						setStep("migrate-vercel");
+						return;
+					}
+
 					setStep("receive-external");
 					return;
 				}
@@ -784,6 +903,119 @@ export function AddDomainWizard({
 				)}
 
 
+
+				{/* ── Step 3c: Auto-Migrate from Vercel ──── */}
+				{step === "migrate-vercel" && (
+					<>
+						<div className="flex justify-center mb-4">
+							<div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10">
+								<Globe size={24} className="text-amber-500" />
+							</div>
+						</div>
+						<Dialog.Title className="text-base font-semibold text-center mb-1">
+							自动迁移 DNS
+						</Dialog.Title>
+						<p className="text-sm text-kumo-subtle text-center mb-5">
+							将 <strong className="text-kumo-default">{domainName}</strong> 的 DNS
+							从 Vercel 迁移到 Cloudflare，以启用邮件接收功能。
+						</p>
+
+						{migrationStatus === "idle" && (
+							<>
+								<div className="rounded-lg bg-kumo-fill px-3 py-2.5 mb-4">
+									<p className="text-xs text-kumo-subtle">
+										此操作将自动完成以下步骤：
+									</p>
+									<ul className="text-xs text-kumo-subtle mt-2 space-y-1 list-disc list-inside">
+										<li>将域名添加到 Cloudflare</li>
+										<li>修改 Vercel DNS 的 NS 记录</li>
+										<li>等待 DNS 传播（约 2-5 分钟）</li>
+										<li>启用 Cloudflare Email Routing</li>
+										<li>配置 MX / SPF / DKIM 记录</li>
+									</ul>
+								</div>
+								<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 mb-4">
+									<p className="text-xs text-kumo-subtle">
+										ℹ️ 此操作不会影响您在 Vercel 上的其他 DNS 记录和网站托管。
+										仅修改 NS 记录以将邮件路由切换到 Cloudflare。
+									</p>
+								</div>
+								<div className="flex justify-end gap-2">
+									<Button
+										variant="secondary"
+										size="sm"
+										onClick={() => setStep("domain-type")}
+									>
+										<ChevronLeft size={14} />
+										Back
+									</Button>
+									<Button
+										variant="primary"
+										size="sm"
+										onClick={handleStartMigration}
+									>
+										开始迁移
+										<ArrowRight size={14} />
+									</Button>
+								</div>
+							</>
+						)}
+
+						{migrationStatus === "migrating" && (
+							<>
+								<div className="space-y-3 mb-5">
+									{MIGRATION_STEPS.map((s, i) => (
+										<div key={s.id} className="flex items-center gap-3">
+											{i < migrationStep ? (
+												<CircleCheckBig size={16} className="text-green-500 shrink-0" />
+											) : i === migrationStep ? (
+												<Loader2 size={16} className="text-blue-500 animate-spin shrink-0" />
+											) : (
+												<div className="h-4 w-4 rounded-full border-2 border-kumo-line shrink-0" />
+											)}
+											<span className={`text-sm ${i < migrationStep ? "text-green-600" : i === migrationStep ? "text-blue-600" : "text-kumo-muted"}`}>
+												{s.label}
+											</span>
+										</div>
+									))}
+								</div>
+								{migrationStep === 2 && (
+									<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 mb-4">
+										<p className="text-xs text-kumo-subtle">
+											⏳ 正在等待 DNS 传播，这通常需要 2-5 分钟...
+										</p>
+									</div>
+								)}
+							</>
+						)}
+
+						{migrationStatus === "failed" && (
+							<>
+								<ErrorBanner message={migrationError ?? "迁移失败"} />
+								<div className="flex justify-end gap-2 mt-4">
+									<Button
+										variant="secondary"
+										size="sm"
+										onClick={() => {
+											setMigrationStatus("idle");
+											setMigrationStep(0);
+											setMigrationError(null);
+										}}
+									>
+										重试
+									</Button>
+									<Button
+										variant="secondary"
+										size="sm"
+										onClick={() => setStep("receive-external")}
+									>
+										手动配置
+									</Button>
+								</div>
+							</>
+						)}
+					</>
+				)}
 
 				{/* ── Step 3b: Receiving – External Domain ──── */}
 				{step === "receive-external" && (

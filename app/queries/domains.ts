@@ -30,6 +30,8 @@ export function useDeleteDomain() {
 		mutationFn: (id: string) => api.domains.delete(id),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queryKeys.domains.all });
+			qc.invalidateQueries({ queryKey: queryKeys.mailboxes.all });
+			qc.invalidateQueries({ queryKey: queryKeys.config });
 		},
 	});
 }

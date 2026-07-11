@@ -110,15 +110,18 @@ export function PlatformSettingsSection() {
 	const toastManager = useKumoToastManager();
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [creds, setCreds] = useState<CfCredentials>({ cfApiToken: "", cfAccountId: "" });
+	const [vercelCreds, setVercelCreds] = useState<VercelCredentials>({ vercelApiToken: "", vercelTeamId: "" });
 	const [showToken, setShowToken] = useState(false);
 	const [showAccountId, setShowAccountId] = useState(false);
+	const [showVercelToken, setShowVercelToken] = useState(false);
 	const [hasChanges, setHasChanges] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
 
 	// Load credentials from D1 on mount
 	useEffect(() => {
-		loadCfCredentials().then((saved) => {
-			setCreds(saved);
+		Promise.all([loadCfCredentials(), loadVercelCredentials()]).then(([savedCf, savedVercel]) => {
+			setCreds(savedCf);
+			setVercelCreds(savedVercel);
 			setIsLoading(false);
 		});
 	}, []);
@@ -128,13 +131,15 @@ export function PlatformSettingsSection() {
 	// Track changes against saved state
 	useEffect(() => {
 		if (isLoading) return;
-		loadCfCredentials().then((saved) => {
+		Promise.all([loadCfCredentials(), loadVercelCredentials()]).then(([savedCf, savedVercel]) => {
 			setHasChanges(
-				creds.cfApiToken !== saved.cfApiToken ||
-					creds.cfAccountId !== saved.cfAccountId
+				creds.cfApiToken !== savedCf.cfApiToken ||
+					creds.cfAccountId !== savedCf.cfAccountId ||
+					vercelCreds.vercelApiToken !== savedVercel.vercelApiToken ||
+					vercelCreds.vercelTeamId !== savedVercel.vercelTeamId
 			);
 		});
-	}, [creds, isLoading]);
+	}, [creds, vercelCreds, isLoading]);
 
 	const [isVerifying, setIsVerifying] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
@@ -171,6 +176,7 @@ export function PlatformSettingsSection() {
 		setIsSaving(true);
 		try {
 			await saveCfCredentials(creds);
+			await saveVercelCredentials(vercelCreds);
 		} catch {
 			toastManager.add({
 				title: "Failed to save credentials",
@@ -206,7 +212,7 @@ export function PlatformSettingsSection() {
 						Platform Settings
 					</span>
 					<span className="text-xs text-kumo-subtle ml-2">
-						Cloudflare API credentials for domain detection
+						Cloudflare & Vercel API credentials
 					</span>
 				</div>
 				<Badge variant={isConfigured ? "success" : "warning"}>
@@ -271,6 +277,42 @@ export function PlatformSettingsSection() {
 								)}
 							</button>
 						</div>
+					</div>
+
+					{/* ── Vercel API Token ── */}
+					<div className="pt-2 border-t border-kumo-line">
+						<label className="mb-1 block text-sm font-medium text-kumo-default">
+							Vercel API Token
+						</label>
+						<div className="relative">
+							<input
+								type={showVercelToken ? "text" : "password"}
+								className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 pr-10 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+								placeholder="vercel_xxxxxxxxxxxx"
+								value={vercelCreds.vercelApiToken}
+								onChange={(e) =>
+									setVercelCreds((c) => ({ ...c, vercelApiToken: e.target.value }))
+								}
+							/>
+							<button
+								type="button"
+								className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-muted hover:text-kumo-default"
+								onClick={() => setShowVercelToken(!showVercelToken)}
+							>
+								{showVercelToken ? <EyeOff size={16} /> : <Eye size={16} />}
+							</button>
+						</div>
+						<p className="text-xs text-kumo-subtle mt-1.5">
+							Vercel API Token，用于自动管理 DNS 记录。
+							<a
+								href="https://vercel.com/account/tokens"
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-blue-600 underline font-medium inline-flex items-center gap-1 ml-1"
+							>
+								创建 Token →
+							</a>
+						</p>
 					</div>
 
 					<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">

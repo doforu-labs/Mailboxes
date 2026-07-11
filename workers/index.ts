@@ -22,6 +22,7 @@ import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
 import { handleResendInbound } from "./inbound";
+import { handleAddCloudflareZone, handleUpdateVercelNS, handleCheckNS } from "./vercel-setup";
 import * as db from "./db";
 import type { SearchFilterOptions, EmailFull } from "./db";
 import {
@@ -135,6 +136,11 @@ app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 
 // ── Setup routes (exempt from JWT — mounted before auth checks) ──
 app.route("/", setup);
+
+// ── Vercel → Cloudflare migration endpoints ──
+app.post("/api/v1/setup/cloudflare/add-zone", handleAddCloudflareZone as any);
+app.post("/api/v1/setup/vercel/update-ns", handleUpdateVercelNS as any);
+app.get("/api/v1/setup/check-ns/:domain", handleCheckNS as any);
 
 // -- Platform Settings ------------------------------------------------
 
@@ -276,13 +282,17 @@ app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const key = `mailboxes/${mailboxId}.json`;
-	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
 
 	// Delete all D1 data (emails, attachments, folders, AI chat) and get attachment list
+	// Always attempt D1 cleanup even if R2 config is missing (orphaned mailbox case)
 	const attachments = await db.deleteMailbox(c.env.DB, mailboxId);
 
-	// Delete R2 config JSON
-	await c.env.BUCKET.delete(key);
+	// Delete R2 config JSON (may not exist if domain was deleted first)
+	try {
+		await c.env.BUCKET.delete(key);
+	} catch {
+		// R2 config may already be gone — not fatal
+	}
 
 	// Delete R2 attachment blobs (continue on failure)
 	if (attachments.length > 0) {
