@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { CatchAllDialog } from "~/components/CatchAllDialog";
 import {
@@ -192,6 +193,7 @@ export function meta() {
 export default function DomainDetailsRoute() {
 	const { id } = useParams();
 	const navigate = useNavigate();
+	const qc = useQueryClient();
 	const toastManager = useKumoToastManager();
 
 	const { data: domains = [], isFetched: domainsFetched } = useDomains();
@@ -236,6 +238,10 @@ export default function DomainDetailsRoute() {
 			const result = await api.verifyDomainResendKey(domain.id, apiKeyInput.trim());
 			setApiKeyVerifyResult(result);
 			setApiKeyVerifyStatus(result.valid ? "valid" : "invalid");
+			if (result.valid) {
+				// Refresh domain data so DomainFullStatus badge picks up the new status
+				qc.invalidateQueries({ queryKey: ["domains"] });
+			}
 		} catch {
 			setApiKeyVerifyStatus("error");
 		} finally {

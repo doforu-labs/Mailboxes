@@ -252,6 +252,16 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 		// Find matching domain and its status
 		const matchingDomain = domains.find((d) => d.name.toLowerCase() === emailDomain);
 
+		// Sync Resend domain status to local DB if it has changed
+		if (matchingDomain && domain) {
+			const newStatus = normalizeDomainStatus(matchingDomain.status);
+			if (newStatus !== domain.status) {
+				await db.updateDomain(c.env.DB, domainId, { status: newStatus });
+				// Update local object for response consistency
+				domain.status = newStatus;
+			}
+		}
+
 		return c.json({
 			valid: true,
 			domains: domains.map((d) => ({
@@ -319,6 +329,16 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 
 		const emailDomain = domain.name.toLowerCase();
 		const matchingDomain = domains.find((d) => d.name.toLowerCase() === emailDomain);
+
+		// Sync Resend domain status to local DB if it has changed
+		if (matchingDomain && domain) {
+			const newStatus = normalizeDomainStatus(matchingDomain.status);
+			if (newStatus !== domain.status) {
+				await db.updateDomain(c.env.DB, domainId, { status: newStatus });
+				// Update local object for response consistency
+				domain.status = newStatus;
+			}
+		}
 
 		return c.json({
 			valid: true,
