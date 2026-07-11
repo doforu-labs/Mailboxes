@@ -105,7 +105,7 @@ export default function DomainsRoute() {
 						{domains.map((domain, idx) => (
 							<RouterLink
 								key={domain.id}
-								to={`/domains/${domain.id}`}
+								to={`/settings/domains/${domain.id}`}
 								className={`group flex items-center gap-4 px-5 py-4 transition-colors no-underline ${
 									idx > 0 ? "border-t border-kumo-line" : ""
 								}`}

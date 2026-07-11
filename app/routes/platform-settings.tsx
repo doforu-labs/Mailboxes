@@ -68,7 +68,7 @@ function DomainsSection() {
 					{domains.map((domain, idx) => (
 						<RouterLink
 							key={domain.id}
-							to={`/domains/${domain.id}`}
+							to={`/settings/domains/${domain.id}`}
 							className={`block px-5 py-3.5 no-underline transition-colors hover:bg-kumo-tint ${
 								idx > 0 ? "border-t border-kumo-line" : ""
 							}`}
