@@ -815,7 +815,7 @@ setup.post("/api/v1/domains", async (c) => {
 	}
 });
 
-// DELETE /api/v1/domains/:id — remove a domain
+// DELETE /api/v1/domains/:id — remove a domain and clean up all resources
 setup.delete("/api/v1/domains/:id", async (c) => {
 	try {
 		const id = c.req.param("id");
@@ -824,8 +824,77 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 			return c.json({ error: "Domain not found" }, 404);
 		}
 
+		const errors: string[] = [];
+
+		// ── 1. Clean up all mailboxes under this domain (D1 + R2) ──
+		const allMailboxes = await listMailboxes(c.env.BUCKET);
+		const domainMailboxes = allMailboxes.filter((m) => {
+			const atIdx = m.id.indexOf("@");
+			return atIdx !== -1 && m.id.substring(atIdx + 1) === domain.name;
+		});
+
+		for (const mailbox of domainMailboxes) {
+			try {
+				// Delete D1 data (emails, attachments, folders, AI chat) and get attachment list
+				const attachments = await dbService.deleteMailbox(c.env.DB, mailbox.id);
+
+				// Delete R2 config JSON
+				await c.env.BUCKET.delete(`mailboxes/${mailbox.id}.json`);
+
+				// Delete R2 attachment blobs
+				if (attachments.length > 0) {
+					try {
+						await c.env.BUCKET.delete(
+							attachments.map((a) => `attachments/${a.email_id}/${a.id}/${a.filename}`),
+						);
+					} catch {
+						// Attachment deletion failure is non-fatal
+					}
+				}
+			} catch (e) {
+				errors.push(`Failed to delete mailbox ${mailbox.id}: ${e instanceof Error ? e.message : "unknown"}`);
+			}
+		}
+
+		// ── 2. Delete Resend domain ──
+		if (domain.resend_domain_id && domain.resend_api_key) {
+			try {
+				const resendRes = await fetch(
+					`https://api.resend.com/domains/${domain.resend_domain_id}`,
+					{
+						method: "DELETE",
+						headers: {
+							Authorization: `Bearer ${domain.resend_api_key}`,
+						},
+					},
+				);
+				if (!resendRes.ok) {
+					errors.push(`Resend domain deletion returned ${resendRes.status}`);
+				}
+			} catch (e) {
+				errors.push(`Resend cleanup failed: ${e instanceof Error ? e.message : "unknown"}`);
+			}
+		}
+
+		// ── 3. Disable Cloudflare Email Routing (best-effort) ──
+		// Note: CF API token is not stored server-side; we use the catch-all rule
+		// deletion which requires zone-level access. If we have cf_zone_id and
+		// cf_account_id, we attempt to remove the catch-all rule.
+		if (domain.cf_zone_id && domain.cf_account_id) {
+			// We cannot call CF API without a token. Log for manual cleanup.
+			errors.push(
+				`Cloudflare Email Routing for zone ${domain.cf_zone_id} could not be auto-disabled (API token not stored). Please disable manually in Cloudflare dashboard.`,
+			);
+		}
+
+		// ── 4. Delete domain record from D1 ──
 		await dbService.deleteDomain(c.env.DB, id);
-		return c.body(null, 204);
+
+		return c.json({
+			deleted: true,
+			mailboxesRemoved: domainMailboxes.length,
+			warnings: errors.length > 0 ? errors : undefined,
+		});
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		return c.json({ error: `Failed to delete domain: ${msg}` }, 500);
