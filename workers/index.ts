@@ -303,14 +303,6 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 		const domainId = c.req.param("domainId");
 		const domain = await db.getDomain(c.env.DB, domainId);
 
-		// If no cfApiToken provided, try to read from platform settings
-		if (!cfApiToken && domain?.cf_zone_id) {
-			const savedToken = await db.getSetting(c.env.DB, "cf_api_token");
-			if (savedToken) {
-				cfApiToken = savedToken;
-			}
-		}
-
 		if (!domain) {
 			// Domain not found locally — still return valid=true but no matchingDomain
 			return c.json({
