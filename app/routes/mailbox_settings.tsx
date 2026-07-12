@@ -3,7 +3,11 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Badge, Button, Input, Loader, Switch, useKumoToastManager } from "@cloudflare/kumo";
-import { Bot, Cpu, RotateCcw } from "lucide-react";
+import {
+	Bot,
+	Cpu,
+	RotateCcw,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
@@ -224,8 +228,10 @@ export default function MailboxSettingsRoute() {
 							Save Changes
 						</Button>
 					</div>
+
 				</div>
 			</div>
 		</div>
+
 	);
 }

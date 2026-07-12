@@ -98,8 +98,13 @@ export async function sendEmail(
 		throw new Error(err?.message || `Resend API error: ${response.status}`);
 	}
 
-	const data = (await response.json()) as { id: string };
-	return { messageId: data.id };
+	let data: { id?: string } = {};
+	try {
+		data = (await response.json()) as { id?: string };
+	} catch {
+		console.warn("Failed to parse Resend response JSON, using fallback");
+	}
+	return { messageId: data?.id || "" };
 }
 
 /**
@@ -122,7 +127,12 @@ export async function sendEmailFromMailbox(
 	// 1. Read API key from mailbox settings in R2 (per-mailbox, highest priority)
 	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
 	if (obj) {
-		const settings = (await obj.json()) as { resendApiKey?: string };
+		let settings: { resendApiKey?: string } = {};
+		try {
+			settings = (await obj.json()) as { resendApiKey?: string };
+		} catch {
+			console.warn(`Failed to parse mailbox config for ${mailboxId}, falling back to D1`);
+		}
 		if (settings.resendApiKey) {
 			return sendEmail(settings.resendApiKey, params);
 		}

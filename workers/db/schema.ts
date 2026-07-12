@@ -68,3 +68,15 @@ export const domains = sqliteTable("domains", {
 	resend_api_key: text("resend_api_key"),
 	created_at: text("created_at").notNull(),
 });
+
+export const apiKeys = sqliteTable("api_keys", {
+	id: text("id").primaryKey(),
+	domain_id: text("domain_id").notNull(),
+	name: text("name").notNull(),
+	key_hash: text("key_hash").notNull(),
+	prefix: text("prefix").notNull(),
+	scopes: text("scopes").notNull().default("send"),
+	created_at: text("created_at").notNull(),
+	last_used_at: text("last_used_at"),
+	expires_at: text("expires_at"),
+});

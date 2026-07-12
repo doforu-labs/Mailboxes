@@ -7,6 +7,7 @@ import { eq, and, or, asc, desc, sql, ne, inArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "./schema";
 import { Folders } from "../../shared/folders";
+import { generateApiKey, generateKeyId, extractPrefix, verifyApiKey } from "../lib/api-key-utils";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -792,6 +793,8 @@ export async function findThreadBySubject(
 	return null;
 }
 
+
+
 // ── 13. getFolders ───────────────────────────────────────────────
 
 export async function getFolders(
@@ -1409,4 +1412,150 @@ export async function resolveResendApiKey(
 	}
 
 	return null;
+}
+
+// ── 30. createApiKey ───────────────────────────────────────────
+
+interface CreateApiKeyResult {
+	id: string;
+	plainText: string;
+	prefix: string;
+}
+
+export async function createApiKey(
+	db: D1Database,
+	domainId: string,
+	name: string,
+	scopes?: string,
+): Promise<CreateApiKeyResult> {
+	const id = generateKeyId();
+	const { plainText, prefix, hash } = await generateApiKey();
+	const createdAt = new Date().toISOString();
+
+	await db.prepare(
+		`INSERT INTO api_keys (id, domain_id, name, key_hash, prefix, scopes, created_at)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+	).bind(
+		id,
+		domainId,
+		name,
+		hash,
+		prefix,
+		scopes ?? "send",
+		createdAt,
+	).run();
+
+	return { id, plainText, prefix };
+}
+
+// ── 31. validateApiKey ─────────────────────────────────────────
+
+export async function validateApiKey(
+	db: D1Database,
+	domainId: string,
+	apiKey: string,
+): Promise<{ valid: boolean; scopes: string | null; keyId: string | null }> {
+	const prefix = extractPrefix(apiKey);
+
+	const row = await db.prepare(
+		`SELECT * FROM api_keys WHERE prefix = ?1 AND domain_id = ?2`,
+	).bind(prefix, domainId).first() as {
+		id: string;
+		key_hash: string;
+		scopes: string;
+	} | undefined;
+
+	if (!row) {
+		return { valid: false, scopes: null, keyId: null };
+	}
+
+	const matches = await verifyApiKey(apiKey, row.key_hash);
+
+	if (matches) {
+		await updateApiKeyLastUsed(db, row.id);
+		return { valid: true, scopes: row.scopes, keyId: row.id };
+	}
+
+	return { valid: false, scopes: null, keyId: null };
+}
+
+// ── 32. listApiKeys ────────────────────────────────────────────
+
+export async function listApiKeys(
+	db: D1Database,
+	domainId: string,
+): Promise<{ id: string; name: string; prefix: string; scopes: string; created_at: string; last_used_at: string | null; expires_at: string | null }[]> {
+	const result = await db.prepare(
+		`SELECT id, name, prefix, scopes, created_at, last_used_at, expires_at
+		 FROM api_keys
+		 WHERE domain_id = ?1
+		 ORDER BY created_at DESC`,
+	).bind(domainId).all() as any;
+
+	return (result.results || []) as {
+		id: string;
+		name: string;
+		prefix: string;
+		scopes: string;
+		created_at: string;
+		last_used_at: string | null;
+		expires_at: string | null;
+	}[];
+}
+
+// ── 33. revokeApiKey ───────────────────────────────────────────
+
+export async function revokeApiKey(
+	db: D1Database,
+	domainId: string,
+	keyId: string,
+): Promise<boolean> {
+	const result = await db.prepare(
+		`DELETE FROM api_keys WHERE id = ?1 AND domain_id = ?2`,
+	).bind(keyId, domainId).run();
+
+	return result.meta.changes > 0;
+}
+
+// ── 34. updateApiKeyLastUsed (internal) ────────────────────────
+
+async function updateApiKeyLastUsed(
+	db: D1Database,
+	keyId: string,
+): Promise<void> {
+	await db.prepare(
+		`UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2`,
+	).bind(new Date().toISOString(), keyId).run();
+}
+
+// ── 35. lookupApiKey ────────────────────────────────────────────
+
+/**
+ * 仅凭 API Key 查找对应的邮箱和权限（无需预先知道 domainId）
+ * 用于 /api/v1/send 等无法从 URL 获取 domainId 的场景
+ */
+export async function lookupApiKey(
+	db: D1Database,
+	apiKey: string,
+): Promise<{ valid: boolean; scopes: string | null; keyId: string | null; domainId: string | null }> {
+	const prefix = extractPrefix(apiKey);
+	const result = await db.prepare(
+		"SELECT id, domain_id, key_hash, scopes FROM api_keys WHERE prefix = ?"
+	).bind(prefix).all() as any;
+	const rows: { id: string; domain_id: string; key_hash: string; scopes: string }[] = result.results || [];
+
+	if (!rows || rows.length === 0) {
+		return { valid: false, scopes: null, keyId: null, domainId: null };
+	}
+
+	for (const row of rows) {
+		const match = await verifyApiKey(apiKey, row.key_hash);
+		if (match) {
+			// 更新 last_used_at
+			await updateApiKeyLastUsed(db, row.id);
+			return { valid: true, scopes: row.scopes, keyId: row.id, domainId: row.domain_id };
+		}
+	}
+
+	return { valid: false, scopes: null, keyId: null, domainId: null };
 }

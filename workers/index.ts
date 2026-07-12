@@ -41,6 +41,8 @@ import {
 	toolSendReply,
 	toolSendEmail,
 } from "./lib/tools";
+import { createApiKey, listApiKeys, revokeApiKey } from "./db/index";
+import { requireApiKeyGlobal } from "./lib/api-key-middleware-global";
 
 type AppContext = Context<D1MailboxContext>;
 
@@ -138,7 +140,207 @@ app.use("/api/*", cors({
 		return undefined;
 	},
 }));
+// ====== External Email Send API (via API Key) ======
+
+// 此路由使用 requireApiKeyGlobal 通过 Bearer token 认证，无需 mailboxId 参数
+app.post("/api/v1/send", requireApiKeyGlobal, async (c) => {
+	try {
+		const db = c.env.DB;
+	const bucket = c.env.BUCKET;
+	const apiKeyInfo = c.var.apiKeyInfo;
+
+	if (!apiKeyInfo?.domainId) {
+		return c.json({ error: "Invalid API key: no domain associated" }, 401);
+	}
+
+	// 查找域名
+	const { getDomain } = await import("./db/index");
+	const domain = await getDomain(db, apiKeyInfo.domainId);
+	if (!domain) {
+		return c.json({ error: "Domain not found" }, 404);
+	}
+
+	const body = await c.req.json<{
+		from: string;
+		to: string | string[];
+		subject: string;
+		html?: string;
+		text?: string;
+		cc?: string | string[];
+		bcc?: string | string[];
+		replyTo?: string | { email: string; name: string };
+		attachments?: {
+			content: string;
+			filename: string;
+			type?: string;
+			disposition?: "attachment" | "inline";
+		}[];
+		headers?: Record<string, string>;
+	}>();
+
+	// 验证 from 地址属于该域名
+	const from = body.from;
+	const fromParts = from.split("@");
+	if (fromParts.length !== 2 || fromParts[1].toLowerCase() !== domain.name.toLowerCase()) {
+		return c.json({
+			error: `From address "${from}" does not belong to domain "${domain.name}"`,
+		}, 400);
+	}
+
+	// 验证 mailbox 存在
+	const mailboxId = from;
+	const key = `mailboxes/${mailboxId}.json`;
+	const obj = await bucket.head(key);
+	if (!obj) {
+		return c.json({ error: `Mailbox "${mailboxId}" not found on this domain` }, 404);
+	}
+
+	const to = Array.isArray(body.to) ? body.to : [body.to];
+	const cc = body.cc ? (Array.isArray(body.cc) ? body.cc : [body.cc]) : undefined;
+	const bcc = body.bcc ? (Array.isArray(body.bcc) ? body.bcc : [body.bcc]) : undefined;
+
+	// 发送邮件
+	const { sendEmailFromMailbox } = await import("./email-sender");
+	const { updateEmailSendStatus } = await import("./db/index");
+
+	const emailId = crypto.randomUUID();
+	const now = new Date().toISOString();
+
+	const insertStmt = db.prepare(`
+		INSERT INTO emails (id, mailbox_id, folder_id, subject, sender, recipient, cc, bcc, "date", body, read, starred, send_status)
+		VALUES (?1, ?2, 'sent', ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, 0, 'sending')
+	`);
+
+	await insertStmt.bind(
+		emailId,
+		mailboxId,
+		body.subject,
+		from,
+		to.join(", "),
+		cc ? cc.join(", ") : null,
+		bcc ? bcc.join(", ") : null,
+		now,
+		body.html || body.text || "",
+	).run();
+
+	try {
+		const result = await sendEmailFromMailbox(bucket, mailboxId, {
+			from,
+			to,
+			subject: body.subject,
+			html: body.html,
+			text: body.text,
+			cc,
+			bcc,
+			replyTo: body.replyTo,
+			attachments: body.attachments?.map(a => ({
+				content: a.content,
+				filename: a.filename,
+				type: a.type || "application/octet-stream",
+				disposition: a.disposition || "attachment",
+			})),
+			headers: body.headers,
+		}, undefined, db);
+
+		await updateEmailSendStatus(db, mailboxId, emailId, "sent");
+
+		return c.json({
+			id: emailId,
+			from,
+			to,
+			subject: body.subject,
+			created_at: now,
+			status: "sent",
+		}, 201);
+
+	} catch (error: any) {
+		await updateEmailSendStatus(db, mailboxId, emailId, "failed");
+
+		return c.json({
+			id: emailId,
+			error: error.message || "Failed to send email",
+			status: "failed",
+		}, 500);
+	}
+} catch (error: any) {
+	console.error("Failed to send via API key:", error);
+	return c.json({ error: error.message || "Failed to send email" }, 500);
+}
+});
+
 app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
+
+// ====== Domain API Key Management ======
+
+// ====== 单个域名详情 ======
+app.get("/api/v1/domains/:domainId", async (c) => {
+	try {
+		const db = c.env.DB;
+		const domainId = c.req.param("domainId")!;
+		const { getDomain } = await import("./db/index");
+		const domain = await getDomain(db, domainId);
+		if (!domain) {
+			return c.json({ error: "Domain not found" }, 404);
+		}
+		return c.json(domain, 200);
+	} catch (error: any) {
+		console.error("Failed to get domain:", error);
+		return c.json({ error: error.message || "Failed to get domain" }, 500);
+	}
+});
+
+app.post("/api/v1/domains/:domainId/api-keys", async (c) => {
+	const db = c.env.DB;
+	const domainId = c.req.param("domainId");
+	const decodedDomainId = decodeURIComponent(domainId);
+
+	// 验证 domain 是否存在
+	const { getDomain } = await import("./db/index");
+	const domain = await getDomain(db, decodedDomainId);
+	if (!domain) {
+		return c.json({ error: "Domain not found" }, 404);
+	}
+
+	const body = await c.req.json<{ name?: string; scopes?: string }>();
+	const keyName = body.name || "Default";
+	const scopes = body.scopes || "send";
+
+	const result = await createApiKey(db, decodedDomainId, keyName, scopes);
+
+	return c.json({
+		id: result.id,
+		api_key: result.plainText,
+		prefix: result.prefix,
+		name: keyName,
+		scopes: scopes,
+		message: "Save this API key - it will not be shown again",
+	}, 201);
+});
+
+app.get("/api/v1/domains/:domainId/api-keys", async (c) => {
+	const db = c.env.DB;
+	const domainId = c.req.param("domainId");
+	const decodedDomainId = decodeURIComponent(domainId);
+
+	const keys = await listApiKeys(db, decodedDomainId);
+
+	return c.json({ api_keys: keys });
+});
+
+app.delete("/api/v1/domains/:domainId/api-keys/:keyId", async (c) => {
+	const db = c.env.DB;
+	const domainId = c.req.param("domainId");
+	const decodedDomainId = decodeURIComponent(domainId);
+	const keyId = c.req.param("keyId");
+
+	const deleted = await revokeApiKey(db, decodedDomainId, keyId);
+
+	if (!deleted) {
+		return c.json({ error: "API key not found" }, 404);
+	}
+
+	return c.json({ success: true });
+});
 
 // ── Setup routes (exempt from JWT — mounted before auth checks) ──
 app.route("/", setup);
@@ -614,77 +816,93 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const body = SendEmailRequestSchema.parse(await c.req.json());
-	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
-
-	let toStr: string, fromEmail: string, fromDomain: string;
 	try {
-		({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
-	} catch (e) {
-		if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
-		throw e;
-	}
+		const body = SendEmailRequestSchema.parse(await c.req.json());
+		const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
 
-	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
-	const dbClient = c.var.db;
+		let toStr: string, fromEmail: string, fromDomain: string;
+		try {
+			({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
+		} catch (e) {
+			if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
+			throw e;
+		}
 
-	const rateLimit = await db.checkSendRateLimit(dbClient, mailboxId);
-	if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
-		return c.json({ error: `Hourly rate limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit})` }, 429);
-	}
-	if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
-		return c.json({ error: `Daily rate limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit})` }, 429);
-	}
+		const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
+		const dbClient = c.var.db;
 
-	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
+		const rateLimit = await db.checkSendRateLimit(dbClient, mailboxId);
+		if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
+			return c.json({ error: `Hourly rate limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit})` }, 429);
+		}
+		if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
+			return c.json({ error: `Daily rate limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit})` }, 429);
+		}
 
-	await db.createEmail(dbClient, mailboxId, Folders.SENT, {
-		id: messageId, subject, sender: fromEmail, recipient: toStr,
-		cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
-		bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
-		date: new Date().toISOString(), body: html || text || "",
-		in_reply_to: in_reply_to || null, email_references: references ? JSON.stringify(references) : null,
-		thread_id: thread_id || in_reply_to || messageId, message_id: outgoingMessageId,
-		raw_headers: JSON.stringify([
-			{ key: "from", value: typeof from === "string" ? from : `${from.name} <${from.email}>` },
-			{ key: "to", value: Array.isArray(to) ? to.join(", ") : to },
-			...(cc ? [{ key: "cc", value: Array.isArray(cc) ? cc.join(", ") : cc }] : []),
-			...(bcc ? [{ key: "bcc", value: Array.isArray(bcc) ? bcc.join(", ") : bcc }] : []),
-			{ key: "subject", value: subject }, { key: "date", value: new Date().toISOString() },
-			{ key: "message-id", value: `<${outgoingMessageId}>` },
-		]),
-		send_status: "sending",
-	}, attachmentData);
+		const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
-	try {
-		await sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
-			to, cc, bcc, from, subject, html, text,
-			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
-			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-		}, undefined, c.env.DB);
-		await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "sent");
-		return c.json({ id: messageId, status: "sent" }, 200);
-	} catch (e) {
-		console.error("Email delivery failed:", (e as Error).message);
-		await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "failed").catch(() => {});
-		return c.json({ id: messageId, status: "failed", error: "Failed to send email." }, 500);
+		await db.createEmail(dbClient, mailboxId, Folders.SENT, {
+			id: messageId, subject, sender: fromEmail, recipient: toStr,
+			cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
+			bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
+			date: new Date().toISOString(), body: html || text || "",
+			in_reply_to: in_reply_to || null, email_references: references ? JSON.stringify(references) : null,
+			thread_id: thread_id || in_reply_to || messageId, message_id: outgoingMessageId,
+			raw_headers: JSON.stringify([
+				{ key: "from", value: typeof from === "string" ? from : `${from.name} <${from.email}>` },
+				{ key: "to", value: Array.isArray(to) ? to.join(", ") : to },
+				...(cc ? [{ key: "cc", value: Array.isArray(cc) ? cc.join(", ") : cc }] : []),
+				...(bcc ? [{ key: "bcc", value: Array.isArray(bcc) ? bcc.join(", ") : bcc }] : []),
+				{ key: "subject", value: subject }, { key: "date", value: new Date().toISOString() },
+				{ key: "message-id", value: `<${outgoingMessageId}>` },
+			]),
+			send_status: "sending",
+		}, attachmentData);
+
+		try {
+			await sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
+				to, cc, bcc, from, subject, html, text,
+				attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
+				...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
+			}, undefined, c.env.DB);
+			await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "sent");
+			return c.json({ id: messageId, status: "sent" }, 200);
+		} catch (e) {
+			console.error("Email delivery failed:", (e as Error).message);
+			await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "failed").catch(() => {});
+			return c.json({ id: messageId, status: "failed", error: "Failed to send email." }, 500);
+		}
+	} catch (error: any) {
+		if (error instanceof z.ZodError) {
+			return c.json({ error: "Validation failed", details: error.errors }, 400);
+		}
+		console.error("Failed to send email:", error);
+		return c.json({ error: error.message || "Failed to send email" }, 500);
 	}
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
-	const mailboxId = c.req.param("mailboxId")!;
-	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
-	const dbClient = c.var.db;
-	if (draft_id) await db.deleteEmail(dbClient, mailboxId, draft_id);
-	const messageId = crypto.randomUUID();
-	const now = new Date().toISOString();
-	await db.createEmail(dbClient, mailboxId, Folders.DRAFT, {
-		id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
-		recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
-		date: now, body, in_reply_to: in_reply_to || null, email_references: null,
-		thread_id: thread_id || in_reply_to || messageId,
-	}, []);
-	return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);
+	try {
+		const mailboxId = c.req.param("mailboxId")!;
+		const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
+		const dbClient = c.var.db;
+		if (draft_id) await db.deleteEmail(dbClient, mailboxId, draft_id);
+		const messageId = crypto.randomUUID();
+		const now = new Date().toISOString();
+		await db.createEmail(dbClient, mailboxId, Folders.DRAFT, {
+			id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
+			recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
+			date: now, body, in_reply_to: in_reply_to || null, email_references: null,
+			thread_id: thread_id || in_reply_to || messageId,
+		}, []);
+		return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);
+	} catch (error: any) {
+		if (error instanceof z.ZodError) {
+			return c.json({ error: "Validation failed", details: error.errors }, 400);
+		}
+		console.error("Failed to save draft:", error);
+		return c.json({ error: error.message || "Failed to save draft" }, 500);
+	}
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId/drafts/:emailId", async (c: AppContext) => {

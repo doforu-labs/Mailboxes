@@ -12,6 +12,12 @@ import type { Env } from "../types";
 export type D1MailboxVariables = {
 	db: D1Database;
 	mailboxId: string;
+	domainId?: string;
+	apiKeyInfo?: {
+		keyId: string;
+		scopes: string;
+		domainId: string;
+	};
 };
 
 export type D1MailboxContext = {

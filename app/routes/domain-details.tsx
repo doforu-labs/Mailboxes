@@ -12,11 +12,14 @@ import {
 } from "@cloudflare/kumo";
 import {
 	ArrowLeft,
+	Check,
 	CircleCheckBig,
 	Copy,
 	Eye,
 	EyeOff,
+	Key,
 	Loader2,
+	Plus,
 	Trash2,
 	TriangleAlert,
 } from "lucide-react";
@@ -32,6 +35,7 @@ import {
 	useUpdateDomainApiKey,
 } from "~/queries/domains";
 import { useMailboxes } from "~/queries/mailboxes";
+import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "~/queries/api-keys";
 import api, { type VerifyResendResult } from "~/services/api";
 
 // ── DNS Record Static Data ──────────────────────────────────────
@@ -191,18 +195,30 @@ export function meta() {
 }
 
 export default function DomainDetailsRoute() {
-	const { id } = useParams();
+	const { id: domainId } = useParams();
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	const toastManager = useKumoToastManager();
 
 	const { data: domains = [], isFetched: domainsFetched } = useDomains();
 	const { data: mailboxes = [] } = useMailboxes();
+
+	// API Key management
+	const { data: apiKeysData, isLoading: isApiKeysLoading } = useApiKeys(domainId!);
+	const createApiKey = useCreateApiKey(domainId!);
+	const revokeApiKey = useRevokeApiKey(domainId!);
+
+	const [isCreateOpen, setIsCreateOpen] = useState(false);
+	const [newKeyName, setNewKeyName] = useState("");
+	const [createdKeyData, setCreatedKeyData] = useState<{ id: string; api_key: string; name: string; scopes: string } | null>(null);
+	const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string } | null>(null);
+	const [copiedId, setCopiedId] = useState<string | null>(null);
+
 	const deleteDomain = useDeleteDomain();
 	const updateApiKey = useUpdateDomainApiKey();
 	const setCatchAll = useSetCatchAll();
 
-	const domain = domains.find((d) => d.id === id);
+	const domain = domains.find((d) => d.id === domainId);
 
 	// Resend API key state
 	const [showApiKey, setShowApiKey] = useState(false);
@@ -651,6 +667,186 @@ export default function DomainDetailsRoute() {
 						</Button>
 					</div>
 				</div>
+
+				{/* ── API Keys ── */}
+
+				<div className="mb-6 rounded-xl border border-kumo-line bg-kumo-base p-5">
+					<div className="text-sm font-semibold text-kumo-default mb-1 flex items-center gap-2">
+						<Key size={16} />
+						API Keys
+					</div>
+					<div className="text-sm text-kumo-subtle mb-4">
+						Use API keys to send emails programmatically. Keys start with <code className="font-mono text-xs">mb_</code> and are scoped to this domain.
+					</div>
+
+					{isApiKeysLoading ? (
+						<div className="flex justify-center py-6">
+							<Loader2 className="animate-spin" size={20} />
+						</div>
+					) : (
+						<>
+							{(!apiKeysData?.api_keys || apiKeysData.api_keys.length === 0) ? (
+								<div className="text-sm text-kumo-subtle mb-4">
+									No API keys yet. Create one to get started.
+								</div>
+							) : (
+								<div className="mb-4">
+									<div className="flex text-xs font-medium text-kumo-subtle px-1 py-1 border-b border-kumo-line">
+										<div className="w-[160px]">Name</div>
+										<div className="w-[140px]">Key Prefix</div>
+										<div className="w-[80px]">Scopes</div>
+										<div className="flex-1">Last Used</div>
+										<div className="w-[60px]"></div>
+									</div>
+									{apiKeysData.api_keys.map((key) => (
+										<div key={key.id} className="flex items-center text-xs font-medium px-1 py-1 border-b border-kumo-line">
+											<div className="w-[160px] truncate">{key.name}</div>
+											<div className="w-[140px] font-mono text-xs">{key.prefix}...</div>
+											<div className="w-[80px]">
+												<Badge variant="default">{key.scopes}</Badge>
+											</div>
+											<div className="flex-1 text-kumo-subtle">
+												{key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : "Never"}
+											</div>
+											<div className="w-[60px] flex justify-end">
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => setRevokeTarget({ id: key.id, name: key.name })}
+													className="text-kumo-subtle hover:text-red-500"
+												>
+													<Trash2 size={14} />
+												</Button>
+											</div>
+										</div>
+									))}
+								</div>
+							)}
+
+							<Button variant="primary" size="sm" onClick={() => setIsCreateOpen(true)}>
+								<Plus size={14} />
+								Create API Key
+							</Button>
+						</>
+					)}
+				</div>
+
+				{/* Create API Key Dialog */}
+				<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+					<Dialog size="sm" className="p-6">
+						<Dialog.Title>Create API Key</Dialog.Title>
+						<div className="flex flex-col gap-4 py-4">
+							<Input
+								label="Key Name"
+								placeholder="e.g. Production App"
+								value={newKeyName}
+								onChange={(e) => setNewKeyName(e.target.value)}
+							/>
+							<div>
+								<div className="text-xs font-medium mb-1">Scopes</div>
+								<Badge variant="default">send</Badge>
+								<div className="text-xs text-kumo-subtle mt-1">
+									Currently only "send" scope is available.
+								</div>
+							</div>
+						</div>
+						<div className="flex justify-end gap-2">
+							<Button variant="secondary" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+							<Button
+								variant="primary"
+								onClick={async () => {
+									try {
+										const result = await createApiKey.mutateAsync({
+											name: newKeyName.trim() || "Default",
+											scopes: "send",
+										});
+										setCreatedKeyData(result);
+										setIsCreateOpen(false);
+										setNewKeyName("");
+									} catch (err) {
+										// error handled by mutation
+									}
+								}}
+								disabled={createApiKey.isPending}
+							>
+								{createApiKey.isPending ? "Creating..." : "Create"}
+							</Button>
+						</div>
+					</Dialog>
+				</Dialog.Root>
+
+				{/* Revealed Key Dialog */}
+				<Dialog.Root open={createdKeyData !== null} onOpenChange={(open) => { if (!open) { setCreatedKeyData(null); setCopiedId(null); } }}>
+					<Dialog size="sm" className="p-6">
+						<Dialog.Title>API Key Created</Dialog.Title>
+						<div className="flex flex-col gap-4 py-4">
+							<div className="text-sm">
+								Please save this key now. You won't be able to see it again.
+							</div>
+							<div className="bg-kumo-base border border-kumo-line rounded p-3 flex items-center justify-between">
+								<code className="font-mono text-sm break-all">
+									{createdKeyData?.api_key}
+								</code>
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={async () => {
+										if (createdKeyData?.api_key) {
+											await navigator.clipboard.writeText(createdKeyData.api_key);
+											setCopiedId("new-key");
+											setTimeout(() => setCopiedId(null), 2000);
+										}
+									}}
+								>
+									{copiedId === "new-key" ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+								</Button>
+							</div>
+							<div className="flex gap-1 bg-red-50 border border-red-200 rounded p-3 text-sm">
+								<TriangleAlert size={16} className="text-amber-500 shrink-0 mt-1" />
+								<span>This API key will not be shown again after you close this dialog.</span>
+							</div>
+						</div>
+						<div className="flex justify-end">
+							<Button variant="primary" onClick={() => { setCreatedKeyData(null); setCopiedId(null); }}>
+								I've saved my key
+							</Button>
+						</div>
+					</Dialog>
+				</Dialog.Root>
+
+				{/* Revoke Confirmation Dialog */}
+				<Dialog.Root open={revokeTarget !== null} onOpenChange={(open) => { if (!open) setRevokeTarget(null); }}>
+					<Dialog size="sm" className="p-6">
+						<Dialog.Title>Revoke API Key</Dialog.Title>
+						<div className="flex flex-col gap-4 py-4">
+							<div className="flex gap-1 bg-red-50 border border-red-200 rounded p-3 text-sm">
+								<TriangleAlert size={16} className="text-red-500 shrink-0 mt-1" />
+								<span>
+									Are you sure you want to revoke the API key <strong>"{revokeTarget?.name}"</strong>?
+									Any services using this key will immediately lose access.
+								</span>
+							</div>
+						</div>
+						<div className="flex justify-end gap-2">
+							<Button variant="secondary" onClick={() => setRevokeTarget(null)}>Cancel</Button>
+							<Button
+								variant="destructive"
+								onClick={async () => {
+									if (!revokeTarget) return;
+									try {
+										await revokeApiKey.mutateAsync(revokeTarget.id);
+										setRevokeTarget(null);
+									} catch (err) {
+										// error handled by mutation
+									}
+								}}
+								disabled={revokeApiKey.isPending}
+							>
+								{revokeApiKey.isPending ? "Revoking..." : "Revoke"}
+							</Button>
+						</div>
+					</Dialog>
+				</Dialog.Root>
 
 				{/* ── Danger Zone ────────────────────────────────── */}
 				<div className="rounded-xl border border-red-200 bg-kumo-base p-5">

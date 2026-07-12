@@ -89,6 +89,47 @@ export const SendEmailRequestSchema = z
 		message: "Either 'html' or 'text' must be provided",
 	});
 
+export const ReplyBodySchema = z
+	.object({
+		body: z.string().optional(),
+		html: z.string().optional(),
+		text: z.string().optional(),
+		attachments: z
+			.array(
+				z.object({
+					content: z.string(),
+					filename: z.string(),
+					type: z.string().optional(),
+					disposition: z.enum(["attachment", "inline"]).optional(),
+				}),
+			)
+			.optional(),
+	})
+	.refine((data) => data.body || data.html || data.text, {
+		message: "Either 'body', 'html', or 'text' must be provided",
+	});
+
+export const ForwardBodySchema = z
+	.object({
+		to: z.union([z.string().email(), z.array(z.string().email())]).optional(),
+		body: z.string().optional(),
+		html: z.string().optional(),
+		text: z.string().optional(),
+		attachments: z
+			.array(
+				z.object({
+					content: z.string(),
+					filename: z.string(),
+					type: z.string().optional(),
+					disposition: z.enum(["attachment", "inline"]).optional(),
+				}),
+			)
+			.optional(),
+	})
+	.refine((data) => data.body || data.html || data.text, {
+		message: "Either 'body', 'html', or 'text' must be provided",
+	});
+
 export const SendEmailResponseSchema = z.object({
 	id: z.string(),
 	status: z.string(),

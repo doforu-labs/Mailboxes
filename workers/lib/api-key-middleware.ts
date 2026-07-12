@@ -1,0 +1,63 @@
+// Copyright (c) 2026 Cloudflare, Inc.
+// Licensed under the Apache 2.0 license found in the LICENSE file or at:
+//     https://opensource.org/licenses/Apache-2.0
+
+/**
+ * Hono middleware to validate API Key Bearer Token authentication.
+ * Replaces or complements requireMailbox for API-key-authenticated routes.
+ */
+import { createMiddleware } from "hono/factory";
+import type { Env } from "../types";
+import { extractBearerToken } from "./api-key-utils";
+import { validateApiKey } from "../db/index";
+import type { D1MailboxVariables } from "./d1-middleware";
+
+export type ApiKeyMiddlewareVariables = D1MailboxVariables & {
+	apiKeyInfo: {
+		keyId: string;
+		scopes: string;
+		domainId: string;
+	};
+};
+
+export type ApiKeyMiddlewareContext = {
+	Bindings: Env;
+	Variables: ApiKeyMiddlewareVariables;
+};
+
+export const requireApiKey = createMiddleware<ApiKeyMiddlewareContext>(
+	async (c, next) => {
+		// 1. Extract Bearer token from Authorization header
+		const authHeader = c.req.header("Authorization");
+		const token = extractBearerToken(authHeader);
+
+		if (!token) {
+			return c.json({ error: "Missing Authorization header" }, 401);
+		}
+
+		// 2. Extract domainId from route params
+		const rawId = c.req.param("domainId");
+		if (!rawId) {
+			return c.json({ error: "Domain ID required" }, 400);
+		}
+		const decodedDomainId = decodeURIComponent(rawId);
+
+		// 3. Validate the API key
+		const result = await validateApiKey(c.env.DB, decodedDomainId, token);
+
+		if (!result.valid) {
+			return c.json({ error: "Invalid or expired API key" }, 401);
+		}
+
+		// 4. Set context variables on success
+		c.set("db", c.env.DB);
+		c.set("domainId", decodedDomainId);
+		c.set("apiKeyInfo", {
+			keyId: result.keyId!,
+			scopes: result.scopes ?? "",
+			domainId: decodedDomainId,
+		});
+
+		await next();
+	},
+);
