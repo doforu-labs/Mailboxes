@@ -21,6 +21,7 @@ import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
+import { requireAuth, handleLogin, handleLogout, handleMe } from "./lib/auth";
 import { handleResendInbound } from "./inbound";
 import { fetchWithTimeout } from "./lib/fetch-with-timeout";
 import * as db from "./db";
@@ -140,6 +141,17 @@ app.use("/api/*", cors({
 		return undefined;
 	},
 }));
+
+// ====== Admin Authentication (login / logout / me) ======
+
+app.post("/api/v1/auth/login", handleLogin);
+app.post("/api/v1/auth/logout", handleLogout);
+app.get("/api/v1/auth/me", handleMe);
+
+// Protect all remaining /api/v1/* endpoints (login, external send,
+// inbound webhook and setup paths are exempted inside requireAuth).
+app.use("/api/v1/*", requireAuth);
+
 // ====== External Email Send API (via API Key) ======
 
 // 此路由使用 requireApiKeyGlobal 通过 Bearer token 认证，无需 mailboxId 参数

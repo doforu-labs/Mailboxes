@@ -29,4 +29,7 @@ export interface Env extends Cloudflare.Env {
 	DB: D1Database;
 	BUCKET: R2Bucket;
 	AI: Ai;
+	// Admin login credentials (optional — fall back to admin / REDACTED_DEFAULT_PASSWORD)
+	AUTH_USERNAME?: string;
+	AUTH_PASSWORD?: string;
 }

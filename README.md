@@ -32,6 +32,7 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 ## Features
 
+- **Login-protected** — The app requires a sign-in (default `admin` / `REDACTED_DEFAULT_PASSWORD`; override with `AUTH_USERNAME` / `AUTH_PASSWORD` vars). Sessions last 7 days via an HttpOnly cookie.
 - **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
 - **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and sending

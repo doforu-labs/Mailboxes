@@ -1559,3 +1559,57 @@ export async function lookupApiKey(
 
 	return { valid: false, scopes: null, keyId: null, domainId: null };
 }
+
+// ── 30. Admin Sessions (login) ────────────────────────────────
+
+export interface Session {
+	token: string;
+	created_at: string;
+	expires_at: string;
+}
+
+export async function createSession(
+	db: D1Database,
+	token: string,
+	expiresAt: string,
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO sessions (token, created_at, expires_at)
+			 VALUES (?1, datetime('now'), ?2)`,
+		)
+		.bind(token, expiresAt)
+		.run();
+}
+
+export async function getSession(
+	db: D1Database,
+	token: string,
+): Promise<Session | null> {
+	const result = await db
+		.prepare("SELECT token, created_at, expires_at FROM sessions WHERE token = ?")
+		.bind(token)
+		.first<Session>();
+	return result ?? null;
+}
+
+export async function deleteSession(
+	db: D1Database,
+	token: string,
+): Promise<void> {
+	await db
+		.prepare("DELETE FROM sessions WHERE token = ?")
+		.bind(token)
+		.run();
+}
+
+// Best-effort cleanup of expired sessions; failures are non-fatal.
+export async function cleanupExpiredSessions(
+	db: D1Database,
+): Promise<void> {
+	try {
+		await db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+	} catch {
+		// ignore — cleanup is opportunistic
+	}
+}

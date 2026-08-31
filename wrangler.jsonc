@@ -9,7 +9,10 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	"vars": {},
+	"vars": {
+		"AUTH_USERNAME": "admin",
+		"AUTH_PASSWORD": "REDACTED_DEFAULT_PASSWORD"
+	},
 	// send_email binding removed — uses Resend API instead, which works on Workers Free plan.
 	"r2_buckets": [
 		{

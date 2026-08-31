@@ -23,6 +23,7 @@ import {
 	Plus,
 	Trash2,
 	TriangleAlert,
+	LogOut,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
@@ -88,6 +89,18 @@ export default function HomeRoute() {
 			return () => document.removeEventListener("mousedown", handleClick);
 		}
 	}, [openMenu]);
+
+	const [isLoggingOut, setIsLoggingOut] = useState(false);
+	async function handleLogout() {
+		if (isLoggingOut) return;
+		setIsLoggingOut(true);
+		try {
+			await api.auth.logout();
+		} catch {
+			// Even if the server call fails, clear the client-side cookie and go home.
+		}
+		window.location.href = "/login";
+	}
 
 	// Group mailboxes by domain
 	const groupedMailboxes = useMemo(() => {
@@ -281,6 +294,16 @@ export default function HomeRoute() {
 							>
 								<Settings size={18} />
 							</RouterLink>
+							<button
+								type="button"
+								onClick={handleLogout}
+								disabled={isLoggingOut}
+								className="inline-flex items-center justify-center rounded-lg border border-kumo-line bg-kumo-base p-2 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default disabled:opacity-50"
+								aria-label="Sign out"
+								title="Sign out"
+							>
+								<LogOut size={18} />
+							</button>
 							<Button
 								variant="primary"
 								icon={<Plus size={16} />}

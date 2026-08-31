@@ -42,6 +42,13 @@ async function request<T>(
 
 		if (!res.ok) {
 			const body = await res.json().catch(() => ({}));
+			// Session expired / not logged in: bounce to the login page.
+			// Skip auth endpoints themselves (login/me/logout handle 401 internally).
+			if (res.status === 401 && !url.includes("/api/v1/auth/")) {
+				if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+					window.location.href = "/login";
+				}
+			}
 			throw new ApiError(res.status, body as Record<string, unknown>);
 		}
 
@@ -188,6 +195,14 @@ export interface CreateDomainResponse {
 }
 
 const api = {
+	// Auth
+	auth: {
+		login: (username: string, password: string) =>
+			post<{ authenticated: boolean; username: string }>("/api/v1/auth/login", { username, password }),
+		logout: () => post<{ success: boolean }>("/api/v1/auth/logout"),
+		me: () => get<{ authenticated: boolean; username: string }>("/api/v1/auth/me"),
+	},
+
 	// Config
 	getConfig: () =>
 		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),

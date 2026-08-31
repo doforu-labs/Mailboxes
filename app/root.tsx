@@ -12,7 +12,7 @@ import {
 } from "@cloudflare/kumo";
 import { TriangleAlert } from "lucide-react";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { forwardRef, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import {
 	isRouteErrorResponse,
 	Links,
@@ -23,6 +23,8 @@ import {
 	ScrollRestoration,
 } from "react-router";
 import { ApiError } from "~/services/api";
+import api from "~/services/api";
+import { Navigate, useLocation } from "react-router";
 import "./index.css";
 
 function makeQueryClient() {
@@ -62,7 +64,6 @@ function getQueryClient() {
 	if (!browserQueryClient) browserQueryClient = makeQueryClient();
 	return browserQueryClient;
 }
-
 const KumoLink = forwardRef<
 	HTMLAnchorElement,
 	React.AnchorHTMLAttributes<HTMLAnchorElement> & { href?: string }
@@ -123,6 +124,48 @@ export function HydrateFallback() {
 	);
 }
 
+// ── Auth gate ──────────────────────────────────────────────────
+// Checks the admin session once on mount. Unauthenticated visitors are
+// redirected to /login; authenticated visitors on /login are sent home.
+// Logout / login use a full page reload (window.location), so the gate
+// always re-runs when auth state changes.
+function AuthGate({ children }: { children: React.ReactNode }) {
+	const location = useLocation();
+	const [status, setStatus] = useState<"loading" | "authed" | "unauthed">("loading");
+
+	useEffect(() => {
+		let cancelled = false;
+		api.auth
+			.me()
+			.then(() => {
+				if (!cancelled) setStatus("authed");
+			})
+			.catch(() => {
+				if (!cancelled) setStatus("unauthed");
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	const isLoginPage = location.pathname === "/login";
+
+	if (status === "loading") {
+		return (
+			<div className="flex h-screen items-center justify-center bg-kumo-recessed">
+				<Loader size="lg" />
+			</div>
+		);
+	}
+	if (status === "unauthed" && !isLoginPage) {
+		return <Navigate to="/login" replace />;
+	}
+	if (status === "authed" && isLoginPage) {
+		return <Navigate to="/" replace />;
+	}
+	return children;
+}
+
 export default function App() {
 	// Use useState to ensure each SSR request gets a fresh client while the
 	// browser reuses the same singleton across navigations.
@@ -132,7 +175,9 @@ export default function App() {
 			<LinkProvider component={KumoLink}>
 				<TooltipProvider>
 					<Toasty>
-						<Outlet />
+						<AuthGate>
+							<Outlet />
+						</AuthGate>
 					</Toasty>
 				</TooltipProvider>
 			</LinkProvider>

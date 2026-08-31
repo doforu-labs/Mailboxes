@@ -1,0 +1,3 @@
+# Admin login credentials (optional — defaults to admin / REDACTED_DEFAULT_PASSWORD)
+# AUTH_USERNAME=admin
+# AUTH_PASSWORD=your-secure-password
