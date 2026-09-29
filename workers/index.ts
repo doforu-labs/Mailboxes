@@ -19,6 +19,7 @@ import {
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
+import { formatSenderWithAddress } from "../shared/participants";
 import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
 import { requireAuth, handleLogin, handleLogout, handleMe } from "./lib/auth";
@@ -409,6 +410,7 @@ app.get("/api/v1/mailboxes", async (c) => {
 			unread_count: unreadMap.get(m.id) ?? 0,
 			latest_subject: latest?.subject ?? null,
 			latest_sender: latest?.sender ?? null,
+			latest_sender_name: latest?.sender_name ?? null,
 			latest_date: latest?.date ?? null,
 			latest_snippet: rawSnippet
 				? rawSnippet.replace(/<[^>]*>/g, "").trim().substring(0, 100)
@@ -854,7 +856,9 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 		const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 
 		await db.createEmail(dbClient, mailboxId, Folders.SENT, {
-			id: messageId, subject, sender: fromEmail, recipient: toStr,
+			id: messageId, subject, sender: fromEmail,
+			sender_name: typeof from === "string" ? null : (from.name || null),
+			recipient: toStr,
 			cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
 			bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
 			date: new Date().toISOString(), body: html || text || "",
@@ -903,6 +907,7 @@ app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 		const now = new Date().toISOString();
 		await db.createEmail(dbClient, mailboxId, Folders.DRAFT, {
 			id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
+			sender_name: null,
 			recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
 			date: now, body, in_reply_to: in_reply_to || null, email_references: null,
 			thread_id: thread_id || in_reply_to || messageId,
@@ -1069,12 +1074,12 @@ Keep responses concise and helpful.`;
 	if (email) {
 		msgs.push({
 			role: "system",
-			content: `The user is currently viewing this email:\nFrom: ${email.sender}\nSubject: ${email.subject}\nDate: ${email.date}\nBody: ${email.body?.substring(0, 2000)}`,
+			content: `The user is currently viewing this email:\nFrom: ${formatSenderWithAddress(email.sender_name, email.sender)}\nSubject: ${email.subject}\nDate: ${email.date}\nBody: ${email.body?.substring(0, 2000)}`,
 		});
 	}
 	if (thread && thread.length > 0) {
 		const threadSummary = thread
-			.map((e: any) => `[${e.sender}] ${e.subject}: ${e.body?.substring(0, 200)}`)
+			.map((e: any) => `[${formatSenderWithAddress(e.sender_name, e.sender)}] ${e.subject}: ${e.body?.substring(0, 200)}`)
 			.join("\n---\n");
 		msgs.push({
 			role: "system",
@@ -1695,7 +1700,9 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env
 
 	await db.createEmail(env.DB, mailboxId, Folders.INBOX, {
 		id: messageId, subject: parsedEmail.subject || "",
-		sender: (parsedEmail.from?.address || "").toLowerCase(), recipient: allRecipients.join(", "),
+		sender: (parsedEmail.from?.address || "").toLowerCase(),
+		sender_name: parsedEmail.from?.name?.trim() || null,
+		recipient: allRecipients.join(", "),
 		cc: ccRecipients.join(", ") || null, bcc: bccRecipients.join(", ") || null,
 		date: new Date().toISOString(), // uses receive time, not the email's Date header
 		body: parsedEmail.html || parsedEmail.text || "",

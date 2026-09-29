@@ -35,6 +35,7 @@ import {
 import { useDomains, useUpdateDomainApiKey } from "~/queries/domains";
 import api, { type VerifyResendResult } from "~/services/api";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
+import { formatSenderLabel } from "shared/participants";
 import type { Domain, Mailbox } from "~/types";
 
 export function meta() {
@@ -461,7 +462,7 @@ export default function HomeRoute() {
 												)}
 												{!account.latest_subject && account.latest_sender && (
 													<div className="mt-0.5 flex items-center gap-1.5 text-xs text-kumo-subtle/50 truncate">
-														<span>Latest: {account.latest_sender}</span>
+														<span>Latest: {formatSenderLabel(account.latest_sender_name, account.latest_sender)}</span>
 														{account.latest_date && (
 															<>
 																<span className="shrink-0">·</span>

@@ -23,6 +23,7 @@ export const emails = sqliteTable("emails", {
 	folder_id: text("folder_id").notNull(),
 	subject: text("subject"),
 	sender: text("sender"),
+	sender_name: text("sender_name"), // From display name, e.g. "GitHub" for "GitHub <noreply@github.com>"
 	recipient: text("recipient"),
 	cc: text("cc"),
 	bcc: text("bcc"),

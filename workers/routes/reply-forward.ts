@@ -88,6 +88,7 @@ export async function handleReplyEmail(c: AppContext) {
 				id: messageId,
 				subject,
 				sender: fromEmail,
+				sender_name: null, // replies are sent from the mailbox itself
 				recipient: toStr,
 				date: new Date().toISOString(),
 				body: resolvedHtml,
@@ -207,6 +208,7 @@ export async function handleForwardEmail(c: AppContext) {
 				id: messageId,
 				subject,
 				sender: fromEmail,
+				sender_name: null, // forwards are sent from the mailbox itself
 				recipient: toStr,
 				cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
 				bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,

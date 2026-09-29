@@ -205,7 +205,7 @@ export async function handleResendInbound(
 
 	// ── 5. Parse sender / recipients ──
 
-	const { address: senderAddress } = parseFromAddress(fullEmail.from);
+	const { name: senderName, address: senderAddress } = parseFromAddress(fullEmail.from);
 	const sender = senderAddress.toLowerCase();
 
 	const allRecipients = fullEmail.to
@@ -333,6 +333,7 @@ export async function handleResendInbound(
 			id: messageId,
 			subject: fullEmail.subject || "",
 			sender,
+			sender_name: senderName,
 			recipient: allRecipients.join(", "),
 			cc: ccRecipients.join(", ") || null,
 			bcc: bccRecipients.join(", ") || null,

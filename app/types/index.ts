@@ -35,6 +35,7 @@ export interface Mailbox {
 	unread_count?: number;
 	latest_subject?: string | null;
 	latest_sender?: string | null;
+	latest_sender_name?: string | null;
 	latest_date?: string | null;
 	latest_snippet?: string | null;
 }
@@ -45,6 +46,7 @@ export interface Email {
 	folder_id?: string | null;
 	subject: string;
 	sender: string;
+	sender_name?: string | null;
 	recipient: string;
 	cc?: string;
 	bcc?: string;
@@ -62,6 +64,7 @@ export interface Email {
 	thread_count?: number;
 	thread_unread_count?: number;
 	participants?: string;
+	participants_meta?: string | null;
 	needs_reply?: boolean;
 	has_draft?: boolean;
 	send_status?: string | null; // NULL (not sent), "sending", "sent", "failed"

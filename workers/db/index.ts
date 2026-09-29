@@ -7,6 +7,7 @@ import { eq, and, or, asc, desc, sql, ne, inArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "./schema";
 import { Folders } from "../../shared/folders";
+import { sanitizeSenderName, stripHeaderChars } from "../../shared/participants";
 import { generateApiKey, generateKeyId, extractPrefix, verifyApiKey } from "../lib/api-key-utils";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ export interface EmailData {
 	id: string;
 	subject: string;
 	sender: string;
+	sender_name?: string | null;
 	recipient: string;
 	cc?: string | null;
 	bcc?: string | null;
@@ -82,6 +84,7 @@ export interface EmailFull {
 	folder_id: string;
 	subject: string | null;
 	sender: string | null;
+	sender_name: string | null;
 	recipient: string | null;
 	cc: string | null;
 	bcc: string | null;
@@ -102,6 +105,7 @@ export interface EmailSummary {
 	id: string;
 	subject: string | null;
 	sender: string | null;
+	sender_name: string | null;
 	recipient: string | null;
 	cc: string | null;
 	bcc: string | null;
@@ -120,6 +124,7 @@ export interface ThreadedEmail {
 	id: string;
 	subject: string | null;
 	sender: string | null;
+	sender_name: string | null;
 	recipient: string | null;
 	date: string | null;
 	read: boolean;
@@ -132,6 +137,7 @@ export interface ThreadedEmail {
 	thread_count: number;
 	thread_unread_count: number;
 	participants: string | null;
+	participants_meta: string | null;
 	needs_reply?: boolean;
 	has_draft?: boolean;
 	send_status?: string | null;
@@ -218,6 +224,7 @@ export async function getEmails(
 			id: schema.emails.id,
 			subject: schema.emails.subject,
 			sender: schema.emails.sender,
+			sender_name: schema.emails.sender_name,
 			recipient: schema.emails.recipient,
 			cc: schema.emails.cc,
 			bcc: schema.emails.bcc,
@@ -341,14 +348,17 @@ export async function createEmail(
 
 	stmts.push(
 		db.prepare(
-			`INSERT INTO emails (id, mailbox_id, folder_id, subject, sender, recipient, cc, bcc, date, read, starred, body, in_reply_to, email_references, thread_id, message_id, raw_headers, send_status)
-			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)`,
+			`INSERT INTO emails (id, mailbox_id, folder_id, subject, sender, sender_name, recipient, cc, bcc, date, read, starred, body, in_reply_to, email_references, thread_id, message_id, raw_headers, send_status)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)`,
 		).bind(
 			emailData.id,
 			mailboxId,
 			folderId,
 			emailData.subject,
-			emailData.sender,
+			// Strip control/invisible characters: `sender` and `sender_name` are
+			// concatenated into participants_meta, which uses RS/US as separators.
+			stripHeaderChars(emailData.sender),
+			sanitizeSenderName(emailData.sender_name),
 			emailData.recipient,
 			emailData.cc ?? null,
 			emailData.bcc ?? null,
@@ -528,6 +538,23 @@ export async function markThreadRead(
 
 // ── 10. getThreadedEmails ────────────────────────────────────────
 
+/**
+ * SQL fragment producing `participants_meta`: the participant list of a
+ * conversation, consumed by formatParticipantLabel() in shared/participants.ts.
+ *
+ * Layout: `name? CHAR(31) address` per participant, entries joined by CHAR(30).
+ *
+ * Both fields are stripped of the two separators here. createEmail() already
+ * sanitises whatever it writes, but rows inserted before that guard existed —
+ * and rows backfilled by migration 0010 — can still carry them, and a stray
+ * CHAR(30) inside a name would split one sender into two participants. Stripping
+ * inside the aggregate makes the framing of the result independent of what is
+ * already stored, and matches the replacement character used by the sanitizers
+ * (a space, so words do not run together).
+ */
+const PARTICIPANTS_META_SQL =
+	"GROUP_CONCAT(COALESCE(NULLIF(TRIM(REPLACE(REPLACE(sender_name, CHAR(30), ' '), CHAR(31), ' ')), ''), '') || CHAR(31) || REPLACE(REPLACE(sender, CHAR(30), ' '), CHAR(31), ' '), CHAR(30)) as participants_meta";
+
 export async function getThreadedEmails(
 	db: D1Database,
 	mailboxId: string,
@@ -558,7 +585,8 @@ export async function getThreadedEmails(
 					draft_group_key,
 					COUNT(*) as thread_count,
 					SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) as thread_unread_count,
-					GROUP_CONCAT(DISTINCT sender) as participants
+					GROUP_CONCAT(DISTINCT sender) as participants,
+					${PARTICIPANTS_META_SQL}
 				FROM folder_emails
 				GROUP BY draft_group_key
 			),
@@ -572,11 +600,12 @@ export async function getThreadedEmails(
 				FROM folder_emails fe
 			)
 			SELECT
-				lp.id, lp.subject, lp.sender, lp.recipient, lp.date,
+				lp.id, lp.subject, lp.sender, lp.sender_name, lp.recipient, lp.date,
 				lp.read, lp.starred, lp.thread_id, lp.folder_id,
 				lp.in_reply_to, lp.email_references, lp.send_status,
 				SUBSTR(lp.body, 1, 300) as snippet,
-				ds.thread_count, ds.thread_unread_count, ds.participants
+				ds.thread_count, ds.thread_unread_count, ds.participants,
+				ds.participants_meta
 			FROM latest_per_group lp
 			JOIN draft_stats ds ON lp.draft_group_key = ds.draft_group_key
 			WHERE lp.rn = 1
@@ -592,6 +621,7 @@ export async function getThreadedEmails(
 			thread_count: row.thread_count || 1,
 			thread_unread_count: row.thread_unread_count || 0,
 			participants: row.participants || row.sender,
+			participants_meta: row.participants_meta || null,
 		}));
 	}
 
@@ -633,6 +663,7 @@ export async function getThreadedEmails(
 				SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) as thread_unread_count,
 				SUM(CASE WHEN read = 1 THEN 1 ELSE 0 END) as thread_read_count,
 				GROUP_CONCAT(DISTINCT sender) as participants,
+				${PARTICIPANTS_META_SQL},
 				SUM(CASE WHEN folder_id = (SELECT id FROM folders WHERE mailbox_id = ?1 AND name = 'draft' LIMIT 1) THEN 1 ELSE 0 END) as has_draft
 			FROM all_emails_with_conversation
 			WHERE conversation_id IN (
@@ -661,11 +692,12 @@ export async function getThreadedEmails(
 				ON fe.raw_thread_id = tc.raw_thread_id
 		)
 		SELECT
-			lif.id, lif.subject, lif.sender, lif.recipient, lif.date,
+			lif.id, lif.subject, lif.sender, lif.sender_name, lif.recipient, lif.date,
 			lif.read, lif.starred, lif.thread_id, lif.folder_id,
 			lif.in_reply_to, lif.email_references, lif.send_status,
 			SUBSTR(lif.body, 1, 300) as snippet,
 			cs.thread_count, cs.thread_unread_count, cs.participants,
+			cs.participants_meta,
 			CASE WHEN lmc.folder_id != (SELECT id FROM folders WHERE mailbox_id = ?1 AND name = 'sent' LIMIT 1)
 				AND lmc.folder_id != (SELECT id FROM folders WHERE mailbox_id = ?1 AND name = 'draft' LIMIT 1)
 				AND cs.thread_read_count > 0
@@ -688,6 +720,7 @@ export async function getThreadedEmails(
 		thread_count: row.thread_count || 1,
 		thread_unread_count: row.thread_unread_count || 0,
 		participants: row.participants || row.sender,
+		participants_meta: row.participants_meta || null,
 		needs_reply: !!row.needs_reply,
 		has_draft: !!row.has_draft,
 	}));
@@ -941,7 +974,7 @@ export async function searchEmails(
 	const offset = (page - 1) * capLimit;
 
 	const query = `
-		SELECT e.id, e.subject, e.sender, e.recipient, e.cc, e.bcc, e.date,
+		SELECT e.id, e.subject, e.sender, e.sender_name, e.recipient, e.cc, e.bcc, e.date,
 			e.read, e.starred, e.in_reply_to, e.email_references,
 			e.thread_id, e.folder_id,
 			SUBSTR(e.body, 1, 300) as snippet,
@@ -1313,7 +1346,7 @@ export async function getMailboxUnreadCounts(
 export async function getMailboxLatestEmails(
 	db: D1Database,
 	mailboxIds: string[],
-): Promise<Map<string, { subject: string | null; sender: string | null; date: string | null; snippet: string | null }>> {
+): Promise<Map<string, { subject: string | null; sender: string | null; sender_name: string | null; date: string | null; snippet: string | null }>> {
 	if (mailboxIds.length === 0) return new Map();
 
 	const orm = drizzle(db, { schema });
@@ -1327,6 +1360,7 @@ export async function getMailboxLatestEmails(
 			mailboxId: schema.emails.mailbox_id,
 			subject: schema.emails.subject,
 			sender: schema.emails.sender,
+			sender_name: schema.emails.sender_name,
 			date: schema.emails.date,
 			snippet: sql<string>`SUBSTR(${schema.emails.body}, 1, 150)`,
 		})
@@ -1341,13 +1375,14 @@ export async function getMailboxLatestEmails(
 		)
 		.all();
 
-	const map = new Map<string, { subject: string | null; sender: string | null; date: string | null; snippet: string | null }>();
+	const map = new Map<string, { subject: string | null; sender: string | null; sender_name: string | null; date: string | null; snippet: string | null }>();
 	for (const row of results) {
 		// If two rows share the same timestamp, keep the first (any is fine)
 		if (!map.has(row.mailboxId)) {
 			map.set(row.mailboxId, {
 				subject: row.subject,
 				sender: row.sender,
+				sender_name: row.sender_name,
 				date: row.date,
 				snippet: row.snippet,
 			});

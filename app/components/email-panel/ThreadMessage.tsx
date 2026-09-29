@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import { formatSenderFull } from "shared/participants";
 import {
 	formatDetailDate,
 	formatShortDate,
@@ -70,7 +71,7 @@ export default function ThreadMessage({
 }: ThreadMessageProps) {
 	const isSelf = email.sender === mailboxEmail;
 	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""}`;
-	const senderLabel = isDraft ? "Draft reply" : isSelf ? "You" : email.sender;
+	const senderLabel = isDraft ? "Draft reply" : isSelf ? "You" : formatSenderFull(email.sender_name, email.sender);
 
 	if (!isExpanded) {
 		return (
@@ -80,7 +81,7 @@ export default function ThreadMessage({
 					onClick={onToggleExpand}
 					className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kumo-tint rounded-lg text-left"
 				>
-					<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
+					<Avatar isDraft={isDraft} isSelf={isSelf} sender={formatSenderFull(email.sender_name, email.sender)} />
 					<div className="flex-1 min-w-0">
 						<div className="flex items-center justify-between">
 							<span className="text-sm font-medium text-kumo-default truncate">
@@ -112,7 +113,7 @@ export default function ThreadMessage({
 							aria-label="Collapse message"
 						>
 							<div className="cursor-pointer hover:ring-2 hover:ring-kumo-brand/30 transition-shadow rounded-full">
-								<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
+								<Avatar isDraft={isDraft} isSelf={isSelf} sender={formatSenderFull(email.sender_name, email.sender)} />
 							</div>
 						</button>
 						<div className="min-w-0">

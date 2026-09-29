@@ -20,6 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { Folders } from "shared/folders";
+import { formatParticipantLabel } from "shared/participants";
 import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import { getSnippetText } from "~/lib/utils";
@@ -263,17 +264,13 @@ export default function EmailListRoute() {
 		}
 	};
 
-	const formatParticipants = (email: Email): string => {
-		if (email.participants) {
-			const names = email.participants
-				.split(",")
-				.map((p) => p.trim().split("@")[0])
-				.filter((name, idx, arr) => arr.indexOf(name) === idx);
-			if (names.length <= 3) return names.join(", ");
-			return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
-		}
-		return email.sender.split("@")[0];
-	};
+	// Prefer the From display name (e.g. "GitHub") over the address local-part
+	// (e.g. "noreply"), matching the behaviour of mainstream mail clients.
+	const formatParticipants = (email: Email): string =>
+		formatParticipantLabel(email.participants_meta, {
+			name: email.sender_name,
+			address: email.sender,
+		});
 
 	return (
 		<MailboxSplitView

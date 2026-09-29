@@ -4,6 +4,7 @@
 
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import { formatSenderFull } from "shared/participants";
 import { formatDetailDate, rewriteInlineImages } from "~/lib/utils";
 import type { Email } from "~/types";
 
@@ -24,11 +25,11 @@ export default function SingleMessageView({
 				<div className="flex items-center justify-between gap-3">
 					<div className="flex items-center gap-2.5 min-w-0">
 						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-xs font-bold text-kumo-default">
-							{email.sender.charAt(0).toUpperCase()}
+							{formatSenderFull(email.sender_name, email.sender).charAt(0).toUpperCase()}
 						</div>
 						<div className="min-w-0">
 							<div className="text-sm font-medium text-kumo-default truncate">
-								{email.sender}
+								{formatSenderFull(email.sender_name, email.sender)}
 							</div>
 							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
 						</div>
