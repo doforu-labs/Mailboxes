@@ -58,7 +58,6 @@ export default function LoginRoute() {
 					<form onSubmit={handleSubmit} className="grid gap-4">
 						<Input
 							label="Username"
-							placeholder="admin"
 							autoComplete="username"
 							value={username}
 							onChange={(e) => setUsername(e.target.value)}
