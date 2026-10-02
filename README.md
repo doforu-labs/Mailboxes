@@ -79,7 +79,7 @@
 
 4. **配置 Resend 以便发信**（可选 —— 只有需要发信时才要）。在 [resend.com](https://resend.com) 注册、添加你的域名、复制 API Key。然后在应用里添加该域名：**Add Domain** 流程会要求填写 Resend API Key，之后也可以在首页的域名菜单里更新。
 
-5. **创建管理员账号。** 首次打开应用会直接引导到设置向导，填写用户名（默认 `admin`）和密码即可 —— 在此之前应用不会开放其它页面。**没有默认密码。**
+5. **创建管理员账号。** 首次打开应用会被直接引导到设置向导（`/setup`），填写用户名（默认 `admin`）和密码即可 —— 在此之前应用不会开放其它页面。**没有默认密码，也不需要 token 或任何环境变量。** 这是一个一次性的窗口：账号建好之后，向导与它的建号接口都会关闭，再提交只会得到 409。
 
 6. **创建一个邮箱。** 登录后，为域名下的任意地址创建邮箱（例如 `hello@yourdomain.com`）。
 
@@ -90,7 +90,7 @@
   ```bash
   wrangler r2 bucket create mailboxes
   ```
-- **管理员凭证** —— 由首次运行向导创建一次，存于 D1，无需配置任何凭据变量。想重新开始，删除该行后刷新即可：`wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`。
+- **管理员凭证** —— 由首次运行向导（`/setup`）创建一次，存于 D1，无需配置任何凭据变量。向导只在 `admins` 表为空时开放，建号后自动关闭；即使两个请求同时提交，也只有一个能成功，另一个收到 409。想重新开始，删除该行后刷新即可：`wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`。
 - **密码存储** —— 管理员密码以加盐 **PBKDF2-SHA256** 哈希存于 D1，迭代 10 万次（workerd 对 PBKDF2 的上限），参数随哈希值一并存储，日后要提高强度无需改表结构。早期版本曾以明文存储，理由是免费版每请求 CPU 上限 10 ms、加上 KDF 会让登录间歇性触发 1102；但在真实免费版部署上实测，CPU 实际上限接近 **2000 ms**，而 KDF 只花 **21–26 ms**，于是改回了哈希。详见 [SECURITY.md](SECURITY.md) 与 [`workers/lib/password.ts`](workers/lib/password.ts)。
 - **AI 提供方** —— 助手默认使用 Cloudflare Workers AI，无需 Key。想用自定义模型时，打开某个邮箱的 **Settings → AI Model**，启用开关并填写 Base URL、模型名和 API Key（OpenAI 兼容）。若自定义提供方不可达，会自动回退到 Workers AI。
 - **发信** —— Resend API Key 按域名配置。

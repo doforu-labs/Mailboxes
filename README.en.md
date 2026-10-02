@@ -79,7 +79,7 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 4. **Configure Resend for sending** (optional — only needed if you want to send). Sign up at [resend.com](https://resend.com), add your domain, and copy an API key. Then add the domain in the app: the **Add Domain** flow asks for the Resend API key, and you can update it later from the domain menu on the home page.
 
-5. **Create your admin account.** The first time you open the app you are sent straight to the setup wizard, which asks for a username (default `admin`) and a password. No other page is reachable until you do. There is no default password.
+5. **Create your admin account.** The first time you open the app you are sent straight to the setup wizard at `/setup`, which asks for a username (default `admin`) and a password. No other page is reachable until you do. There is no default password, and no token or environment variable is involved. The window is one-shot: once the account exists, the wizard and its sign-up endpoint both close, and further attempts get a 409.
 
 6. **Create a mailbox.** Once signed in, create a mailbox for any address on your domain (e.g. `hello@yourdomain.com`).
 
@@ -90,7 +90,7 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
   ```bash
   wrangler r2 bucket create mailboxes
   ```
-- **Admin credentials** — created once by the first-run setup wizard and stored in D1; there are no credential vars to configure. To start over, delete the row and reload: `wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`.
+- **Admin credentials** — created once by the first-run setup wizard (`/setup`) and stored in D1; there are no credential vars to configure. The wizard is only open while the `admins` table is empty and closes itself as soon as the account exists; if two requests race, only one can win and the other gets a 409. To start over, delete the row and reload: `wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`.
 - **Password storage** — the admin password is stored in D1 as a salted **PBKDF2-SHA256** hash, 100,000 iterations (workerd's ceiling for PBKDF2), with the parameters stored alongside the value. An earlier revision kept it in plain text, on the premise that the Free plan caps CPU at 10 ms per request and a KDF would trip Error 1102 intermittently; measuring a real Free-plan deployment showed the practical ceiling is nearer 2,000 ms, and the KDF costs 21-26 ms, so it was reinstated. Details and measurements: [SECURITY.md](SECURITY.md) and [`workers/lib/password.ts`](workers/lib/password.ts).
 - **AI provider** — by default the agent uses Cloudflare Workers AI and needs no key. To use a custom model, open a mailbox's **Settings → AI Model**, enable the switch, and enter a base URL, model name, and API key (OpenAI-compatible). If the custom provider is unreachable, the app falls back to Workers AI.
 - **Sending** — the Resend API key is configured per domain.
