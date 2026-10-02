@@ -47,7 +47,7 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 ## Features
 
-- **Login-protected** — the app requires a sign-in. The default is `admin` / `REDACTED_DEFAULT_PASSWORD`. **Change it** with the `AUTH_USERNAME` / `AUTH_PASSWORD` vars before exposing the app to the internet. Sessions last 7 days via an HttpOnly cookie (stored in D1).
+- **Login-protected** — the first visitor to a fresh deployment creates the admin account through a setup wizard, and the password is stored in D1 as a salted PBKDF2-SHA256 hash. There is no default password. Sessions last 7 days via an HttpOnly cookie (stored in D1).
 - **Full email client** — send and receive via Cloudflare Email Routing, with a rich-text composer, reply/forward threading, folders, search, and attachments.
 - **Per-mailbox isolation** — each mailbox's configuration is an R2 object and its messages live in D1, keyed by mailbox.
 - **Built-in AI agent** — a side panel with 14 email tools for reading, searching, drafting, and sending; responses stream over SSE with tool-call visibility.
@@ -79,9 +79,9 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 4. **Configure Resend for sending** (optional — only needed if you want to send). Sign up at [resend.com](https://resend.com), add your domain, and copy an API key. Then add the domain in the app: the **Add Domain** flow asks for the Resend API key, and you can update it later from the domain menu on the home page.
 
-5. **Create a mailbox.** Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@yourdomain.com`).
+5. **Create your admin account.** The first time you open the app you are sent straight to the setup wizard, which asks for a username (default `admin`) and a password. No other page is reachable until you do. There is no default password.
 
-6. **Sign in** with the default `admin` / `REDACTED_DEFAULT_PASSWORD` — then change the password (see [Configuration](#configuration)).
+6. **Create a mailbox.** Once signed in, create a mailbox for any address on your domain (e.g. `hello@yourdomain.com`).
 
 ## Configuration
 
@@ -90,7 +90,8 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
   ```bash
   wrangler r2 bucket create mailboxes
   ```
-- **Admin credentials** — set `AUTH_USERNAME` / `AUTH_PASSWORD` (in `wrangler.jsonc` `vars` for production, or a local `.dev.vars` — see `.dev.vars.example`). **Do not leave the default password.**
+- **Admin credentials** — created once by the first-run setup wizard and stored in D1; there are no credential vars to configure. To start over, delete the row and reload: `wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`. Set the `SETUP_TOKEN` secret to require a shared secret before the wizard will run (recommended if the deployment is publicly reachable).
+- **Password storage** — the admin password is stored in D1 as a salted **PBKDF2-SHA256** hash, 100,000 iterations (workerd's ceiling for PBKDF2), with the parameters stored alongside the value. An earlier revision kept it in plain text, on the premise that the Free plan caps CPU at 10 ms per request and a KDF would trip Error 1102 intermittently; measuring a real Free-plan deployment showed the practical ceiling is nearer 2,000 ms, and the KDF costs 21-26 ms, so it was reinstated. Details and measurements: [SECURITY.md](SECURITY.md) and [`workers/lib/password.ts`](workers/lib/password.ts).
 - **AI provider** — by default the agent uses Cloudflare Workers AI and needs no key. To use a custom model, open a mailbox's **Settings → AI Model**, enable the switch, and enter a base URL, model name, and API key (OpenAI-compatible). If the custom provider is unreachable, the app falls back to Workers AI.
 - **Sending** — the Resend API key is configured per domain.
 

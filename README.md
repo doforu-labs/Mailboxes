@@ -47,7 +47,7 @@
 
 ## 功能
 
-- **登录保护** —— 应用需要登录，默认账号 `admin` / `REDACTED_DEFAULT_PASSWORD`。**在对外开放前请务必修改**（用 `AUTH_USERNAME` / `AUTH_PASSWORD` 变量覆盖）。会话通过 HttpOnly Cookie 保持 7 天，会话数据存在 D1。
+- **登录保护** —— 首次部署后的第一位访客通过设置向导创建管理员账号，密码以加盐 PBKDF2-SHA256 哈希存于 D1，**没有默认密码**。会话通过 HttpOnly Cookie 保持 7 天，会话数据存在 D1。
 - **完整的邮件客户端** —— 通过 Cloudflare Email Routing 收发邮件，支持富文本编辑器、回复/转发会话串、文件夹、搜索与附件。
 - **邮箱间相互隔离** —— 每个邮箱的配置是一个 R2 对象，邮件数据按邮箱存于 D1。
 - **内置 AI 助手** —— 侧边面板提供 14 个邮件工具，可读取、检索、起草、发送；响应通过 SSE 流式返回，并展示工具调用过程。
@@ -79,9 +79,9 @@
 
 4. **配置 Resend 以便发信**（可选 —— 只有需要发信时才要）。在 [resend.com](https://resend.com) 注册、添加你的域名、复制 API Key。然后在应用里添加该域名：**Add Domain** 流程会要求填写 Resend API Key，之后也可以在首页的域名菜单里更新。
 
-5. **创建一个邮箱。** 打开你部署好的应用，为域名下的任意地址创建邮箱（例如 `hello@yourdomain.com`）。
+5. **创建管理员账号。** 首次打开应用会直接引导到设置向导，填写用户名（默认 `admin`）和密码即可 —— 在此之前应用不会开放其它页面。**没有默认密码。**
 
-6. **登录**：默认 `admin` / `REDACTED_DEFAULT_PASSWORD` —— 然后请修改密码（见[配置](#配置)）。
+6. **创建一个邮箱。** 登录后，为域名下的任意地址创建邮箱（例如 `hello@yourdomain.com`）。
 
 ## 配置
 
@@ -90,7 +90,8 @@
   ```bash
   wrangler r2 bucket create mailboxes
   ```
-- **管理员凭证** —— 设置 `AUTH_USERNAME` / `AUTH_PASSWORD`（生产环境写在 `wrangler.jsonc` 的 `vars` 里，本地开发用 `.dev.vars`，参见 `.dev.vars.example`）。**不要保留默认密码。**
+- **管理员凭证** —— 由首次运行向导创建一次，存于 D1，无需配置任何凭据变量。想重新开始，删除该行后刷新即可：`wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`。设置 `SETUP_TOKEN` secret 可要求向导先验证一个共享密钥（部署地址可被公网访问时建议开启）。
+- **密码存储** —— 管理员密码以加盐 **PBKDF2-SHA256** 哈希存于 D1，迭代 10 万次（workerd 对 PBKDF2 的上限），参数随哈希值一并存储，日后要提高强度无需改表结构。早期版本曾以明文存储，理由是免费版每请求 CPU 上限 10 ms、加上 KDF 会让登录间歇性触发 1102；但在真实免费版部署上实测，CPU 实际上限接近 **2000 ms**，而 KDF 只花 **21–26 ms**，于是改回了哈希。详见 [SECURITY.md](SECURITY.md) 与 [`workers/lib/password.ts`](workers/lib/password.ts)。
 - **AI 提供方** —— 助手默认使用 Cloudflare Workers AI，无需 Key。想用自定义模型时，打开某个邮箱的 **Settings → AI Model**，启用开关并填写 Base URL、模型名和 API Key（OpenAI 兼容）。若自定义提供方不可达，会自动回退到 Workers AI。
 - **发信** —— Resend API Key 按域名配置。
 
