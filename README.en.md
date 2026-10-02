@@ -12,8 +12,6 @@
   <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/doforu-labs/Mailboxes"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a>
 
   <img src="./demo_app.png" alt="The Mailboxes UI: the inbox, a reply draft, and the AI agent panel auto-drafting replies" width="880">
-
-  <p><sub>© 2026 <strong>Doforu</strong> · derivative of <a href="https://github.com/cloudflare/agentic-inbox">cloudflare/agentic-inbox</a> · licensing and attribution in <a href="NOTICE">NOTICE</a></sub></p>
 </div>
 
 ---
