@@ -61,7 +61,8 @@
 ## 前置条件
 
 - **Node.js ≥ 20** 与 npm（仓库里有 `.nvmrc`，`nvm use` 即可）
-- 一个拥有域名的 Cloudflare 账号（`npm run setup` 会在需要时自动拉起 `wrangler login`）
+- 一个 Cloudflare 账号（`npm run setup` 会在需要时自动拉起 `wrangler login`）
+- **一个域名。** 可以在任何注册商处购买（Namecheap、GoDaddy、阿里云……），但 **DNS 必须托管到 Cloudflare**：先把域名添加到你的 Cloudflare 账号，并按提示在注册商处把 NS 换成 Cloudflare 给你的名称服务器。收信走的是 Cloudflare Email Routing；添加域名时应用也会通过 Cloudflare API 按域名去查 Zone，查不到就会报 `Zone for "<domain>" not found in Cloudflare`。
 - 启用 [Email Routing](https://developers.cloudflare.com/email-routing/) 用于**收信**
 - 一个 [Resend](https://resend.com) 账号用于**发信**（外发邮件不使用 Cloudflare Email Service）
 - 启用 [Workers AI](https://developers.cloudflare.com/workers-ai/) 供 AI 助手使用（默认已开启）
@@ -80,6 +81,8 @@ npm run setup
 > 也可以用 README 顶部的 **Deploy to Cloudflare** 按钮，但它只创建 Worker —— R2、D1 和 `database_id` 都要你自己补，详见本节末尾的说明。
 
 1. **配置收信。** 在 Cloudflare 面板里进入你的域名 → **Email Routing**，创建一条 **catch-all** 规则，转发到该 Worker。（如果域名**不在** Cloudflare DNS 上，也可以改用 Resend 的收信 Webhook：`/api/v1/inbound/resend`。）
+
+   想省掉手动步骤：先做完下面的第 3 步（创建管理员账号），然后在 **Settings**（`/settings`）里填好 Cloudflare API 凭据（见「配置」），再回首页添加域名 —— 应用会自动开启 Email Routing 并建好这条 catch-all 规则。
 
 2. **配置 Resend 以便发信**（可选 —— 只有需要发信时才要）。在 [resend.com](https://resend.com) 注册、添加你的域名、复制 API Key。然后在应用里添加该域名：**Add Domain** 流程会要求填写 Resend API Key，之后也可以在首页的域名菜单里更新。
 
@@ -106,6 +109,10 @@ npm run setup
 ## 配置
 
 - **`wrangler.jsonc`** —— 设置你的 D1 `database_id`、R2 桶名以及其它绑定。`npm run setup` 会自动把 `database_id` 填好。
+- **域名与 Cloudflare API 凭据（Platform Settings）** —— 登录后进入 **Settings**（`/settings`）→ **Platform Settings**，填入 **Cloudflare API Token** 与 **Cloudflare Account ID**。点 **Verify & Save** 会先拿这组凭据跑一次校验（提示里会给出账号名和找到的 zone 数量），通过后徽章变为 `Configured`；凭据存在 D1 里。
+  - 面板里那个「创建预配置 Token →」链接会自动勾选 3 项权限（Zone Edit、DNS Edit、Zone Settings Edit），**第 4 项 Email Routing Rules Edit 需要手动补上**（Add more → 区域 → 电子邮件路由规则 → 编辑），再把 Token 粘回输入框。
+  - 配好之后，在应用里添加域名时会自动开启 Email Routing 并写好 catch-all 规则（转发到 Worker `mailboxes`），不必再去面板手动点；没配的话就用「快速开始」第 1 步的手动方式。
+  - 域名对应的 Zone 必须已经存在于你这个账号里（子域名会自动回退查父级 Zone）。注意应用只会**查找** Zone，不会替你创建。
 - **R2 存储桶** —— 应用需要一个名为 `mailboxes` 的桶：
   ```bash
   wrangler r2 bucket create mailboxes

@@ -61,7 +61,8 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 ## Prerequisites
 
 - **Node.js ≥ 20** and npm (the repository ships a `.nvmrc`, so `nvm use` is enough)
-- A Cloudflare account with a domain (`npm run setup` runs `wrangler login` for you when needed)
+- A Cloudflare account (`npm run setup` runs `wrangler login` for you when needed)
+- **A domain.** It can be registered anywhere (Namecheap, GoDaddy, Cloudflare Registrar, …), but its **DNS has to be hosted on Cloudflare**: add the domain to your Cloudflare account and point the nameservers at the ones Cloudflare gives you. Receiving runs on Cloudflare Email Routing, and when you add a domain the app looks the zone up through the Cloudflare API — if it is missing you get `Zone for "<domain>" not found in Cloudflare`.
 - [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for **receiving**
 - A [Resend](https://resend.com) account for **sending** (outbound mail does not use Cloudflare Email Service)
 - [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled for the agent (on by default)
@@ -80,6 +81,8 @@ The script is **idempotent**, so just run it again for every later deploy (exist
 > The **Deploy to Cloudflare** button at the top of this README works too, but it only creates the Worker — R2, D1 and the `database_id` are on you. See the note at the end of this section.
 
 1. **Set up receiving.** In the Cloudflare dashboard, go to your domain → **Email Routing** and create a **catch-all** rule that forwards to this Worker. (For a domain that is *not* on Cloudflare DNS, you can instead receive through the Resend inbound webhook at `/api/v1/inbound/resend`.)
+
+   To skip the manual part: finish step 3 below (create your admin account), fill in the Cloudflare API credentials under **Settings** (`/settings`) — see Configuration — and then add your domain on the home page. The app enables Email Routing and creates this catch-all rule for you.
 
 2. **Configure Resend for sending** (optional — only needed if you want to send). Sign up at [resend.com](https://resend.com), add your domain, and copy an API key. Then add the domain in the app: the **Add Domain** flow asks for the Resend API key, and you can update it later from the domain menu on the home page.
 
@@ -106,6 +109,10 @@ Much less work: run `npm run setup` as above.
 ## Configuration
 
 - **`wrangler.jsonc`** — set your D1 `database_id`, the R2 bucket name, and any bindings. `npm run setup` fills in `database_id` for you.
+- **Domains and Cloudflare API credentials (Platform Settings)** — sign in, then open **Settings** (`/settings`) → **Platform Settings** and fill in a **Cloudflare API Token** and your **Cloudflare Account ID**. **Verify & Save** checks the pair before storing it (the toast reports the account name and how many zones were found) and the badge flips to `Configured`; the credentials are stored in D1.
+  - The "创建预配置 Token →" link in that panel pre-selects three permissions (Zone Edit, DNS Edit, Zone Settings Edit). The **fourth one, Email Routing Rules Edit, has to be added by hand** (Add more → Zone → Email Routing Rules → Edit), after which you paste the token back into the field.
+  - With credentials in place, adding a domain in the app enables Email Routing and writes the catch-all rule (forwarding to the `mailboxes` Worker) for you — no dashboard clicking. Without them, use the manual path in step 1 of Quick start.
+  - The zone for the domain must already exist in your account (subdomains fall back to their parent zone). Note that the app only *looks up* zones; it never creates one for you.
 - **R2 bucket** — the app expects a bucket named `mailboxes`:
   ```bash
   wrangler r2 bucket create mailboxes
