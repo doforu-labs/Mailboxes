@@ -359,8 +359,8 @@ export default function EmailListRoute() {
 												fill={email.starred ? "currentColor" : "none"}
 												className={
 													email.starred
-														? "text-kumo-warning"
-														: "text-kumo-subtle hover:text-kumo-warning"
+														? "text-kumo-starred"
+														: "text-kumo-subtle hover:text-kumo-starred"
 												}
 											/>
 										</button>

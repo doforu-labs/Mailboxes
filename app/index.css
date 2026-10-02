@@ -9,6 +9,19 @@
 @import "tailwindcss";
 @import "./themes/index.css";
 
+/* Kumo ships no dedicated "starred / favourite" token, so the star toggle used to
+ * borrow --text-color-kumo-warning. That token is tuned for warning TEXT and
+ * reads as dark amber on light backgrounds (yellow-800 -> rgb(137,75,0)), which
+ * makes a starred message look brown rather than yellow. Declare a dedicated
+ * token here so the star is unmistakably yellow in both modes, while the warning
+ * semantics (Needs-reply icon, draft border) stay untouched.
+ *
+ * Declared in @theme so Tailwind generates the matching `text-kumo-starred`
+ * utility; the runtime value is per-mode via light-dark(). */
+@theme {
+  --text-color-kumo-starred: light-dark(oklch(0.78 0.17 85), oklch(0.85 0.19 92));
+}
+
 body {
   margin: 0;
 }

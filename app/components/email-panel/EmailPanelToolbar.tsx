@@ -139,7 +139,7 @@ export default function EmailPanelToolbar({
 						<Star
 							size={18}
 							fill={email.starred ? "currentColor" : "none"}
-							className={email.starred ? "text-kumo-warning" : ""}
+							className={email.starred ? "text-kumo-starred" : ""}
 						/>
 					}
 					onClick={onToggleStar}
