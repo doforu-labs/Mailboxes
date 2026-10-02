@@ -22,7 +22,7 @@
 
 ## Why Mailboxes
 
-Give your product a real inbox on your own domain — `support@`, `hello@`, `sales@` — for **sending, receiving, and auto-replying**, without paying per mailbox per month.
+Give your product a real inbox on your own domain — `support@`, `hello@`, `sales@` — for **sending, receiving, and drafting replies**, without paying per mailbox per month.
 
 Built for developers shipping products to a global audience:
 
@@ -50,12 +50,15 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 ## Features
 
+> Everything below is implemented in **v0.1.0**. For what is not built yet, see [Roadmap](#roadmap).
+
 - **Login-protected** — the first visitor to a fresh deployment creates the admin account through a setup wizard, and the password is stored in D1 as a salted PBKDF2-SHA256 hash. There is no default password. Sessions last 7 days via an HttpOnly cookie (stored in D1).
 - **Full email client** — send and receive via Cloudflare Email Routing, with a rich-text composer, reply/forward threading, folders, search, and attachments.
+- **Switchable themes and dark mode** — three extra skins (midnight / porcelain / sakura) on top of the default look, each with light and dark modes. The UI is driven by semantic tokens, so themes can be added or swapped without touching component code (see `app/themes/README.md`).
 - **Multiple domains** — one deployment can run several domains at once, each with its own mailbox addresses, its own forwarding rule, and its own sending key. Adding another is just **Add Domain** in **Settings**.
 - **Per-mailbox isolation** — each mailbox's configuration is an R2 object and its messages live in D1, keyed by mailbox.
 - **Built-in AI agent** — a side panel with 14 email tools for reading, searching, drafting, and sending; responses stream over SSE with tool-call visibility.
-- **Auto-draft on new email** — the agent reads inbound mail and generates draft replies, always requiring explicit confirmation before sending.
+- **AI drafting (conversational)** — ask the agent in the side panel to read an incoming message and draft or revise a reply; the draft lands in that mailbox's Drafts folder, and **sending always requires your explicit confirmation**.
 - **Configurable and persistent** — custom system prompt per mailbox, persistent chat history, and a per-mailbox choice of model provider.
 - **Programmatic sending** — per-mailbox API keys let your own apps send mail through `/api/v1/send`.
 
@@ -280,10 +283,27 @@ See: [Resend — Claim Domain](https://resend.com/docs/api-reference/domains/cla
 
 ## Roadmap
 
-- [ ] Structured/rule-based auto-replies (beyond draft-only)
-- [ ] Shared team mailboxes
-- [ ] More sending providers alongside Resend
-- [ ] Contact/CRM light layer
+**Done ✅** is what already ships in the current version (v0.1.0) — see [Features](#features) above for the details. **Planned** is not started yet.
+
+### Done ✅
+
+- ✅ **One-command deploy** — `npm run setup` creates the R2 bucket and D1 database, applies migrations, builds and deploys, with no hand-editing of `database_id`
+- ✅ **Automatic inbound setup** — save a Cloudflare API Token and Account ID in Platform Settings, and adding a domain turns on Email Routing and writes the catch-all rule (`*@your-domain` → Worker) for you, with no dashboard clicking. Fully automatic only for domains whose DNS is on Cloudflare; other DNS providers get a step-by-step guide instead
+- ✅ **Automatic outbound setup** — save a per-domain Resend API Key and the app creates the domain on Resend, writes the required MX/TXT/CNAME records into your Cloudflare DNS, and triggers a verification pass, so you never copy records by hand. Without Cloudflare credentials it falls back to listing the records for you to add manually
+- ✅ **Setup wizard with no default password** — salted PBKDF2-SHA256 hash stored in D1
+- ✅ **Self-hosted login and sessions** — HttpOnly cookie, 7 days, sessions in D1
+- ✅ **Multiple domains** — each with its own mailbox addresses and sending key
+- ✅ **Catch-all routing** — point a domain's catch-all at any mailbox
+- ✅ **Full email client** — rich-text composer, threading, reply/forward, folders, drafts, search, attachments
+- ✅ **Sender display-name parsing** — including RFC 2047 encoded words, with a data migration
+- ✅ **Programmatic sending** — per-mailbox API keys + `/api/v1/send`
+
+### Planned
+
+- [ ] **Auto-replies** — send a reply automatically when mail arrives, with no human confirmation. Today you can only draft in the side panel and send after confirming.
+- [ ] **Shared team mailboxes** — multiple people collaborating on one mailbox, with members and permissions. Today it is single-admin.
+- [ ] **More sending providers** — sending currently supports Resend only.
+- [ ] **Contact/CRM light layer** — there is no contact entity today; only participants parsed from message headers.
 
 Have an idea? Open an issue.
 
