@@ -227,6 +227,28 @@ npm run deploy:full
 
 Beyond the above, the Worker binds nothing else on Cloudflare -- no KV, no Queues, no Durable Objects, no Vectorize, and no Cron triggers.
 
+## How this fork differs from upstream
+
+Mailboxes is a fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Since the fork point (2026-04-17) there have been **155 commits across 139 files (+18,663 / -8,139 lines)**. The main differences:
+
+- **Sending moved to Resend.** The Cloudflare `send_email` binding was dropped — it requires a paid Workers plan — in favour of the [Resend](https://resend.com) API, which runs on the free plan. Keys are configured per domain in the UI.
+- **No Durable Objects, no MCP.** Upstream used three Durable Objects for mailbox state, the AI agent and the MCP server; here it is a stateless Worker plus D1, the assistant calls Workers AI in-request with function calling, and the MCP panel is gone.
+- **Its own login instead of Cloudflare Access.** Upstream required `POLICY_AUD` / `TEAM_DOMAIN`; here the first run creates an admin account whose PBKDF2-SHA256 password is stored in D1.
+- **Configuration lives in the database and the UI.** Domains, mailboxes and keys are managed in D1 and edited on screen rather than through `wrangler.jsonc` environment variables.
+- **Multiple domains.** One instance can serve several domains, each with its own routing and sending settings.
+- **New pages:** first-run setup, login, platform settings (Cloudflare credentials), domain details, add-domain wizard, catch-all settings, and the AI panel.
+- **Tooling:** `migrations/` (12 SQL files), one-command deploy via `npm run setup`, e2e tests and CI.
+
+### Why it can stay at $0 a month
+
+- There is no always-on server — the whole app is a single Worker.
+- Sending avoids the binding that needs a paid plan and stays inside Resend's free tier.
+- Metadata goes to D1 and attachments to R2, whose egress is free.
+- The assistant uses Workers AI's free daily allocation by default, so no extra API key is needed; you can point it at your own OpenAI-compatible provider instead.
+- Inbound mail uses Cloudflare Email Routing, or Resend's inbound webhook when the domain is not hosted on Cloudflare.
+
+See [What it costs](#what-it-costs) for the individual quotas.
+
 ## FAQ
 
 ### Is it really free?
@@ -281,4 +303,4 @@ This work is a derivative of [cloudflare/agentic-inbox](https://github.com/cloud
 
 ## Acknowledgements
 
-A fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Built on [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/), [D1](https://developers.cloudflare.com/d1/), [R2](https://developers.cloudflare.com/r2/), [Workers AI](https://developers.cloudflare.com/workers-ai/) and [Resend](https://resend.com). Learn more about the email-inbox pattern in Cloudflare's blog post [Email for Agents](https://blog.cloudflare.com/email-for-agents/).
+A fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Built on [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/), [D1](https://developers.cloudflare.com/d1/), [R2](https://developers.cloudflare.com/r2/), [Workers AI](https://developers.cloudflare.com/workers-ai/) and [Resend](https://resend.com). Learn more about the email-inbox pattern in Cloudflare's blog post [Email for Agents](https://blog.cloudflare.com/email-for-agents/). For what this fork changes relative to upstream, see [How this fork differs from upstream](#how-this-fork-differs-from-upstream).

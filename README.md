@@ -226,6 +226,28 @@ npm run deploy:full
 
 除了上面列出的，Worker 没有绑定任何其它 Cloudflare 资源 —— 没有 KV、Queues、Durable Objects、Vectorize，也没有定时任务（Cron）。
 
+## 和原项目的区别
+
+Mailboxes 从 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) 分叉而来。分叉点（2026-04-17）之后共有 **155 个提交、139 个文件（+18,663 / -8,139 行）**，主要差别如下。
+
+- **发信改用 Resend。** 去掉了 Cloudflare 的 `send_email` 绑定（它要求付费的 Workers 计划），改用 [Resend](https://resend.com) API，因此能跑在免费版上；密钥按域名在界面里配置。
+- **去掉了 Durable Object 与 MCP。** 上游用三个 Durable Object 分别承载邮箱状态、AI 智能体和 MCP 服务；这里改成无状态 Worker + D1，AI 助手改为在请求内调用 Workers AI（支持函数调用），MCP 面板一并移除。
+- **自带登录，不再依赖 Cloudflare Access。** 上游要求配 `POLICY_AUD` / `TEAM_DOMAIN`；这里改成首次运行时创建管理员账号，密码以 PBKDF2-SHA256 存于 D1。
+- **配置搬进数据库和界面。** 域名、邮箱、密钥都由 D1 管理并在页面上编辑，不再靠 `wrangler.jsonc` 的环境变量。
+- **多域名。** 一个实例可同时接入多个域名，各自的转发规则与发信配置互不影响。
+- **新增页面：** 首次运行向导、登录、平台设置（Cloudflare 凭据）、域名详情、添加域名向导、Catch-all 设置、AI 面板。
+- **工程配套：** `migrations/`（12 个 SQL 文件）、`npm run setup` 一键部署、e2e 测试与 CI。
+
+### 为什么能保持每月 $0
+
+- 没有常驻服务器 —— 整个应用就是一个 Worker。
+- 发信避开需要付费计划的绑定，走 Resend 的免费额度。
+- 元数据放 D1，附件放 R2（R2 出站流量免费）。
+- AI 默认用 Workers AI 的免费每日额度，不需要另外买 key；也可以换成你自己的 OpenAI 兼容服务。
+- 收信走 Cloudflare Email Routing；域名不在 Cloudflare 托管时，改用 Resend 的入站 webhook。
+
+各项免费额度见[成本明细](#成本明细)。
+
 ## 常见问题
 
 ### 真的免费吗？
@@ -280,4 +302,4 @@ npm run deploy:full
 
 ## 致谢
 
-本仓库 fork 自 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox)。构建于 [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/)、[D1](https://developers.cloudflare.com/d1/)、[R2](https://developers.cloudflare.com/r2/)、[Workers AI](https://developers.cloudflare.com/workers-ai/) 与 [Resend](https://resend.com)。想了解这种「收件箱」模式的更多内容，可阅读 Cloudflare 博客 [Email for Agents](https://blog.cloudflare.com/email-for-agents/)。
+本仓库 fork 自 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox)。构建于 [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/)、[D1](https://developers.cloudflare.com/d1/)、[R2](https://developers.cloudflare.com/r2/)、[Workers AI](https://developers.cloudflare.com/workers-ai/) 与 [Resend](https://resend.com)。想了解这种「收件箱」模式的更多内容，可阅读 Cloudflare 博客 [Email for Agents](https://blog.cloudflare.com/email-for-agents/)。本仓库相对上游做了哪些改动，见[和原项目的区别](#和原项目的区别)。
