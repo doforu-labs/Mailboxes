@@ -30,3 +30,7 @@ test-results/
 /home-page.png
 /homepage-verify.png
 /e2e/*.png
+
+# Local Playwright verification harness.
+# NOTE: hardcodes a local admin password - keep it out of the repo.
+.tmp-verify/
