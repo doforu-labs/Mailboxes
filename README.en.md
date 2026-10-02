@@ -3,7 +3,7 @@
   <p><em>Send, receive, and auto-reply from your own domain — a self-hosted email client with an AI agent, running entirely on Cloudflare.</em></p>
 
   <p>
-    <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
+    <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg"></a>
     <img alt="Runs on free tiers" src="https://img.shields.io/badge/cost-%240%20on%20free%20tiers-brightgreen">
     <a href="https://github.com/doforu-labs/Mailboxes/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
   </p>
@@ -238,9 +238,9 @@ Please do not open public issues for security problems — see [SECURITY.md](SEC
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+**AGPL-3.0-only** — the work as a whole, including every addition and modification made in this repository, is distributed under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified version as a network service for others, you must offer them the corresponding complete source code (AGPL section 13).
 
-This work is a derivative of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Upstream portions are Copyright (c) Cloudflare, Inc.; additions and modifications in this repository are Copyright (c) 2026 Doforu. See [NOTICE](NOTICE).
+This work is a derivative of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) and therefore contains upstream Apache-2.0 code: upstream portions are Copyright (c) Cloudflare, Inc. and remain under the [Apache License 2.0](LICENSE-APACHE) (full text in that file), while additions and modifications in this repository are Copyright (c) 2026 Doforu and licensed under the AGPL-3.0. Per-file copyright and license notices are kept in the file headers. See [NOTICE](NOTICE) for the complete attribution.
 
 ## Acknowledgements
 

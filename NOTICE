@@ -1,14 +1,21 @@
 Mailboxes
 Copyright (c) 2026 Doforu
 
-This product includes software developed as a derivative work of
-"Agentic Inbox" (https://github.com/cloudflare/agentic-inbox),
-Copyright (c) 2026 Cloudflare, Inc., licensed under the Apache License, Version 2.0.
+This product is a derivative work of "Agentic Inbox"
+(https://github.com/cloudflare/agentic-inbox),
+Copyright (c) 2026 Cloudflare, Inc.,
+which is licensed under the Apache License, Version 2.0.
 
-Portions of the source code in this repository originate from that upstream
-project and remain subject to its copyright notices, which are retained in the
-individual source files. Modifications, additions and the remaining portions of
-this work are Copyright (c) 2026 Doforu and are likewise distributed under the
-Apache License, Version 2.0.
+The work as a whole — including every addition and modification made in this
+repository — is distributed under the GNU Affero General Public License,
+version 3 (AGPL-3.0-only). The full text is in the LICENSE file.
 
-The full text of the Apache License, Version 2.0 is contained in the LICENSE file.
+Portions of the source code originate from the upstream project named above and
+remain subject to the Apache License, Version 2.0. Their copyright and
+attribution notices are retained in the individual source files, and the full
+Apache License text is in the LICENSE-APACHE file.
+
+The Apache License 2.0 is one-way compatible with the AGPL, so those portions may
+be incorporated into this AGPL-licensed work and recipients receive the work as a
+whole under AGPL-3.0-only. The original Apache-2.0 permissions in the upstream
+portions are unaffected.

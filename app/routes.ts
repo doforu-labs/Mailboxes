@@ -1,6 +1,8 @@
+// Copyright (c) 2026 Doforu
 // Copyright (c) 2026 Cloudflare, Inc.
-// Licensed under the Apache 2.0 license found in the LICENSE file or at:
+// Licensed under the Apache 2.0 license found in the LICENSE-APACHE file or at:
 //     https://opensource.org/licenses/Apache-2.0
+// Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
 import {
 	index,

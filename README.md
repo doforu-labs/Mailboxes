@@ -3,7 +3,7 @@
   <p><em>用你自己的域名收发邮件、自动回复 —— 一个完全跑在 Cloudflare 上的自托管邮件客户端，内置 AI 助手。</em></p>
 
   <p>
-    <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
+    <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg"></a>
     <img alt="Runs on free tiers" src="https://img.shields.io/badge/cost-%240%20on%20free%20tiers-brightgreen">
     <a href="https://github.com/doforu-labs/Mailboxes/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
   </p>
@@ -238,9 +238,9 @@ npm run deploy:full
 
 ## 许可证
 
-Apache 2.0 —— 见 [LICENSE](LICENSE)。
+**AGPL-3.0-only** —— 本作品整体（含本仓库的全部新增与修改）以 [GNU Affero General Public License v3.0](LICENSE) 分发。若你把修改后的版本作为网络服务提供给他人使用，你必须向他们提供对应的完整源代码（AGPL 第 13 条）。
 
-本作品是 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) 的派生作品：上游部分版权归 Cloudflare, Inc. 所有；本仓库新增与修改的部分版权归 © 2026 Doforu 所有。详见 [NOTICE](NOTICE)。
+本作品是 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) 的派生作品，因此包含上游的 Apache-2.0 代码：上游部分版权归 Cloudflare, Inc. 所有、仍适用 [Apache License 2.0](LICENSE-APACHE)（许可证全文见该文件）；本仓库新增与修改的部分版权归 © 2026 Doforu 所有、适用 AGPL-3.0。各文件的版权与许可声明保留在文件头部。完整归属说明见 [NOTICE](NOTICE)。
 
 ## 致谢
 

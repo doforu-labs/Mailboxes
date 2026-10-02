@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Doforu
-// Licensed under the Apache 2.0 license found in the LICENSE file or at:
-//     https://opensource.org/licenses/Apache-2.0
+// Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only).
+//     See the LICENSE file or https://www.gnu.org/licenses/agpl-3.0.txt
 
 /**
  * Admin session authentication for the Mailboxes app.
