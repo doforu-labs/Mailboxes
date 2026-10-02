@@ -62,27 +62,27 @@
 
 - **Node.js ≥ 20** 与 npm（仓库里有 `.nvmrc`，`nvm use` 即可）
 - 一个 Cloudflare 账号（`npm run setup` 会在需要时自动拉起 `wrangler login`）
-- **一个域名。** 可以在任何注册商处购买（Namecheap、GoDaddy、阿里云……），但 **DNS 必须托管到 Cloudflare**：先把域名添加到你的 Cloudflare 账号，并按提示在注册商处把 NS 换成 Cloudflare 给你的名称服务器。收信走的是 Cloudflare Email Routing；添加域名时应用也会通过 Cloudflare API 按域名去查 Zone，查不到就会报 `Zone for "<domain>" not found in Cloudflare`。
+- **一个域名。** 在哪家注册商买都行（Namecheap、GoDaddy、阿里云……），但域名的解析要交给 Cloudflare 管：先把域名加到你的 Cloudflare 账号，再按它的提示，去注册商那里把域名的名称服务器换成 Cloudflare 给你的那两个。收信靠的是 Cloudflare 的 Email Routing（邮件路由）；在应用里添加域名时，它会去你的 Cloudflare 账号里找这个域名，找不到就会提示 `Zone for "<domain>" not found in Cloudflare`。
 - 启用 [Email Routing](https://developers.cloudflare.com/email-routing/) 用于**收信**
 - 一个 [Resend](https://resend.com) 账号用于**发信**（外发邮件不使用 Cloudflare Email Service）
 - 启用 [Workers AI](https://developers.cloudflare.com/workers-ai/) 供 AI 助手使用（默认已开启）
 
 ## 快速开始
 
-**一条命令完成部署。** 它会自动创建 R2 桶和 D1 数据库、把得到的 `database_id` 写回 `wrangler.jsonc`、应用数据库迁移、构建并部署，最后打印你的访问地址：
+**一条命令搞定部署。** 它会自动创建需要的存储桶和数据库（R2 与 D1）、把数据库 ID 填进配置文件、建好数据表，然后构建并部署，最后打印你的访问地址：
 
 ```bash
 npm install
 npm run setup
 ```
 
-脚本是**幂等**的：以后每次重新部署再跑一遍即可（已存在的资源会跳过；加 `-- --dry-run` 可以先看它打算做什么）。
+脚本可以**反复运行**：以后每次重新部署，再跑一遍就行（已经建好的资源会自动跳过；加 `-- --dry-run` 可以先看它打算做什么）。
 
-> 也可以用 README 顶部的 **Deploy to Cloudflare** 按钮，但它只创建 Worker —— R2、D1 和 `database_id` 都要你自己补，详见本节末尾的说明。
+> 也可以用 README 顶部的 **Deploy to Cloudflare** 按钮，但它只会创建 Worker —— 存储桶、数据库和数据库 ID 都得你自己补，详见本节末尾的说明。
 
-1. **配置收信。** 在 Cloudflare 面板里进入你的域名 → **Email Routing**，创建一条 **catch-all** 规则，转发到该 Worker。（如果域名**不在** Cloudflare DNS 上，也可以改用 Resend 的收信 Webhook：`/api/v1/inbound/resend`。）
+1. **配置收信。** 在 Cloudflare 面板里进入你的域名 → **Email Routing**，创建一条 **catch-all**（也就是「全收」：发给这个域名下任何地址都收下）规则，转发到该 Worker。（如果域名**不在** Cloudflare DNS 上，也可以改用 Resend 的收信 Webhook：`/api/v1/inbound/resend`。）
 
-   想省掉手动步骤：先做完下面的第 3 步（创建管理员账号），然后在 **Settings**（`/settings`）里填好 Cloudflare API 凭据（见「配置」），再回首页添加域名 —— 应用会自动开启 Email Routing 并建好这条 catch-all 规则。
+   想省掉手动步骤：先做完下面的第 3 步（创建管理员账号），然后在 **Settings**（`/settings`）里填好 Cloudflare 凭据（见「配置」），再回首页添加域名 —— 应用会自动开启邮件路由，并帮你把这条转发规则建好。
 
 2. **配置 Resend 以便发信**（可选 —— 只有需要发信时才要）。在 [resend.com](https://resend.com) 注册、添加你的域名、复制 API Key。然后在应用里添加该域名：**Add Domain** 流程会要求填写 Resend API Key，之后也可以在首页的域名菜单里更新。
 
@@ -109,10 +109,10 @@ npm run setup
 ## 配置
 
 - **`wrangler.jsonc`** —— 设置你的 D1 `database_id`、R2 桶名以及其它绑定。`npm run setup` 会自动把 `database_id` 填好。
-- **域名与 Cloudflare API 凭据（Platform Settings）** —— 登录后进入 **Settings**（`/settings`）→ **Platform Settings**，填入 **Cloudflare API Token** 与 **Cloudflare Account ID**。点 **Verify & Save** 会先拿这组凭据跑一次校验（提示里会给出账号名和找到的 zone 数量），通过后徽章变为 `Configured`；凭据存在 D1 里。
-  - 面板里那个「创建预配置 Token →」链接会自动勾选 3 项权限（Zone Edit、DNS Edit、Zone Settings Edit），**第 4 项 Email Routing Rules Edit 需要手动补上**（Add more → 区域 → 电子邮件路由规则 → 编辑），再把 Token 粘回输入框。
-  - 配好之后，在应用里添加域名时会自动开启 Email Routing 并写好 catch-all 规则（转发到 Worker `mailboxes`），不必再去面板手动点；没配的话就用「快速开始」第 1 步的手动方式。
-  - 域名对应的 Zone 必须已经存在于你这个账号里（子域名会自动回退查父级 Zone）。注意应用只会**查找** Zone，不会替你创建。
+- **域名与 Cloudflare 凭据（Platform Settings）** —— 登录后打开 **Settings**（`/settings`）→ **Platform Settings**，填入 **Cloudflare API Token** 和 **Cloudflare Account ID** 两个值。点 **Verify & Save** 会先验证一遍再保存（成功提示里会带账号名和找到的域名数量），通过后徽章变成 `Configured`；这两个值存在数据库里。
+  - 面板里「创建预配置 Token →」这个链接会替你勾好 3 项权限，还差 1 项要自己加上：点 Add more，选「区域 → 电子邮件路由规则 → 编辑」，然后把 Token 粘回输入框。
+  - 填好之后，在应用里添加域名时会自动帮你开启 Email Routing、建好转发规则，不用再去 Cloudflare 面板手动点；没填的话，就按「快速开始」第 1 步手动来。
+  - 这个域名必须已经加在你的 Cloudflare 账号里（子域名会自动去找上一级主域名）。应用只会查找，不会替你添加。
 - **R2 存储桶** —— 应用需要一个名为 `mailboxes` 的桶：
   ```bash
   wrangler r2 bucket create mailboxes
