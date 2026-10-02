@@ -11,7 +11,7 @@
 
   <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/doforu-labs/Mailboxes"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a>
 
-  <img src="./demo_app.png" alt="Mailboxes 界面：收件箱、回复草稿，以及右侧正在自动起草回复的 AI 助手面板" width="880">
+  <img src="./demo_app.png" alt="Mailboxes 界面：左侧是邮箱与文件夹列表，中间是收件箱，右侧是打开的邮件正文" width="880">
 </div>
 
 ---

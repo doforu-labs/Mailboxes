@@ -11,7 +11,7 @@
 
   <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/doforu-labs/Mailboxes"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a>
 
-  <img src="./demo_app.png" alt="The Mailboxes UI: the inbox, a reply draft, and the AI agent panel auto-drafting replies" width="880">
+  <img src="./demo_app.png" alt="The Mailboxes UI: the mailbox and its folders on the left, the inbox in the middle, and an opened email in the reading pane" width="880">
 </div>
 
 ---
