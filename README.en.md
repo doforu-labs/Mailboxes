@@ -1,5 +1,5 @@
 <div align="center">
-  <h1><img src="./logo.png" alt="The Mailboxes icon: a white cat face that doubles as an envelope, on pink" width="48" align="absmiddle">&nbsp;&nbsp;Mailboxes</h1>
+  <h1><img src="./logo-rounded.png" alt="The Mailboxes icon: a white cat face that doubles as an envelope, on pink" width="48" align="absmiddle">&nbsp;&nbsp;Mailboxes</h1>
   <p><em>Send and receive email from your own domain — a completely free, self-hosted email client running entirely on Cloudflare, with a built-in AI agent.</em></p>
 
   <p>
