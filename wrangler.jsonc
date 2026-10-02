@@ -13,8 +13,6 @@
 	// in D1 (see migrations/0011_admins.sql), so there are deliberately no
 	// credential vars here. Passwords are stored as salted PBKDF2-SHA256
 	// hashes — see workers/lib/password.ts.
-	// Optional hardening for publicly reachable deployments:
-	//   npx wrangler secret put SETUP_TOKEN
 	// send_email binding removed — uses Resend API instead, which works on Workers Free plan.
 	"r2_buckets": [
 		{

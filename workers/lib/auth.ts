@@ -125,10 +125,7 @@ function readString(body: unknown, key: string): string | null {
  */
 export async function handleAdminStatus(c: Context<D1MailboxContext>) {
 	const initialized = (await countAdmins(c.env)) > 0;
-	return c.json({
-		initialized,
-		tokenRequired: Boolean(c.env.SETUP_TOKEN),
-	});
+	return c.json({ initialized });
 }
 
 /**
@@ -140,16 +137,6 @@ export async function handleAdminStatus(c: Context<D1MailboxContext>) {
  */
 export async function handleCreateAdmin(c: Context<D1MailboxContext>) {
 	const body = await c.req.json().catch(() => null);
-
-	// Optional shared secret. Setting the SETUP_TOKEN secret closes the
-	// first-run window on publicly reachable deployments.
-	const expectedToken = c.env.SETUP_TOKEN;
-	if (expectedToken) {
-		const provided = readString(body, "token");
-		if (!provided || provided !== expectedToken) {
-			return c.json({ error: "Invalid setup token", code: "invalid_setup_token" }, 403);
-		}
-	}
 
 	const username = (readString(body, "username") ?? "").trim();
 	const password = readString(body, "password") ?? "";

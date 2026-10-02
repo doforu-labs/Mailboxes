@@ -90,7 +90,7 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
   ```bash
   wrangler r2 bucket create mailboxes
   ```
-- **Admin credentials** — created once by the first-run setup wizard and stored in D1; there are no credential vars to configure. To start over, delete the row and reload: `wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`. Set the `SETUP_TOKEN` secret to require a shared secret before the wizard will run (recommended if the deployment is publicly reachable).
+- **Admin credentials** — created once by the first-run setup wizard and stored in D1; there are no credential vars to configure. To start over, delete the row and reload: `wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`.
 - **Password storage** — the admin password is stored in D1 as a salted **PBKDF2-SHA256** hash, 100,000 iterations (workerd's ceiling for PBKDF2), with the parameters stored alongside the value. An earlier revision kept it in plain text, on the premise that the Free plan caps CPU at 10 ms per request and a KDF would trip Error 1102 intermittently; measuring a real Free-plan deployment showed the practical ceiling is nearer 2,000 ms, and the KDF costs 21-26 ms, so it was reinstated. Details and measurements: [SECURITY.md](SECURITY.md) and [`workers/lib/password.ts`](workers/lib/password.ts).
 - **AI provider** — by default the agent uses Cloudflare Workers AI and needs no key. To use a custom model, open a mailbox's **Settings → AI Model**, enable the switch, and enter a base URL, model name, and API key (OpenAI-compatible). If the custom provider is unreachable, the app falls back to Workers AI.
 - **Sending** — the Resend API key is configured per domain.

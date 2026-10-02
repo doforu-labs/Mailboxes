@@ -151,8 +151,7 @@ app.get("/api/v1/auth/me", handleMe);
 
 // First-run admin setup. Public by design, but only usable while no admin
 // account exists yet: the insert is guarded by `WHERE NOT EXISTS`, and every
-// later call returns 409. Set the SETUP_TOKEN secret to additionally require
-// a shared secret (recommended for publicly reachable deployments).
+// later call returns 409.
 app.get("/api/v1/setup/admin/status", handleAdminStatus);
 app.post("/api/v1/setup/admin", handleCreateAdmin);
 

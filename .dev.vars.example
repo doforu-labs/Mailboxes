@@ -5,7 +5,3 @@
 # NOTE: the admin password is stored in D1 as a salted PBKDF2-SHA256 hash.
 # See the header of workers/lib/password.ts for the parameters and the measured
 # CPU cost.
-
-# Optional: require a shared secret before the setup wizard will run.
-# Recommended when the deployment is reachable from the public internet.
-# SETUP_TOKEN=some-long-random-string

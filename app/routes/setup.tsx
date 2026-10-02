@@ -4,7 +4,7 @@
 
 import { Button, Input, Loader, Text } from "@cloudflare/kumo";
 import { Mail } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useState } from "react";
 import api from "~/services/api";
 
 export function meta() {
@@ -21,38 +21,17 @@ const MIN_PASSWORD_LENGTH = 8;
  * account exists.
  */
 export default function SetupRoute() {
-	const [tokenRequired, setTokenRequired] = useState(false);
-	const [token, setToken] = useState("");
 	const [username, setUsername] = useState("admin");
 	const [password, setPassword] = useState("");
 	const [confirm, setConfirm] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	useEffect(() => {
-		let cancelled = false;
-		api
-			.adminStatus()
-			.then((status) => {
-				if (!cancelled) setTokenRequired(status.tokenRequired);
-			})
-			.catch(() => {
-				// Non-fatal: the server validates the token anyway.
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
 	async function handleSubmit(e: FormEvent) {
 		e.preventDefault();
 		if (isSubmitting) return;
 		setError(null);
 
-		if (tokenRequired && !token.trim()) {
-			setError("Setup token is required.");
-			return;
-		}
 		if (!username.trim()) {
 			setError("Username is required.");
 			return;
@@ -71,7 +50,6 @@ export default function SetupRoute() {
 			await api.createAdmin({
 				username: username.trim(),
 				password,
-				token: tokenRequired ? token.trim() : undefined,
 			});
 			// Full reload so the root auth guard picks up the new session.
 			window.location.href = "/";
@@ -105,17 +83,6 @@ export default function SetupRoute() {
 					</div>
 
 					<form onSubmit={handleSubmit} className="grid gap-4">
-						{tokenRequired && (
-							<Input
-								label="Setup token"
-								type="password"
-								autoComplete="off"
-								placeholder="SETUP_TOKEN"
-								value={token}
-								onChange={(e) => setToken(e.target.value)}
-								required
-							/>
-						)}
 						<Input
 							label="Username"
 							autoComplete="username"

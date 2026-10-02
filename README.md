@@ -90,7 +90,7 @@
   ```bash
   wrangler r2 bucket create mailboxes
   ```
-- **管理员凭证** —— 由首次运行向导创建一次，存于 D1，无需配置任何凭据变量。想重新开始，删除该行后刷新即可：`wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`。设置 `SETUP_TOKEN` secret 可要求向导先验证一个共享密钥（部署地址可被公网访问时建议开启）。
+- **管理员凭证** —— 由首次运行向导创建一次，存于 D1，无需配置任何凭据变量。想重新开始，删除该行后刷新即可：`wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`。
 - **密码存储** —— 管理员密码以加盐 **PBKDF2-SHA256** 哈希存于 D1，迭代 10 万次（workerd 对 PBKDF2 的上限），参数随哈希值一并存储，日后要提高强度无需改表结构。早期版本曾以明文存储，理由是免费版每请求 CPU 上限 10 ms、加上 KDF 会让登录间歇性触发 1102；但在真实免费版部署上实测，CPU 实际上限接近 **2000 ms**，而 KDF 只花 **21–26 ms**，于是改回了哈希。详见 [SECURITY.md](SECURITY.md) 与 [`workers/lib/password.ts`](workers/lib/password.ts)。
 - **AI 提供方** —— 助手默认使用 Cloudflare Workers AI，无需 Key。想用自定义模型时，打开某个邮箱的 **Settings → AI Model**，启用开关并填写 Base URL、模型名和 API Key（OpenAI 兼容）。若自定义提供方不可达，会自动回退到 Workers AI。
 - **发信** —— Resend API Key 按域名配置。
