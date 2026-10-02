@@ -80,7 +80,7 @@ const KumoLink = forwardRef<
 
 export function Layout({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="en">
+		<html lang="en" data-theme="porcelain" data-mode="light">
 			<head>
 				<script dangerouslySetInnerHTML={{
 					__html: [
@@ -97,6 +97,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 					].join("\n"),
 				}} />
 				<meta charSet="UTF-8" />
+				{/* Theme boot: allow ?theme=<kumo|midnight|porcelain|sakura>&mode=<light|dark>
+				    to override the default theme before first paint. */}
+				<script
+					dangerouslySetInnerHTML={{
+						__html: `(function(){try{var p=new URLSearchParams(location.search);var t=p.get("theme"),m=p.get("mode");if(t)document.documentElement.setAttribute("data-theme",t);if(m)document.documentElement.setAttribute("data-mode",m);}catch(e){}})();`,
+					}}
+				/>
 				<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 				<link
 					rel="icon"

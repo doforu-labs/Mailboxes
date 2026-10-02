@@ -1,0 +1,55 @@
+/* Porcelain — high-contrast, minimal, near-monochrome (Vercel/Notion-inspired).
+ *
+ * ⚠️ 覆盖必须写在 @layer 之外（unlayered），原因见 midnight.css 顶部说明。
+ * 纯中性灰（chroma = 0），去掉一切彩色；品牌色接近黑/白（单色），
+ * 靠极高对比与大面积留白取胜。只覆盖要改的令牌，其余自动继承基础 kumo 主题。
+ *
+ * 深色档说明：最初把 canvas 压到了 oklch(0.05 0 0)（≈ #010101），实测观感
+ * 是「纯黑虚空」而且层次展不开（base/elevated 也只有 #030303 / #080808）。
+ * 现改为「柔黑」梯度 #0d0d0d → #333333，仍严格保持 chroma = 0，
+ * 只是把亮度抬到舒适区间并拉开层间距。
+ * 命名遵循 Kumo 官方 [data-theme="…"] + light-dark(浅色, 深色) 模式。
+ */
+[data-theme="porcelain"] {
+	/* ---- 表面 / 结构 ---- */
+	--color-kumo-canvas: light-dark(oklch(1 0 0), oklch(0.165 0 0));
+	--color-kumo-base: light-dark(oklch(1 0 0), oklch(0.205 0 0));
+	--color-kumo-elevated: light-dark(oklch(1 0 0), oklch(0.225 0 0));
+	--color-kumo-recessed: light-dark(oklch(0.982 0 0), oklch(0.185 0 0));
+	--color-kumo-tint: light-dark(oklch(0.972 0 0), oklch(0.26 0 0));
+	--color-kumo-fill: light-dark(oklch(0.955 0 0), oklch(0.285 0 0));
+	--color-kumo-fill-hover: light-dark(oklch(0.93 0 0), oklch(0.325 0 0));
+	--color-kumo-control: light-dark(oklch(1 0 0), oklch(0.235 0 0));
+	--color-kumo-overlay: light-dark(oklch(1 0 0 / 0.85), oklch(0.19 0 0 / 0.85));
+
+	/* ---- 品牌（近单色，黑 / 白） ---- */
+	--color-kumo-brand: light-dark(oklch(0.22 0 0), oklch(0.96 0 0));
+	--color-kumo-brand-hover: light-dark(oklch(0.32 0 0), oklch(0.88 0 0));
+	--color-kumo-contrast: light-dark(oklch(0.14 0 0), oklch(0.98 0 0));
+	--color-kumo-interact: light-dark(oklch(0.22 0 0 / 0.08), oklch(1 0 0 / 0.10));
+
+	/* ---- 线条 ---- */
+	--color-kumo-line: light-dark(oklch(0 0 0 / 0.09), oklch(1 0 0 / 0.12));
+	--color-kumo-hairline: light-dark(oklch(0 0 0 / 0.06), oklch(1 0 0 / 0.07));
+
+	/* ---- 文字 ---- */
+	--text-color-kumo-default: light-dark(oklch(0.13 0 0), oklch(0.97 0 0));
+	--text-color-kumo-strong: light-dark(oklch(0.32 0 0), oklch(0.82 0 0));
+	--text-color-kumo-subtle: light-dark(oklch(0.50 0 0), oklch(0.70 0 0));
+	--text-color-kumo-inactive: light-dark(oklch(0.68 0 0), oklch(0.52 0 0));
+	--text-color-kumo-placeholder: light-dark(oklch(0.62 0 0), oklch(0.58 0 0));
+	--text-color-kumo-inverse: light-dark(oklch(0.99 0 0), oklch(0.13 0 0));
+	--text-color-kumo-brand: light-dark(oklch(0.22 0 0), oklch(0.96 0 0));
+	--text-color-kumo-link: light-dark(oklch(0.35 0 0), oklch(0.85 0 0));
+}
+
+/* ── 主按钮文字色修正 ──────────────────────────────────────────────
+ * 深色模式下 brand 是近白（oklch(0.96 0 0)），而 Kumo 把按钮文字硬编码为
+ * `!text-white`（= `color: var(--color-white) !important`），会白底白字
+ * （实测对比度仅 1.12:1）。在 brand 元素上重定义作用域内的
+ * `--color-white` 即可把文字改成深墨色（实测约 17:1 ✅）。
+ * 这也正是 Vercel 式「白底黑字」主按钮的正确实现。
+ */
+[data-theme="porcelain"][data-mode="dark"] .bg-kumo-brand {
+	--color-white: oklch(0.16 0 0);
+}

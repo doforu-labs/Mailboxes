@@ -1,0 +1,16 @@
+/* Theme registry.
+ *
+ * Each theme file declares an unlayered [data-theme="…"] block that overrides a
+ * subset of Kumo's semantic tokens with light-dark(light, dark) values.
+ * Omitted tokens inherit the base `kumo` theme.
+ *
+ * Switch at runtime:  <html data-theme="midnight" data-mode="dark">
+ *   data-theme ∈ { kumo | midnight | porcelain | sakura }   (kumo = default, no override)
+ *   data-mode  ∈ { light | dark }                            (omit = light)
+ *
+ * ⚠️ Do NOT wrap these overrides in @layer — Kumo's tokens are unlayered, and a
+ * layered override loses the cascade even when it appears later in the file.
+ */
+@import "./midnight.css";
+@import "./porcelain.css";
+@import "./sakura.css";

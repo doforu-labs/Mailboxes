@@ -1,0 +1,50 @@
+/* Sakura — warm rose accent, tuned to match the pink cat envelope logo.
+ *
+ * ⚠️ 覆盖必须写在 @layer 之外（unlayered），原因见 midnight.css 顶部说明。
+ * 中性色带暖调微红（色相 ~350），强调色为玫瑰粉（色相 ~355）。
+ * 只覆盖要改的令牌，其余自动继承基础 kumo 主题。
+ * 命名遵循 Kumo 官方 [data-theme="…"] + light-dark(浅色, 深色) 模式。
+ */
+[data-theme="sakura"] {
+	/* Surfaces / structure */
+	--color-kumo-canvas: light-dark(oklch(0.99 0.005 20), oklch(0.15 0.012 350));
+	--color-kumo-base: light-dark(oklch(1 0.002 20), oklch(0.19 0.015 350));
+	--color-kumo-elevated: light-dark(oklch(0.995 0.004 20), oklch(0.22 0.018 350));
+	--color-kumo-recessed: light-dark(oklch(0.972 0.008 10), oklch(0.165 0.014 350));
+	--color-kumo-tint: light-dark(oklch(0.975 0.008 5), oklch(0.26 0.02 350));
+	--color-kumo-fill: light-dark(oklch(0.955 0.012 5), oklch(0.28 0.022 350));
+	--color-kumo-fill-hover: light-dark(oklch(0.93 0.016 5), oklch(0.32 0.024 350));
+	--color-kumo-control: light-dark(oklch(1 0 0), oklch(0.23 0.017 350));
+	--color-kumo-overlay: light-dark(oklch(0.99 0.005 20), oklch(0.15 0.012 350));
+
+	/* Brand */
+	--color-kumo-brand: light-dark(oklch(0.68 0.17 355), oklch(0.75 0.15 355));
+	--color-kumo-brand-hover: light-dark(oklch(0.62 0.18 355), oklch(0.80 0.13 355));
+	--color-kumo-contrast: light-dark(oklch(0.25 0.03 350), oklch(0.98 0.005 20));
+	--color-kumo-interact: light-dark(oklch(0.68 0.17 355 / 0.10), oklch(0.75 0.15 355 / 0.14));
+
+	/* Lines */
+	--color-kumo-line: light-dark(oklch(0.35 0.05 10 / 0.12), oklch(1 0 0 / 0.10));
+	--color-kumo-hairline: light-dark(oklch(0.35 0.05 10 / 0.07), oklch(1 0 0 / 0.06));
+
+	/* Text */
+	--text-color-kumo-default: light-dark(oklch(0.28 0.02 350), oklch(0.97 0.006 20));
+	--text-color-kumo-strong: light-dark(oklch(0.45 0.03 350), oklch(0.82 0.02 350));
+	--text-color-kumo-subtle: light-dark(oklch(0.58 0.03 350), oklch(0.73 0.025 350));
+	--text-color-kumo-inactive: light-dark(oklch(0.74 0.02 350), oklch(0.56 0.025 350));
+	--text-color-kumo-placeholder: light-dark(oklch(0.68 0.02 350), oklch(0.60 0.022 350));
+	--text-color-kumo-inverse: light-dark(oklch(0.99 0.005 20), oklch(0.19 0.015 350));
+	--text-color-kumo-brand: light-dark(oklch(0.55 0.18 355), oklch(0.80 0.13 355));
+	--text-color-kumo-link: light-dark(oklch(0.55 0.16 355), oklch(0.80 0.12 355));
+}
+
+/* ── 主按钮文字色修正 ──────────────────────────────────────────────
+ * 玫瑰粉 brand 上放白字对比度不足（浅色 3.13:1、深色 2.38:1，均不达 AA）。
+ * Kumo 把按钮文字硬编码为 `!text-white`（= `color: var(--color-white)`
+ * `!important`），所以在 brand 元素上重定义作用域内的 `--color-white`，
+ * 改用暖调深李子墨色（实测约 5.4:1 / 7.6:1 ✅）。
+ */
+[data-theme="sakura"][data-mode="light"] .bg-kumo-brand,
+[data-theme="sakura"][data-mode="dark"] .bg-kumo-brand {
+	--color-white: oklch(0.22 0.03 350);
+}
