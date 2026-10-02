@@ -1,0 +1,30 @@
+# EditorConfig — https://editorconfig.org
+#
+# The code in this repository is indented with tabs (TypeScript, TSX, JSON/JSONC),
+# while CSS, Markdown and YAML use 2 spaces. Editors that honour this file will
+# follow the same convention without any further setup.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = tab
+tab_width = 4
+
+[*.{css,md,markdown,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Markdown line breaks are sometimes significant — leave them alone.
+[*.{md,markdown}]
+trim_trailing_whitespace = false
+
+[*.{sql,sh}]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab

@@ -17,7 +17,11 @@ See the **Local development** section of the [README](README.md) for the full se
   ```bash
   npm run typecheck
   npm test
+  npm run build
   ```
+
+  CI runs these same three on every push and pull request — see
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 - **Add tests** for behavior changes where practical (`workers/**/*.test.ts`).
 - **Update docs** (README.md / README.en.md) if you change configuration, setup
@@ -40,4 +44,11 @@ Open an issue with:
 
 ## Code of conduct
 
-Be kind and constructive. Harassment or hostile behavior will not be tolerated.
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Be kind and
+constructive — harassment or hostile behavior will not be tolerated.
+
+## Changelog
+
+Notable changes are recorded in [`CHANGELOG.md`](CHANGELOG.md), following
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).

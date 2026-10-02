@@ -3,12 +3,15 @@
   <p><em>用你自己的域名收发邮件、自动回复 —— 一个完全跑在 Cloudflare 上的自托管邮件客户端，内置 AI 助手。</em></p>
 
   <p>
+    <a href="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml/badge.svg"></a>
     <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg"></a>
     <img alt="Runs on free tiers" src="https://img.shields.io/badge/cost-%240%20on%20free%20tiers-brightgreen">
     <a href="https://github.com/doforu-labs/Mailboxes/pulls"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
   </p>
 
   <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/doforu-labs/Mailboxes"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"></a>
+
+  <img src="./demo_app.png" alt="Mailboxes 界面：收件箱、回复草稿，以及右侧正在自动起草回复的 AI 助手面板" width="880">
 
   <p><sub>© 2026 <strong>Doforu</strong> · 派生自 <a href="https://github.com/cloudflare/agentic-inbox">cloudflare/agentic-inbox</a> · 许可与归属详见 <a href="NOTICE">NOTICE</a></sub></p>
 </div>
