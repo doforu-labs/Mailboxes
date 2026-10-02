@@ -7,8 +7,8 @@
  */
 import { test, expect } from "playwright/test";
 
-const BASE_URL = process.env.BASE_URL || "https://mailboxes.example.workers.dev";
-const TEST_DOMAIN = "example.com";
+const BASE_URL = process.env.BASE_URL || "http://localhost:5173";
+const TEST_DOMAIN = process.env.TEST_DOMAIN || "example.com";
 
 test.describe("Verify MX Record", () => {
   test("should verify MX record via API endpoint", async ({ request }) => {

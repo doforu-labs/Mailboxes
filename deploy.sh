@@ -87,15 +87,17 @@ echo ""
 echo "8️⃣  Post-deploy health check..."
 WORKER_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE "https://[^ ]+" | head -1)
 if [ -z "$WORKER_URL" ]; then
-    WORKER_URL="https://mailboxes.example.workers.dev"
+    warn "Could not determine the Worker URL from deploy output; skipping health check"
 fi
-echo "   URL: $WORKER_URL"
+echo "   URL: ${WORKER_URL:-<unknown>}"
 
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$WORKER_URL" --max-time 10 2>/dev/null || echo "000")
-if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
-    ok "Health check passed (HTTP $HTTP_CODE)"
-else
-    warn "Health check returned HTTP $HTTP_CODE"
+if [ -n "$WORKER_URL" ]; then
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$WORKER_URL" --max-time 10 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+        ok "Health check passed (HTTP $HTTP_CODE)"
+    else
+        warn "Health check returned HTTP $HTTP_CODE"
+    fi
 fi
 
 # ── 9. Git commit & push ──────────────────────────────────────

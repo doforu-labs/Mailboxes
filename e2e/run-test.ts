@@ -6,9 +6,15 @@
  * to avoid node:dns polyfill compatibility issues in Workers runtime.
  */
 import { chromium } from "playwright";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-const BASE_URL = process.env.BASE_URL || "https://mailboxes.example.workers.dev";
-const TEST_DOMAIN = "example.com";
+// Save screenshots next to this script, regardless of the working directory.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const shot = (name: string) => join(__dirname, name);
+
+const BASE_URL = process.env.BASE_URL || "http://localhost:5173";
+const TEST_DOMAIN = process.env.TEST_DOMAIN || "example.com";
 
 async function runTests() {
   let passed = 0;
@@ -132,7 +138,7 @@ async function runTests() {
 
     // Take a screenshot
     await page.screenshot({
-      path: "/Users/yourname/Desktop/Mailboxes/e2e/setup-page.png",
+      path: shot("setup-page.png"),
       fullPage: true,
     });
     console.log("  📸 Screenshot saved: e2e/setup-page.png");
@@ -192,7 +198,7 @@ async function runTests() {
 
         // Take screenshot of success state
         await page.screenshot({
-          path: "/Users/yourname/Desktop/Mailboxes/e2e/mx-verified.png",
+          path: shot("mx-verified.png"),
           fullPage: true,
         });
         console.log(

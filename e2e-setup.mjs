@@ -1,5 +1,7 @@
 import { chromium } from 'playwright';
 
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
@@ -7,7 +9,7 @@ import { chromium } from 'playwright';
   let errors = [];
   page.on('pageerror', error => errors.push(error.message));
 
-  await page.goto('https://mailboxes.example.workers.dev/setup', { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(`${BASE_URL}/setup`, { waitUntil: 'networkidle', timeout: 30000 });
   
   // Step 1: Welcome
   console.log('Step 1: Welcome ✓');

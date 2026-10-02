@@ -3,9 +3,15 @@
  * Runs with `npx tsx e2e/run-test-v2.ts`
  */
 import { chromium } from "playwright";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-const BASE_URL = process.env.BASE_URL || "https://mailboxes.example.workers.dev";
-const TEST_DOMAIN = "example.com";
+// Save screenshots next to this script, regardless of the working directory.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const shot = (name: string) => join(__dirname, name);
+
+const BASE_URL = process.env.BASE_URL || "http://localhost:5173";
+const TEST_DOMAIN = process.env.TEST_DOMAIN || "example.com";
 
 async function runTests() {
   let passed = 0;
@@ -97,7 +103,7 @@ async function runTests() {
     }
 
     // Screenshot settings page
-    await page.screenshot({ path: "/Users/yourname/Desktop/Mailboxes/e2e/settings-page.png", fullPage: true });
+    await page.screenshot({ path: shot("settings-page.png"), fullPage: true });
     console.log("  📸 Screenshot saved: e2e/settings-page.png");
 
     // Verify CredentialsSection rendered (check for provider labels)
@@ -145,7 +151,7 @@ async function runTests() {
       await page.waitForTimeout(1500);
 
       // Screenshot expanded domain
-      await page.screenshot({ path: "/Users/yourname/Desktop/Mailboxes/e2e/domain-expanded.png", fullPage: true });
+      await page.screenshot({ path: shot("domain-expanded.png"), fullPage: true });
       console.log("  📸 Screenshot saved: e2e/domain-expanded.png");
 
       // Look for "Verify MX Record" button
@@ -157,7 +163,7 @@ async function runTests() {
         if ((await menuBtn.count()) > 0) {
           await menuBtn.first().click();
           await page.waitForTimeout(1000);
-          await page.screenshot({ path: "/Users/yourname/Desktop/Mailboxes/e2e/domain-menu.png", fullPage: true });
+          await page.screenshot({ path: shot("domain-menu.png"), fullPage: true });
           console.log("  📸 Screenshot saved: e2e/domain-menu.png");
         }
       } else {
@@ -177,7 +183,7 @@ async function runTests() {
         if (!apiResponse.ok()) throw new Error(`MX verify API returned ${apiResponse.status()}`);
 
         await page.waitForTimeout(2000);
-        await page.screenshot({ path: "/Users/yourname/Desktop/Mailboxes/e2e/mx-after-click.png", fullPage: true });
+        await page.screenshot({ path: shot("mx-after-click.png"), fullPage: true });
         console.log("  📸 Screenshot saved: e2e/mx-after-click.png");
       }
     }

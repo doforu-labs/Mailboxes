@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
 
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const DOMAIN_ID = process.env.TEST_DOMAIN_ID || 'example-domain-id';
+
 test('domain details page loads with no errors and status sync works', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', msg => {
@@ -7,7 +10,7 @@ test('domain details page loads with no errors and status sync works', async ({ 
     });
     page.on('pageerror', err => errors.push(err.message));
 
-    const response = await page.goto('https://mailboxes.example.workers.dev/settings/domains/REPLACE_WITH_YOUR_DOMAIN_RECORD_ID', {
+    const response = await page.goto(`${BASE_URL}/settings/domains/${DOMAIN_ID}`, {
         waitUntil: 'networkidle',
         timeout: 30000,
     });
