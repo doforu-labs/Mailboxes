@@ -52,17 +52,23 @@
 
 - **登录保护** —— 首次部署后的第一位访客通过设置向导创建管理员账号，密码以加盐 PBKDF2-SHA256 哈希存于 D1，**没有默认密码**。会话通过 HttpOnly Cookie 保持 7 天，会话数据存在 D1。
 - **完整的邮件客户端** —— 通过 Cloudflare Email Routing 收发邮件，支持富文本编辑器、回复/转发会话串、文件夹、搜索与附件。
+- **可以接多个域名** —— 一次部署能同时管好几个域名：每个域名各有自己的邮箱地址、自己的转发规则、自己的发信密钥，互不影响。想再加一个，在 **Settings** 里点 **Add Domain** 就行。
 - **邮箱间相互隔离** —— 每个邮箱的配置是一个 R2 对象，邮件数据按邮箱存于 D1。
 - **内置 AI 助手** —— 侧边面板提供 14 个邮件工具，可读取、检索、起草、发送；响应通过 SSE 流式返回，并展示工具调用过程。
 - **新邮件自动起草** —— 助手会读取来信并生成草稿，发送前始终需要你明确确认。
 - **可配置、可持久化** —— 每个邮箱可自定义系统提示词，聊天记录持久保存，并可单独选择模型提供方。
 - **程序化发送** —— 每个邮箱可创建 API Key，让你自己的应用通过 `/api/v1/send` 发信。
 
+<div align="center">
+  <img src="./demo_domains.png" alt="Mailboxes 的 Settings 页：Platform Settings 显示已配置，Domains 列表里同时列出了 4 个域名" width="620">
+  <p><em>Settings 里的域名列表 —— 这个部署同时接了 4 个域名，每个域名都能单独指定「全收」的邮件投到哪个邮箱。</em></p>
+</div>
+
 ## 前置条件
 
 - **Node.js ≥ 20** 与 npm（仓库里有 `.nvmrc`，`nvm use` 即可）
 - 一个 Cloudflare 账号（`npm run setup` 会在需要时自动拉起 `wrangler login`）
-- **一个域名。** 在哪家注册商买都行（Namecheap、GoDaddy、阿里云……），但域名的解析要交给 Cloudflare 管：先把域名加到你的 Cloudflare 账号，再按它的提示，去注册商那里把域名的名称服务器换成 Cloudflare 给你的那两个。收信靠的是 Cloudflare 的 Email Routing（邮件路由）；在应用里添加域名时，它会去你的 Cloudflare 账号里找这个域名，找不到就会提示 `Zone for "<domain>" not found in Cloudflare`。
+- **一个域名。** 之后随时可以再加更多。在哪家注册商买都行（Namecheap、GoDaddy、阿里云……），但域名的解析要交给 Cloudflare 管：先把域名加到你的 Cloudflare 账号，再按它的提示，去注册商那里把域名的名称服务器换成 Cloudflare 给你的那两个。收信靠的是 Cloudflare 的 Email Routing（邮件路由）；在应用里添加域名时，它会去你的 Cloudflare 账号里找这个域名，找不到就会提示 `Zone for "<domain>" not found in Cloudflare`。
 - 启用 [Email Routing](https://developers.cloudflare.com/email-routing/) 用于**收信**
 - 一个 [Resend](https://resend.com) 账号用于**发信**（外发邮件不使用 Cloudflare Email Service）
 - 启用 [Workers AI](https://developers.cloudflare.com/workers-ai/) 供 AI 助手使用（默认已开启）

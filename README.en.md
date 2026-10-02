@@ -52,17 +52,23 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 - **Login-protected** — the first visitor to a fresh deployment creates the admin account through a setup wizard, and the password is stored in D1 as a salted PBKDF2-SHA256 hash. There is no default password. Sessions last 7 days via an HttpOnly cookie (stored in D1).
 - **Full email client** — send and receive via Cloudflare Email Routing, with a rich-text composer, reply/forward threading, folders, search, and attachments.
+- **Multiple domains** — one deployment can run several domains at once, each with its own mailbox addresses, its own forwarding rule, and its own sending key. Adding another is just **Add Domain** in **Settings**.
 - **Per-mailbox isolation** — each mailbox's configuration is an R2 object and its messages live in D1, keyed by mailbox.
 - **Built-in AI agent** — a side panel with 14 email tools for reading, searching, drafting, and sending; responses stream over SSE with tool-call visibility.
 - **Auto-draft on new email** — the agent reads inbound mail and generates draft replies, always requiring explicit confirmation before sending.
 - **Configurable and persistent** — custom system prompt per mailbox, persistent chat history, and a per-mailbox choice of model provider.
 - **Programmatic sending** — per-mailbox API keys let your own apps send mail through `/api/v1/send`.
 
+<div align="center">
+  <img src="./demo_domains.png" alt="The Settings page in Mailboxes: Platform Settings shown as configured, and a Domains list holding four domains at once" width="620">
+  <p><em>The domain list in Settings — this deployment runs four domains at once, and each domain's catch-all mail can go to a different mailbox.</em></p>
+</div>
+
 ## Prerequisites
 
 - **Node.js ≥ 20** and npm (the repository ships a `.nvmrc`, so `nvm use` is enough)
 - A Cloudflare account (`npm run setup` runs `wrangler login` for you when needed)
-- **A domain.** You can buy it from any registrar (Namecheap, GoDaddy, Cloudflare Registrar, …), but your domain's DNS has to be managed by Cloudflare: add the domain to your Cloudflare account first, then follow its instructions and switch the domain's nameservers at your registrar to the two Cloudflare gives you. Receiving runs on Cloudflare Email Routing; when you add the domain in the app, it looks that domain up in your Cloudflare account and reports `Zone for "<domain>" not found in Cloudflare` if it isn't there.
+- **A domain.** You can add more later whenever you like. You can buy it from any registrar (Namecheap, GoDaddy, Cloudflare Registrar, …), but your domain's DNS has to be managed by Cloudflare: add the domain to your Cloudflare account first, then follow its instructions and switch the domain's nameservers at your registrar to the two Cloudflare gives you. Receiving runs on Cloudflare Email Routing; when you add the domain in the app, it looks that domain up in your Cloudflare account and reports `Zone for "<domain>" not found in Cloudflare` if it isn't there.
 - [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for **receiving**
 - A [Resend](https://resend.com) account for **sending** (outbound mail does not use Cloudflare Email Service)
 - [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled for the agent (on by default)
