@@ -129,36 +129,35 @@ export default function Sidebar() {
 	return (
 		<aside className="h-full w-64 bg-kumo-recessed flex flex-col shrink-0 border-r border-kumo-line">
 			{/* Back + identity */}
-			<div className="px-4 pt-4 pb-1">
+			<div className="px-4 pt-4 pb-2">
 				<button
 					type="button"
 					onClick={() => {
 						navigate("/");
 						closeSidebar();
 					}}
-					className="flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors mb-2.5 cursor-pointer bg-transparent border-0 p-0"
+					className="flex items-center gap-2 text-kumo-subtle text-base font-medium hover:text-kumo-default transition-colors mb-3 cursor-pointer bg-transparent border-0 py-0 px-1"
 				>
-					<ChevronLeft size={14} />
+					<ChevronLeft size={16} />
 					<span>Mailboxes</span>
 				</button>
 				<div className="px-1">
-					<div className="text-base font-semibold text-kumo-default truncate">
+					<div className="text-lg font-semibold leading-tight text-kumo-default truncate">
 						{displayName}
 					</div>
-					<div className="text-sm text-kumo-subtle truncate mt-0.5">
+					<div className="text-sm text-kumo-subtle truncate mt-1.5">
 						{currentMailbox?.email || mailboxId}
 					</div>
 				</div>
 			</div>
 
 			{/* Compose */}
-			<div className="px-3 py-3">
+			<div className="px-2 pt-1 pb-4">
 				<Button
 					variant="primary"
-					size="sm"
 					icon={<Pencil size={16} />}
 					onClick={() => startCompose()}
-					className="w-fit"
+					className="w-full"
 				>
 					New
 				</Button>
