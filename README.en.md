@@ -58,37 +58,54 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 - **Configurable and persistent** — custom system prompt per mailbox, persistent chat history, and a per-mailbox choice of model provider.
 - **Programmatic sending** — per-mailbox API keys let your own apps send mail through `/api/v1/send`.
 
+## Prerequisites
+
+- **Node.js ≥ 20** and npm (the repository ships a `.nvmrc`, so `nvm use` is enough)
+- A Cloudflare account with a domain (`npm run setup` runs `wrangler login` for you when needed)
+- [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for **receiving**
+- A [Resend](https://resend.com) account for **sending** (outbound mail does not use Cloudflare Email Service)
+- [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled for the agent (on by default)
+
 ## Quick start
 
-**Important:** the **Deploy to Cloudflare** button only creates the Worker. It is *not* enough on its own — you must also complete the steps below, **in particular creating the D1 database**, before the app will work.
+**One command does the whole deploy.** It creates the R2 bucket and the D1 database, writes the resulting `database_id` back into `wrangler.jsonc`, applies the migrations, builds and deploys, and prints your URL:
 
-1. **Deploy to Cloudflare.** Click the button. The deploy flow provisions R2 and Workers AI in your account.
+```bash
+npm install
+npm run setup
+```
 
-   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/doforu-labs/Mailboxes)
+The script is **idempotent**, so just run it again for every later deploy (existing resources are skipped; add `-- --dry-run` to see what it would do first).
 
-2. **Create the D1 database and run migrations.** The repository ships with the original author's `database_id` in `wrangler.jsonc`, so you must swap in your own:
+> The **Deploy to Cloudflare** button at the top of this README works too, but it only creates the Worker — R2, D1 and the `database_id` are on you. See the note at the end of this section.
 
-   ```bash
-   wrangler d1 create mailboxes-db
-   ```
+1. **Set up receiving.** In the Cloudflare dashboard, go to your domain → **Email Routing** and create a **catch-all** rule that forwards to this Worker. (For a domain that is *not* on Cloudflare DNS, you can instead receive through the Resend inbound webhook at `/api/v1/inbound/resend`.)
 
-   Copy the returned `database_id` into the `d1_databases` block of `wrangler.jsonc`, then apply the migrations:
+2. **Configure Resend for sending** (optional — only needed if you want to send). Sign up at [resend.com](https://resend.com), add your domain, and copy an API key. Then add the domain in the app: the **Add Domain** flow asks for the Resend API key, and you can update it later from the domain menu on the home page.
 
-   ```bash
-   npm run db:migrate
-   ```
+3. **Create your admin account.** The first time you open the app you are sent straight to the setup wizard at `/setup`, which asks for a username (default `admin`) and a password. No other page is reachable until you do. There is no default password, and no token or environment variable is involved. The window is one-shot: once the account exists, the wizard and its sign-up endpoint both close, and further attempts get a 409.
 
-3. **Set up receiving.** In the Cloudflare dashboard, go to your domain → **Email Routing** and create a **catch-all** rule that forwards to this Worker. (For a domain that is *not* on Cloudflare DNS, you can instead receive through the Resend inbound webhook at `/api/v1/inbound/resend`.)
+4. **Create a mailbox.** Once signed in, create a mailbox for any address on your domain (e.g. `hello@yourdomain.com`).
 
-4. **Configure Resend for sending** (optional — only needed if you want to send). Sign up at [resend.com](https://resend.com), add your domain, and copy an API key. Then add the domain in the app: the **Add Domain** flow asks for the Resend API key, and you can update it later from the domain menu on the home page.
+<details>
+<summary>Using the <strong>Deploy to Cloudflare</strong> button instead?</summary>
 
-5. **Create your admin account.** The first time you open the app you are sent straight to the setup wizard at `/setup`, which asks for a username (default `admin`) and a password. No other page is reachable until you do. There is no default password, and no token or environment variable is involved. The window is one-shot: once the account exists, the wizard and its sign-up endpoint both close, and further attempts get a 409.
+The button only creates the Worker, while the app also needs an R2 bucket and a D1 database. `wrangler.jsonc` in this repository pins resources that live in the author's account, so deploying straight from the button fails. To make the button work:
 
-6. **Create a mailbox.** Once signed in, create a mailbox for any address on your domain (e.g. `hello@yourdomain.com`).
+1. **Fork** the repository.
+2. In your fork, create the resources and point the config at them:
+   - `wrangler r2 bucket create mailboxes`
+   - `wrangler d1 create mailboxes-db`, then copy the returned `database_id` into the `d1_databases` block of `wrangler.jsonc`
+   - `wrangler d1 migrations apply mailboxes-db --remote`
+3. Click the button **on your fork** (the button in this README points at this repository and would use the author's `database_id`).
+
+Much less work: run `npm run setup` as above.
+
+</details>
 
 ## Configuration
 
-- **`wrangler.jsonc`** — set your D1 `database_id`, the R2 bucket name, and any bindings.
+- **`wrangler.jsonc`** — set your D1 `database_id`, the R2 bucket name, and any bindings. `npm run setup` fills in `database_id` for you.
 - **R2 bucket** — the app expects a bucket named `mailboxes`:
   ```bash
   wrangler r2 bucket create mailboxes
@@ -99,6 +116,8 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 - **Sending** — the Resend API key is configured per domain.
 
 ## Local development
+
+> Just want to run it locally? Local development uses Miniflare's local D1/R2 bindings, so no Cloudflare resources are needed up front — steps 3–5 below only matter once you are ready to deploy (and `npm run setup` takes care of them).
 
 1. Clone the repository and install dependencies:
 
@@ -140,6 +159,8 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 ### Production deploy
 
+For the first deploy, just run `npm run setup` (see Quick start): it creates the missing resources, writes `database_id` back into the config, applies migrations, builds and deploys. For everyday redeploys once the resources exist:
+
 ```bash
 npm run deploy
 ```
@@ -156,12 +177,7 @@ Or use the full command that builds, deploys, and migrates in one step:
 npm run deploy:full
 ```
 
-## Prerequisites
-
-- A Cloudflare account with a domain
-- [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for **receiving**
-- A [Resend](https://resend.com) account for **sending** (outbound mail does not use Cloudflare Email Service)
-- [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled for the agent (on by default)
+`bash deploy.sh` is the same as `npm run setup`.
 
 ## Stack
 

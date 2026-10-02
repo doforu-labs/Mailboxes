@@ -58,37 +58,54 @@
 - **可配置、可持久化** —— 每个邮箱可自定义系统提示词，聊天记录持久保存，并可单独选择模型提供方。
 - **程序化发送** —— 每个邮箱可创建 API Key，让你自己的应用通过 `/api/v1/send` 发信。
 
+## 前置条件
+
+- **Node.js ≥ 20** 与 npm（仓库里有 `.nvmrc`，`nvm use` 即可）
+- 一个拥有域名的 Cloudflare 账号（`npm run setup` 会在需要时自动拉起 `wrangler login`）
+- 启用 [Email Routing](https://developers.cloudflare.com/email-routing/) 用于**收信**
+- 一个 [Resend](https://resend.com) 账号用于**发信**（外发邮件不使用 Cloudflare Email Service）
+- 启用 [Workers AI](https://developers.cloudflare.com/workers-ai/) 供 AI 助手使用（默认已开启）
+
 ## 快速开始
 
-**重要**：**Deploy to Cloudflare** 按钮只会创建 Worker，**它本身并不够用** —— 你必须完成下面的步骤，**尤其是创建 D1 数据库**，应用才能正常工作。
+**一条命令完成部署。** 它会自动创建 R2 桶和 D1 数据库、把得到的 `database_id` 写回 `wrangler.jsonc`、应用数据库迁移、构建并部署，最后打印你的访问地址：
 
-1. **部署到 Cloudflare。** 点击按钮。部署流程会在你的账号里开通 R2 和 Workers AI。
+```bash
+npm install
+npm run setup
+```
 
-   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/doforu-labs/Mailboxes)
+脚本是**幂等**的：以后每次重新部署再跑一遍即可（已存在的资源会跳过；加 `-- --dry-run` 可以先看它打算做什么）。
 
-2. **创建 D1 数据库并运行迁移。** 仓库里 `wrangler.jsonc` 中的 `database_id` 是原作者的，**必须换成你自己的**：
+> 也可以用 README 顶部的 **Deploy to Cloudflare** 按钮，但它只创建 Worker —— R2、D1 和 `database_id` 都要你自己补，详见本节末尾的说明。
 
-   ```bash
-   wrangler d1 create mailboxes-db
-   ```
+1. **配置收信。** 在 Cloudflare 面板里进入你的域名 → **Email Routing**，创建一条 **catch-all** 规则，转发到该 Worker。（如果域名**不在** Cloudflare DNS 上，也可以改用 Resend 的收信 Webhook：`/api/v1/inbound/resend`。）
 
-   把返回的 `database_id` 填进 `wrangler.jsonc` 的 `d1_databases` 块，然后应用迁移：
+2. **配置 Resend 以便发信**（可选 —— 只有需要发信时才要）。在 [resend.com](https://resend.com) 注册、添加你的域名、复制 API Key。然后在应用里添加该域名：**Add Domain** 流程会要求填写 Resend API Key，之后也可以在首页的域名菜单里更新。
 
-   ```bash
-   npm run db:migrate
-   ```
+3. **创建管理员账号。** 首次打开应用会被直接引导到设置向导（`/setup`），填写用户名（默认 `admin`）和密码即可 —— 在此之前应用不会开放其它页面。**没有默认密码，也不需要 token 或任何环境变量。** 这是一个一次性的窗口：账号建好之后，向导与它的建号接口都会关闭，再提交只会得到 409。
 
-3. **配置收信。** 在 Cloudflare 面板里进入你的域名 → **Email Routing**，创建一条 **catch-all** 规则，转发到该 Worker。（如果域名**不在** Cloudflare DNS 上，也可以改用 Resend 的收信 Webhook：`/api/v1/inbound/resend`。）
+4. **创建一个邮箱。** 登录后，为域名下的任意地址创建邮箱（例如 `hello@yourdomain.com`）。
 
-4. **配置 Resend 以便发信**（可选 —— 只有需要发信时才要）。在 [resend.com](https://resend.com) 注册、添加你的域名、复制 API Key。然后在应用里添加该域名：**Add Domain** 流程会要求填写 Resend API Key，之后也可以在首页的域名菜单里更新。
+<details>
+<summary>想改用 <strong>Deploy to Cloudflare</strong> 按钮？</summary>
 
-5. **创建管理员账号。** 首次打开应用会被直接引导到设置向导（`/setup`），填写用户名（默认 `admin`）和密码即可 —— 在此之前应用不会开放其它页面。**没有默认密码，也不需要 token 或任何环境变量。** 这是一个一次性的窗口：账号建好之后，向导与它的建号接口都会关闭，再提交只会得到 409。
+按钮只会创建 Worker，而应用还需要 R2 桶和 D1 数据库。本仓库 `wrangler.jsonc` 里固定指向的是作者账号中的资源，所以直接点按钮部署会失败。要用按钮的话：
 
-6. **创建一个邮箱。** 登录后，为域名下的任意地址创建邮箱（例如 `hello@yourdomain.com`）。
+1. 先 **fork** 本仓库。
+2. 在你的 fork 里建好资源，并让配置指向它们：
+   - `wrangler r2 bucket create mailboxes`
+   - `wrangler d1 create mailboxes-db`，把返回的 `database_id` 填进 `wrangler.jsonc` 的 `d1_databases` 块
+   - `wrangler d1 migrations apply mailboxes-db --remote`
+3. 在**你的 fork** 上点按钮（本 README 里的按钮指向本仓库，点了会用上作者的 `database_id`）。
+
+比这省事得多的是上面的 `npm run setup`。
+
+</details>
 
 ## 配置
 
-- **`wrangler.jsonc`** —— 设置你的 D1 `database_id`、R2 桶名以及其它绑定。
+- **`wrangler.jsonc`** —— 设置你的 D1 `database_id`、R2 桶名以及其它绑定。`npm run setup` 会自动把 `database_id` 填好。
 - **R2 存储桶** —— 应用需要一个名为 `mailboxes` 的桶：
   ```bash
   wrangler r2 bucket create mailboxes
@@ -99,6 +116,8 @@
 - **发信** —— Resend API Key 按域名配置。
 
 ## 本地开发
+
+> 只打算本地跑？本地用的是 Miniflare 的本地 D1/R2 绑定，**不需要**先在 Cloudflare 上创建资源 —— 第 3–5 步只有准备部署时才需要（那时跑一次 `npm run setup` 就会把 `database_id` 换成你自己的）。
 
 1. 克隆仓库并安装依赖：
 
@@ -140,6 +159,8 @@
 
 ### 生产部署
 
+首次部署请直接跑 `npm run setup`（见「快速开始」）：它会创建缺失的资源、把 `database_id` 写回配置、应用迁移、构建并部署。资源就绪之后的日常重新部署：
+
 ```bash
 npm run deploy
 ```
@@ -156,12 +177,7 @@ npm run db:migrate
 npm run deploy:full
 ```
 
-## 前置条件
-
-- 一个拥有域名的 Cloudflare 账号
-- 启用 [Email Routing](https://developers.cloudflare.com/email-routing/) 用于**收信**
-- 一个 [Resend](https://resend.com) 账号用于**发信**（外发邮件不使用 Cloudflare Email Service）
-- 启用 [Workers AI](https://developers.cloudflare.com/workers-ai/) 供 AI 助手使用（默认已开启）
+`bash deploy.sh` 与 `npm run setup` 完全等价。
 
 ## 技术栈
 
