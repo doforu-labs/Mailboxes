@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Questions and deployment help
+    url: https://github.com/doforu-labs/Mailboxes/discussions/categories/q-a
+    about: Ask here instead of opening an issue — see SUPPORT.md for what to include.
+  - name: Ideas and feature requests
+    url: https://github.com/doforu-labs/Mailboxes/discussions/categories/ideas
+    about: Propose and discuss an idea before it becomes an issue.
   - name: Security report
     url: https://github.com/doforu-labs/Mailboxes/blob/main/SECURITY.md
     about: Please report security vulnerabilities privately — do not open a public issue.

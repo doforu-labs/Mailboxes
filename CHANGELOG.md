@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   register the domain on Resend by hand — the app does it, and doing it manually makes
   Resend reject the domain with "registered to another team".
 
+### Fixed
+
+- **Claims the code did not back.** The v0.1.0 notes and both READMEs described replies
+  being drafted automatically as mail arrives. No such trigger exists: the `EMAIL_AGENT`
+  auto-draft path was removed and the D1 change detection named as its replacement was
+  never built. Drafting is started from the agent panel, and automatic replies are listed
+  under [Roadmap → Planned](README.md#roadmap) rather than shipped. The v0.1.0 release
+  notes were corrected in place; the tag itself still points at the original commit.
+- **Stale links in the v0.1.0 release notes** — they pointed at `README.en.md` (renamed to
+  `README.zh-CN.md`/`README.md`) and at a legacy repository URL.
+
 ## [0.1.0] - 2026-10-02
 
 First public release.
@@ -45,8 +56,9 @@ the upstream notices are retained in [`NOTICE`](NOTICE) and
   partitioned in D1.
 - **Built-in AI agent** — a side panel exposing 14 mail tools (read, search, draft,
   send), streamed over SSE with the tool calls shown inline.
-- **Auto-draft on inbound mail** — the agent reads new mail and prepares a reply, which
-  is never sent without explicit confirmation.
+- **AI-drafted replies** — the agent can read a message and write or revise a reply,
+  saving it to the mailbox's Drafts folder. Drafting is started by you from the agent
+  panel; nothing is sent until you confirm.
 - **Configurable and persistent** — per-mailbox system prompt, saved chat history, and
   a choice of model provider (Workers AI by default, or any OpenAI-compatible endpoint,
   falling back to Workers AI when the custom provider is unreachable).
