@@ -1,0 +1,14 @@
+Mailboxes
+Copyright (c) 2026 Doforu
+
+This product includes software developed as a derivative work of
+"Agentic Inbox" (https://github.com/cloudflare/agentic-inbox),
+Copyright (c) 2026 Cloudflare, Inc., licensed under the Apache License, Version 2.0.
+
+Portions of the source code in this repository originate from that upstream
+project and remain subject to its copyright notices, which are retained in the
+individual source files. Modifications, additions and the remaining portions of
+this work are Copyright (c) 2026 Doforu and are likewise distributed under the
+Apache License, Version 2.0.
+
+The full text of the Apache License, Version 2.0 is contained in the LICENSE file.

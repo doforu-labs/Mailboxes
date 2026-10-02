@@ -238,6 +238,8 @@ npm run deploy:full
 
 Apache 2.0 —— 见 [LICENSE](LICENSE)。
 
+本作品是 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) 的派生作品：上游部分版权归 Cloudflare, Inc. 所有；本仓库新增与修改的部分版权归 © 2026 Doforu 所有。详见 [NOTICE](NOTICE)。
+
 ## 致谢
 
 本仓库 fork 自 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox)。构建于 [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/)、[D1](https://developers.cloudflare.com/d1/)、[R2](https://developers.cloudflare.com/r2/)、[Workers AI](https://developers.cloudflare.com/workers-ai/) 与 [Resend](https://resend.com)。想了解这种「收件箱」模式的更多内容，可阅读 Cloudflare 博客 [Email for Agents](https://blog.cloudflare.com/email-for-agents/)。

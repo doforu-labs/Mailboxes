@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Doforu
+// Licensed under the Apache 2.0 license found in the LICENSE file or at:
+//     https://opensource.org/licenses/Apache-2.0
 /**
  * E2E Test: Verify MX Record functionality
  * Tests that clicking "Verify MX Record" works without triggering the ErrorBoundary.

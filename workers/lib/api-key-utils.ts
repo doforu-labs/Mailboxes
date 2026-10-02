@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Doforu
+// Licensed under the Apache 2.0 license found in the LICENSE file or at:
+//     https://opensource.org/licenses/Apache-2.0
 /**
  * API Key 工具函数
  * 格式：mb_ + 48 位十六进制字符（24 字节随机数）

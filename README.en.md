@@ -238,6 +238,8 @@ Please do not open public issues for security problems — see [SECURITY.md](SEC
 
 Apache 2.0 — see [LICENSE](LICENSE).
 
+This work is a derivative of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Upstream portions are Copyright (c) Cloudflare, Inc.; additions and modifications in this repository are Copyright (c) 2026 Doforu. See [NOTICE](NOTICE).
+
 ## Acknowledgements
 
 A fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Built on [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/), [D1](https://developers.cloudflare.com/d1/), [R2](https://developers.cloudflare.com/r2/), [Workers AI](https://developers.cloudflare.com/workers-ai/) and [Resend](https://resend.com). Learn more about the email-inbox pattern in Cloudflare's blog post [Email for Agents](https://blog.cloudflare.com/email-for-agents/).

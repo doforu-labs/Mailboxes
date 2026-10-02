@@ -2,6 +2,7 @@
 	"name": "mailboxes",
 	"private": true,
 	"license": "Apache-2.0",
+	"author": "Doforu",
 	"type": "module",
 	"cloudflare": {
 		"label": "Mailboxes",
