@@ -1,8 +1,31 @@
 {
 	"name": "mailboxes",
+	"version": "0.1.0",
 	"private": true,
+	"description": "Self-hosted email client with an AI agent — send, receive and auto-reply from your own domain, running entirely on Cloudflare Workers (D1 + R2 + Workers AI).",
 	"license": "Apache-2.0",
 	"author": "Doforu",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/doforu-labs/Mailboxes.git"
+	},
+	"bugs": {
+		"url": "https://github.com/doforu-labs/Mailboxes/issues"
+	},
+	"homepage": "https://github.com/doforu-labs/Mailboxes#readme",
+	"keywords": [
+		"email",
+		"self-hosted",
+		"cloudflare-workers",
+		"ai-agent",
+		"d1",
+		"r2",
+		"react-router",
+		"hono"
+	],
+	"engines": {
+		"node": ">=20"
+	},
 	"type": "module",
 	"cloudflare": {
 		"label": "Mailboxes",
