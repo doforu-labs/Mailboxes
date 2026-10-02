@@ -231,7 +231,7 @@ npm run deploy:full
 Mailboxes 从 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) 分叉而来。分叉点（2026-04-17）之后共有 **155 个提交、139 个文件（+18,663 / -8,139 行）**，主要差别如下。
 
 - **发信改用 Resend。** 去掉了 Cloudflare 的 `send_email` 绑定（它要求付费的 Workers 计划），改用 [Resend](https://resend.com) API，因此能跑在免费版上；密钥按域名在界面里配置。
-- **去掉了 Durable Object 与 MCP。** 上游用三个 Durable Object 分别承载邮箱状态、AI 智能体和 MCP 服务；这里改成无状态 Worker + D1，AI 助手改为在请求内调用 Workers AI（支持函数调用），MCP 面板一并移除。
+- **去掉了 Durable Object 与 MCP。** 上游用三个 Durable Object 分别承载邮箱状态、AI 智能体和 MCP 服务；这里改成无状态 Worker + D1，AI 助手改为在请求内调用 Workers AI（支持函数调用），MCP 面板一并移除。这一步是为了少一层框架、结构更简单，**不是费用原因**——免费版本身就能跑 Durable Object（限 SQLite 存储），上游用的正是这种。
 - **自带登录，不再依赖 Cloudflare Access。** 上游要求配 `POLICY_AUD` / `TEAM_DOMAIN`；这里改成首次运行时创建管理员账号，密码以 PBKDF2-SHA256 存于 D1。
 - **配置搬进数据库和界面。** 域名、邮箱、密钥都由 D1 管理并在页面上编辑，不再靠 `wrangler.jsonc` 的环境变量。
 - **多域名。** 一个实例可同时接入多个域名，各自的转发规则与发信配置互不影响。

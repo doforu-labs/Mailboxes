@@ -232,7 +232,7 @@ Beyond the above, the Worker binds nothing else on Cloudflare -- no KV, no Queue
 Mailboxes is a fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Since the fork point (2026-04-17) there have been **155 commits across 139 files (+18,663 / -8,139 lines)**. The main differences:
 
 - **Sending moved to Resend.** The Cloudflare `send_email` binding was dropped — it requires a paid Workers plan — in favour of the [Resend](https://resend.com) API, which runs on the free plan. Keys are configured per domain in the UI.
-- **No Durable Objects, no MCP.** Upstream used three Durable Objects for mailbox state, the AI agent and the MCP server; here it is a stateless Worker plus D1, the assistant calls Workers AI in-request with function calling, and the MCP panel is gone.
+- **No Durable Objects, no MCP.** Upstream used three Durable Objects for mailbox state, the AI agent and the MCP server; here it is a stateless Worker plus D1, the assistant calls Workers AI in-request with function calling, and the MCP panel is gone. This was about dropping a layer of framework, **not about cost** — SQLite-backed Durable Objects run on the free plan, and that is the kind upstream used.
 - **Its own login instead of Cloudflare Access.** Upstream required `POLICY_AUD` / `TEAM_DOMAIN`; here the first run creates an admin account whose PBKDF2-SHA256 password is stored in D1.
 - **Configuration lives in the database and the UI.** Domains, mailboxes and keys are managed in D1 and edited on screen rather than through `wrangler.jsonc` environment variables.
 - **Multiple domains.** One instance can serve several domains, each with its own routing and sending settings.
