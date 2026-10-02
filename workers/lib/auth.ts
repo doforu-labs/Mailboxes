@@ -5,11 +5,17 @@
 /**
  * Admin session authentication for the Mailboxes app.
  *
+ * Credentials live in the `admins` table and are created exactly once by the
+ * first-run setup wizard (POST /api/v1/setup/admin). Passwords are stored as
+ * salted PBKDF2-SHA256 hashes — see ./password.ts.
+ * The app is "uninitialised" while that table is empty.
+ *
  * Login flow:
  *   1. POST /api/v1/auth/login with { username, password }
  *   2. On success a random session token is stored in D1 (sessions table)
  *      and delivered to the browser as an HttpOnly cookie.
- *   3. Every /api/v1/* request (except exempt paths) is checked by requireAuth.
+ *   3. Every /api/v1/* request (except the public allowlist below) is
+ *      checked by requireAuth.
  */
 import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
@@ -17,42 +23,46 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Env } from "../types";
 import * as db from "../db";
 import type { D1MailboxContext } from "./d1-middleware";
+import {
+	ABSENT_PASSWORD_HASH,
+	toStoredPassword,
+	verifyPassword,
+	validatePassword,
+} from "./password";
 
 export const AUTH_COOKIE = "mailboxes_session";
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+export const MAX_USERNAME_LENGTH = 64;
 
-export interface AuthCredentials {
-	username: string;
-	password: string;
-}
+/**
+ * Routes reachable without an admin session:
+ *   - the login endpoint itself
+ *   - the external send API (authenticated by its own API key)
+ *   - the inbound email webhook (Resend)
+ *   - the first-run setup bootstrap, which only works while no admin exists
+ *
+ * NOTE: the remaining /api/v1/setup/* helpers (domain, DNS and Email Routing
+ * setup) are deliberately NOT listed here. They fall back to Cloudflare API
+ * tokens stored in the database, so an anonymous caller must never reach
+ * them.
+ */
+const PUBLIC_PATHS = new Set<string>([
+	"/api/v1/auth/login",
+	"/api/v1/send",
+	"/api/v1/setup/admin",
+	"/api/v1/setup/admin/status",
+]);
 
-/** Resolve admin credentials — env vars override built-in defaults. */
-export function getCredentials(env: Env): AuthCredentials {
-	return {
-		username: env.AUTH_USERNAME || "admin",
-		password: env.AUTH_PASSWORD || "REDACTED_DEFAULT_PASSWORD",
-	};
+function isExemptPath(path: string): boolean {
+	if (PUBLIC_PATHS.has(path)) return true;
+	if (path.startsWith("/api/v1/inbound/")) return true;
+	return false;
 }
 
 export function createSessionToken(): string {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * Paths that must remain accessible without an admin session:
- *  - login itself
- *  - external email send API (authenticated via its own API key)
- *  - inbound email webhook (Resend)
- *  - initial setup wizard
- */
-function isExemptPath(path: string): boolean {
-	if (path === "/api/v1/auth/login") return true;
-	if (path === "/api/v1/send") return true;
-	if (path.startsWith("/api/v1/inbound/")) return true;
-	if (path.startsWith("/api/v1/setup/")) return true;
-	return false;
 }
 
 /** Middleware: require a valid admin session for /api/v1/* (with exemptions). */
@@ -75,21 +85,17 @@ export const requireAuth = createMiddleware<D1MailboxContext>(async (c, next) =>
 	await next();
 });
 
-export async function handleLogin(c: Context<D1MailboxContext>) {
-	const body = await c.req.json().catch(() => null);
-	const username = (body as { username?: unknown } | null)?.username;
-	const password = (body as { password?: unknown } | null)?.password;
-	const creds = getCredentials(c.env);
-
-	if (
-		typeof username !== "string" ||
-		typeof password !== "string" ||
-		username !== creds.username ||
-		password !== creds.password
-	) {
-		return c.json({ error: "Invalid username or password" }, 401);
+/** Count admin accounts, tolerating a missing table (migrations not run). */
+async function countAdmins(env: Env): Promise<number> {
+	try {
+		return await db.countAdmins(env.DB);
+	} catch {
+		return 0;
 	}
+}
 
+/** Create a session for the current visitor and set the auth cookie. */
+async function issueSession(c: Context<D1MailboxContext>): Promise<void> {
 	const token = createSessionToken();
 	const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
 	await db.createSession(c.env.DB, token, expiresAt);
@@ -103,8 +109,127 @@ export async function handleLogin(c: Context<D1MailboxContext>) {
 		path: "/",
 		maxAge: Math.floor(SESSION_TTL_MS / 1000),
 	});
+}
 
-	return c.json({ authenticated: true, username: creds.username });
+function readString(body: unknown, key: string): string | null {
+	if (typeof body !== "object" || body === null) return null;
+	const value = (body as Record<string, unknown>)[key];
+	return typeof value === "string" ? value : null;
+}
+
+// ── First-run setup (public, self-disabling) ────────────────────────
+
+/**
+ * GET /api/v1/setup/admin/status — public.
+ * Tells the client whether the app has been initialised yet.
+ */
+export async function handleAdminStatus(c: Context<D1MailboxContext>) {
+	const initialized = (await countAdmins(c.env)) > 0;
+	return c.json({
+		initialized,
+		tokenRequired: Boolean(c.env.SETUP_TOKEN),
+	});
+}
+
+/**
+ * POST /api/v1/setup/admin — public, but only while no admin exists.
+ *
+ * Creates the single admin account and signs the caller in. The insert is a
+ * conditional statement (`WHERE NOT EXISTS`), so two concurrent requests can
+ * never both create an account: the loser receives 409.
+ */
+export async function handleCreateAdmin(c: Context<D1MailboxContext>) {
+	const body = await c.req.json().catch(() => null);
+
+	// Optional shared secret. Setting the SETUP_TOKEN secret closes the
+	// first-run window on publicly reachable deployments.
+	const expectedToken = c.env.SETUP_TOKEN;
+	if (expectedToken) {
+		const provided = readString(body, "token");
+		if (!provided || provided !== expectedToken) {
+			return c.json({ error: "Invalid setup token", code: "invalid_setup_token" }, 403);
+		}
+	}
+
+	const username = (readString(body, "username") ?? "").trim();
+	const password = readString(body, "password") ?? "";
+
+	if (!username) {
+		return c.json({ error: "Username is required" }, 400);
+	}
+	if (username.length > MAX_USERNAME_LENGTH) {
+		return c.json(
+			{ error: `Username must be at most ${MAX_USERNAME_LENGTH} characters` },
+			400,
+		);
+	}
+	if (/[\u0000-\u001f\u007f]/.test(username)) {
+		return c.json({ error: "Username contains invalid characters" }, 400);
+	}
+	const passwordError = validatePassword(password);
+	if (passwordError) {
+		return c.json({ error: passwordError }, 400);
+	}
+
+	if ((await countAdmins(c.env)) > 0) {
+		return c.json({ error: "Already initialised", code: "already_initialized" }, 409);
+	}
+
+	let created: boolean;
+	try {
+		created = await db.createFirstAdmin(c.env.DB, {
+			id: crypto.randomUUID(),
+			username,
+			password: await toStoredPassword(password),
+		});
+	} catch (e: unknown) {
+		console.error(
+			"createFirstAdmin failed:",
+			e instanceof Error ? e.message : e,
+		);
+		return c.json(
+			{ error: "Database not ready — run the D1 migrations, then try again" },
+			500,
+		);
+	}
+
+	if (!created) {
+		// Lost the first-run race, or an admin appeared concurrently.
+		return c.json({ error: "Already initialised", code: "already_initialized" }, 409);
+	}
+
+	await issueSession(c);
+	return c.json({ authenticated: true, username });
+}
+
+// ── Login / logout / me ─────────────────────────────────────────────
+
+export async function handleLogin(c: Context<D1MailboxContext>) {
+	const body = await c.req.json().catch(() => null);
+	const username = readString(body, "username");
+	const password = readString(body, "password");
+
+	if (username === null || password === null) {
+		return c.json({ error: "Invalid username or password" }, 401);
+	}
+
+	// No admin account yet — the client should run the setup wizard instead.
+	if ((await countAdmins(c.env)) === 0) {
+		return c.json({ error: "Setup required", code: "setup_required" }, 409);
+	}
+
+	const admin = await db.getAdminByUsername(c.env.DB, username.trim());
+	// Always run the KDF — including when the username is unknown, or the row
+	// is corrupt — so response timing cannot be used to enumerate usernames.
+	const stored = admin?.password ? admin.password : ABSENT_PASSWORD_HASH;
+	const ok = await verifyPassword(password, stored);
+
+	if (!admin || !ok) {
+		return c.json({ error: "Invalid username or password" }, 401);
+	}
+
+	await issueSession(c);
+	return c.json({ authenticated: true, username: admin.username });
 }
 
 export async function handleLogout(c: Context<D1MailboxContext>) {
@@ -126,5 +251,10 @@ export async function handleMe(c: Context<D1MailboxContext>) {
 	if (!session || new Date(session.expires_at).getTime() < Date.now()) {
 		return c.json({ error: "Unauthorized" }, 401);
 	}
-	return c.json({ authenticated: true, username: getCredentials(c.env).username });
+	const admin = await db.getFirstAdmin(c.env.DB);
+	if (!admin) {
+		// The admin account was removed — treat the session as invalid.
+		return c.json({ error: "Unauthorized" }, 401);
+	}
+	return c.json({ authenticated: true, username: admin.username });
 }

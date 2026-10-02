@@ -1648,3 +1648,84 @@ export async function cleanupExpiredSessions(
 		// ignore — cleanup is opportunistic
 	}
 }
+
+/** Invalidate every session — used when admin credentials change. */
+export async function deleteAllSessions(db: D1Database): Promise<void> {
+	await db.prepare("DELETE FROM sessions").run();
+}
+
+// ── 31. Admin Accounts (first-run setup) ──────────────────────
+
+export interface Admin {
+	id: string;
+	username: string;
+	/** Salted PBKDF2-SHA256 hash — see workers/lib/password.ts. */
+	password: string;
+	created_at: string;
+	updated_at: string;
+}
+
+const ADMIN_COLUMNS = "id, username, password, created_at, updated_at";
+
+/**
+ * Number of admin accounts. The app is "uninitialised" while this is 0 and
+ * sends every visitor to the setup wizard.
+ */
+export async function countAdmins(db: D1Database): Promise<number> {
+	const row = await db
+		.prepare("SELECT COUNT(*) AS cnt FROM admins")
+		.first<{ cnt: number }>();
+	return row?.cnt ?? 0;
+}
+
+export async function getAdminByUsername(
+	db: D1Database,
+	username: string,
+): Promise<Admin | null> {
+	const row = await db
+		.prepare(`SELECT ${ADMIN_COLUMNS} FROM admins WHERE username = ?`)
+		.bind(username)
+		.first<Admin>();
+	return row ?? null;
+}
+
+/** The single admin account (this app is single-admin by design). */
+export async function getFirstAdmin(db: D1Database): Promise<Admin | null> {
+	const row = await db
+		.prepare(`SELECT ${ADMIN_COLUMNS} FROM admins ORDER BY created_at LIMIT 1`)
+		.first<Admin>();
+	return row ?? null;
+}
+
+/**
+ * Create the first admin account.
+ *
+ * The conditional INSERT means concurrent first-run requests cannot both
+ * succeed — exactly one caller gets `true`, the rest get `false`.
+ */
+export async function createFirstAdmin(
+	db: D1Database,
+	admin: { id: string; username: string; password: string },
+): Promise<boolean> {
+	const now = new Date().toISOString();
+	const result = await db
+		.prepare(
+			`INSERT INTO admins (id, username, password, created_at, updated_at)
+			 SELECT ?1, ?2, ?3, ?4, ?4
+			 WHERE NOT EXISTS (SELECT 1 FROM admins)`,
+		)
+		.bind(admin.id, admin.username, admin.password, now)
+		.run();
+	return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function updateAdminPassword(
+	db: D1Database,
+	id: string,
+	password: string,
+): Promise<void> {
+	await db
+		.prepare("UPDATE admins SET password = ?, updated_at = ? WHERE id = ?")
+		.bind(password, new Date().toISOString(), id)
+		.run();
+}

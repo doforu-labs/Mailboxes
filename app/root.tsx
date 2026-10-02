@@ -131,7 +131,9 @@ export function HydrateFallback() {
 // always re-runs when auth state changes.
 function AuthGate({ children }: { children: React.ReactNode }) {
 	const location = useLocation();
-	const [status, setStatus] = useState<"loading" | "authed" | "unauthed">("loading");
+	const [status, setStatus] = useState<
+		"loading" | "authed" | "unauthed" | "setup"
+	>("loading");
 
 	useEffect(() => {
 		let cancelled = false;
@@ -140,8 +142,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 			.then(() => {
 				if (!cancelled) setStatus("authed");
 			})
-			.catch(() => {
-				if (!cancelled) setStatus("unauthed");
+			.catch(async () => {
+				// Not signed in. A fresh deployment has no admin account yet, in
+				// which case the setup wizard is the only reachable page.
+				try {
+					const { initialized } = await api.adminStatus();
+					if (!cancelled) setStatus(initialized ? "unauthed" : "setup");
+				} catch {
+					if (!cancelled) setStatus("unauthed");
+				}
 			});
 		return () => {
 			cancelled = true;
@@ -149,6 +158,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	const isLoginPage = location.pathname === "/login";
+	const isSetupPage = location.pathname === "/setup";
 
 	if (status === "loading") {
 		return (
@@ -157,13 +167,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 			</div>
 		);
 	}
-	if (status === "unauthed" && !isLoginPage) {
-		return <Navigate to="/login" replace />;
+	// Uninitialised deployment: force the first-run setup wizard.
+	if (status === "setup") {
+		return isSetupPage ? children : <Navigate to="/setup" replace />;
 	}
-	if (status === "authed" && isLoginPage) {
-		return <Navigate to="/" replace />;
+	if (status === "authed") {
+		return isLoginPage || isSetupPage ? <Navigate to="/" replace /> : children;
 	}
-	return children;
+	return isLoginPage ? children : <Navigate to="/login" replace />;
 }
 
 export default function App() {

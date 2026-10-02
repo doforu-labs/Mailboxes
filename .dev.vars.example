@@ -1,3 +1,11 @@
-# Admin login credentials (optional — defaults to admin / REDACTED_DEFAULT_PASSWORD)
-# AUTH_USERNAME=admin
-# AUTH_PASSWORD=your-secure-password
+# Admin credentials are no longer configured here. The first visitor to a
+# fresh deployment creates the admin account through the setup wizard, and it
+# is stored in D1 (migrations/0011_admins.sql).
+#
+# NOTE: the admin password is stored in D1 as a salted PBKDF2-SHA256 hash.
+# See the header of workers/lib/password.ts for the parameters and the measured
+# CPU cost.
+
+# Optional: require a shared secret before the setup wizard will run.
+# Recommended when the deployment is reachable from the public internet.
+# SETUP_TOKEN=some-long-random-string

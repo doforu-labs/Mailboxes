@@ -5,7 +5,7 @@
 import { Button, Input, Loader, Text } from "@cloudflare/kumo";
 import { Mail } from "lucide-react";
 import { type FormEvent, useState } from "react";
-import api from "~/services/api";
+import api, { ApiError } from "~/services/api";
 
 export function meta() {
 	return [{ title: "Sign in · Mailboxes" }];
@@ -27,6 +27,11 @@ export default function LoginRoute() {
 			// Full reload so the root auth guard picks up the new session.
 			window.location.href = "/";
 		} catch (err) {
+			// Fresh deployment with no admin account yet — send them to the wizard.
+			if (err instanceof ApiError && err.status === 409) {
+				window.location.href = "/setup";
+				return;
+			}
 			setError(
 				err instanceof Error && err.message
 					? err.message

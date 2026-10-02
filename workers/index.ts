@@ -22,7 +22,7 @@ import { Folders } from "../shared/folders";
 import { formatSenderWithAddress } from "../shared/participants";
 import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
-import { requireAuth, handleLogin, handleLogout, handleMe } from "./lib/auth";
+import { requireAuth, handleLogin, handleLogout, handleMe, handleAdminStatus, handleCreateAdmin } from "./lib/auth";
 import { handleResendInbound } from "./inbound";
 import { fetchWithTimeout } from "./lib/fetch-with-timeout";
 import * as db from "./db";
@@ -149,8 +149,15 @@ app.post("/api/v1/auth/login", handleLogin);
 app.post("/api/v1/auth/logout", handleLogout);
 app.get("/api/v1/auth/me", handleMe);
 
-// Protect all remaining /api/v1/* endpoints (login, external send,
-// inbound webhook and setup paths are exempted inside requireAuth).
+// First-run admin setup. Public by design, but only usable while no admin
+// account exists yet: the insert is guarded by `WHERE NOT EXISTS`, and every
+// later call returns 409. Set the SETUP_TOKEN secret to additionally require
+// a shared secret (recommended for publicly reachable deployments).
+app.get("/api/v1/setup/admin/status", handleAdminStatus);
+app.post("/api/v1/setup/admin", handleCreateAdmin);
+
+// Protect all remaining /api/v1/* endpoints (login, external send, inbound
+// webhook and the first-run setup bootstrap are exempted inside requireAuth).
 app.use("/api/v1/*", requireAuth);
 
 // ====== External Email Send API (via API Key) ======
@@ -355,7 +362,10 @@ app.delete("/api/v1/domains/:domainId/api-keys/:keyId", async (c) => {
 	return c.json({ success: true });
 });
 
-// ── Setup routes (exempt from JWT — mounted before auth checks) ──
+// ── Setup routes (mounted here so they sit behind the admin session) ──
+// The /api/v1/setup/* helpers below talk to Resend and the Cloudflare API
+// using credentials stored in the database, so they require a session. Only
+// the first-run bootstrap endpoints in ./lib/auth are public.
 app.route("/", setup);
 
 // -- Platform Settings ------------------------------------------------

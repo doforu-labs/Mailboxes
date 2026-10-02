@@ -105,6 +105,12 @@ export interface SetupStatus {
 	hasEmails: boolean;
 }
 
+/** First-run bootstrap state, used by the setup wizard and the auth gate. */
+export interface AdminStatus {
+	initialized: boolean;
+	tokenRequired: boolean;
+}
+
 export interface VerifyDomainRequest {
 	domain: string;
 	resendApiKey: string;
@@ -324,6 +330,10 @@ const api = {
 
 	// Setup
 	getSetupStatus: () => get<SetupStatus>("/api/v1/setup/status"),
+	// First-run admin bootstrap (public until an admin account exists)
+	adminStatus: () => get<AdminStatus>("/api/v1/setup/admin/status"),
+	createAdmin: (data: { username: string; password: string; token?: string }) =>
+		post<{ authenticated: boolean; username: string }>("/api/v1/setup/admin", data),
 	detectCfDomains: (data: DetectCfDomainsRequest) =>
 		post<DetectCfDomainsResult>("/api/v1/setup/detect-cf-domains", data),
 	verifyDomain: (data: VerifyDomainRequest) =>
