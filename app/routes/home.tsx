@@ -286,9 +286,18 @@ export default function HomeRoute() {
 				{/* Header */}
 				<div className="mb-8">
 					<div className="flex items-center justify-between">
-						<h1 className="text-2xl font-bold text-kumo-default">
-							Mailboxes
-						</h1>
+						<div className="flex items-center gap-2.5">
+							<img
+								src="/logo.png"
+								alt="Mailboxes"
+								width={32}
+								height={32}
+								className="h-8 w-8 rounded-lg"
+							/>
+							<h1 className="text-2xl font-bold text-kumo-default">
+								Mailboxes
+							</h1>
+						</div>
 						<div className="flex items-center gap-2">
 							<RouterLink
 								to="/settings"

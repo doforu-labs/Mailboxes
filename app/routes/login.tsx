@@ -3,7 +3,6 @@
 //     See the LICENSE file or https://www.gnu.org/licenses/agpl-3.0.txt
 
 import { Button, Input, Loader, Text } from "@cloudflare/kumo";
-import { Mail } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import api, { ApiError } from "~/services/api";
 
@@ -47,9 +46,13 @@ export default function LoginRoute() {
 				<div className="rounded-xl border border-kumo-line bg-kumo-base p-8 shadow-sm">
 					{/* Brand */}
 					<div className="mb-6 flex flex-col items-center gap-3">
-						<div className="flex h-12 w-12 items-center justify-center rounded-xl bg-kumo-fill text-kumo-default">
-							<Mail size={24} />
-						</div>
+						<img
+							src="/logo.png"
+							alt="Mailboxes"
+							width={48}
+							height={48}
+							className="h-12 w-12 rounded-xl"
+						/>
 						<div className="text-center">
 							<h1 className="m-0 text-xl font-bold text-kumo-default">
 								Mailboxes
