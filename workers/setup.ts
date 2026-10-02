@@ -1150,7 +1150,6 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 						fromName: "Catch-all",
 						forwarding: { enabled: false, email: "" },
 						signature: { enabled: false, text: "" },
-						autoReply: { enabled: false, subject: "", message: "" },
 					};
 					await c.env.BUCKET.put(mailboxKey, JSON.stringify(defaultSettings));
 					await dbService.initMailboxFolders(c.env.DB, resolvedMailbox);
@@ -1165,7 +1164,6 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 						fromName: "Catch-all",
 						forwarding: { enabled: false, email: "" },
 						signature: { enabled: false, text: "" },
-						autoReply: { enabled: false, subject: "", message: "" },
 					};
 					await c.env.BUCKET.put(mailboxKey, JSON.stringify(defaultSettings));
 					await dbService.initMailboxFolders(c.env.DB, resolvedMailbox);

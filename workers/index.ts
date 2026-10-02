@@ -437,7 +437,7 @@ app.post("/api/v1/mailboxes", async (c) => {
 	const email = rawEmail.toLowerCase();
 	const key = `mailboxes/${email}.json`;
 	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
-	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
+	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" } };
 	const finalSettings = { ...defaultSettings, ...settings, created_at: new Date().toISOString() };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
 	await db.initMailboxFolders(c.env.DB, email);
