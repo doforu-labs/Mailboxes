@@ -504,13 +504,16 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 		// Find matching domain and its status
 		const matchingDomain = domains.find((d) => d.name.toLowerCase() === emailDomain);
 
-		// Sync Resend domain status to local DB if it has changed
-		if (matchingDomain && domain) {
+		// Sync Resend domain status to local DB if it has changed.
+		// This route is mailbox-scoped, so resolve the local domain row from the
+		// mailbox's own domain before writing back.
+		const localDomain = emailDomain ? await db.getDomainByName(c.env.DB, emailDomain) : null;
+		if (matchingDomain && localDomain) {
 			const newStatus = normalizeDomainStatus(matchingDomain.status);
-			if (newStatus !== domain.status) {
-				await db.updateDomain(c.env.DB, domainId, { status: newStatus });
+			if (newStatus !== localDomain.status) {
+				await db.updateDomain(c.env.DB, localDomain.id, { status: newStatus });
 				// Update local object for response consistency
-				domain.status = newStatus;
+				localDomain.status = newStatus;
 			}
 		}
 
@@ -563,7 +566,7 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 		const domains = data.data ?? [];
 
 		// Get domain from database to match against Resend domains
-		const domainId = c.req.param("domainId");
+		const domainId = c.req.param("domainId")!;
 		const domain = await db.getDomain(c.env.DB, domainId);
 
 		if (!domain) {
@@ -628,7 +631,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 		}
 
 		// 1. Get domain from DB
-		const domainId = c.req.param("domainId");
+		const domainId = c.req.param("domainId")!;
 		const domain = await db.getDomain(c.env.DB, domainId);
 
 		// If no cfApiToken provided, try to read from platform settings

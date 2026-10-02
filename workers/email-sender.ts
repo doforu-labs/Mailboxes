@@ -27,8 +27,10 @@ export interface SendEmailParams {
 	attachments?: {
 		content: string; // base64 encoded
 		filename: string;
-		type: string;
-		disposition: "attachment" | "inline";
+		// Optional to match the zod-parsed attachment shape used by callers
+		// (type/disposition are `.optional()` in ReplyBodySchema / ForwardBodySchema).
+		type?: string;
+		disposition?: "attachment" | "inline";
 		contentId?: string;
 	}[];
 	headers?: Record<string, string>;

@@ -705,7 +705,7 @@ export default function DomainDetailsRoute() {
 											<div className="w-[160px] truncate">{key.name}</div>
 											<div className="w-[140px] font-mono text-xs">{key.prefix}...</div>
 											<div className="w-[80px]">
-												<Badge variant="default">{key.scopes}</Badge>
+												<Badge variant="secondary">{key.scopes}</Badge>
 											</div>
 											<div className="flex-1 text-kumo-subtle">
 												{key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : "Never"}
@@ -746,7 +746,7 @@ export default function DomainDetailsRoute() {
 							/>
 							<div>
 								<div className="text-xs font-medium mb-1">Scopes</div>
-								<Badge variant="default">send</Badge>
+								<Badge variant="secondary">send</Badge>
 								<div className="text-xs text-kumo-subtle mt-1">
 									Currently only "send" scope is available.
 								</div>

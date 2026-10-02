@@ -37,7 +37,7 @@ export default function AiPanel() {
 		if (isAiPanelOpen && mailboxId) {
 			setInitialLoading(true);
 			fetch(`/api/v1/mailboxes/${mailboxId}/ai/chat?limit=20`)
-				.then((r) => r.json())
+				.then((r) => r.json() as Promise<{ messages?: ChatMessage[] }>)
 				.then((data) => {
 					setMessages(data.messages || []);
 					setInitialLoading(false);

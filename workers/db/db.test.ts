@@ -201,7 +201,9 @@ describe("D1 Database Service", () => {
 		it("should create a folder", async () => {
 			const db = createMockDb();
 			const { createFolder } = await import("./index");
-			const result = await createFolder(db, "test@example.com", "My Folder");
+			// createFolder(db, mailboxId, id, name, isDeletable?) — the id is the
+			// slugified folder id that index.ts derives from the display name.
+			const result = await createFolder(db, "test@example.com", "my-folder", "My Folder");
 			// May return null if UNIQUE constraint would fire (mock)
 			assert.ok(result === null || typeof result === "object");
 		});

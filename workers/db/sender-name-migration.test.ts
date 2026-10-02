@@ -69,10 +69,16 @@ type Database = {
 	};
 };
 
+// The module specifier is held in a variable on purpose: this repo's
+// @types/node (20.x) predates the node:sqlite typings, so a literal `import("node:sqlite")`
+// fails to type-check even though the runtime supports the module. On Node < 22.5
+// the import throws, which the catch below turns into a skip.
+const NODE_SQLITE_MODULE = "node:sqlite";
+
 let DatabaseSyncCtor: (new (path: string) => Database) | null = null;
 try {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	DatabaseSyncCtor = ((await import("node:sqlite")) as any).DatabaseSync ?? null;
+	DatabaseSyncCtor = ((await import(NODE_SQLITE_MODULE)) as any).DatabaseSync ?? null;
 } catch {
 	DatabaseSyncCtor = null;
 }

@@ -5,16 +5,17 @@
 /**
  * Tests for the Resend Inbound webhook handler.
  *
- * To run: npx tsx --test workers/inbound.test.ts
- * (requires tsx: npm install -D tsx)
+ * To run: npm test — the db layer is replaced with mock.module(), which needs
+ * `--experimental-test-module-mocks`; a bare `tsx --test` cannot run this file.
  *
  * These tests verify the handler correctly processes Resend webhook payloads,
- * fetches full email content, downloads attachments, stores them in R2,
- * creates the email in the Mailbox DO, and triggers the EmailAgent.
+ * fetches the full email content from the Resend API, downloads attachments
+ * into R2, and persists the message to D1 through workers/db.
  */
 
 import assert from "node:assert";
 import { describe, it, mock } from "node:test";
+import * as actualDb from "./db";
 
 // We need to set up globals before importing the handler
 const originalCryptoDesc = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
@@ -79,6 +80,54 @@ const MOCK_FULL_EMAIL = {
 	],
 };
 
+// ── Mock the db layer ──────────────────────────────────────────────
+//
+// handleResendInbound persists through workers/db: it resolves catch-all routing
+// with getDomainByName, looks up an existing thread with findThreadBySubject,
+// and finally writes the message with createEmail (see workers/inbound.ts).
+// These tests are about the handler, so the db module is replaced with stubs
+// that record what they were asked to do.
+//
+// mock.module() swaps out the ENTIRE module, so every real export is spread in
+// first and only the three functions above are overridden. Without that spread,
+// other exports the rest of the app imports (e.g. lookupApiKey, pulled in by
+// lib/api-key-middleware-global) fail to resolve at import time with
+// "does not provide an export named ...".
+//
+// `namedExports` is deprecated in favour of `exports` on newer Node releases,
+// which warns here; it is kept because Node 22 (the oldest release with
+// node:sqlite) does not understand `exports` yet.
+
+const PROBE_MAILBOX = "incoming@example.com";
+const DEFAULT_RESEND_API_KEY = "re_mailbox_key";
+
+const createdEmails: Array<{ folder: string; email: any; attachments: any[] }> = [];
+
+const mockCreateEmail = mock.fn(
+	async (
+		_db: unknown,
+		_mailboxId: string,
+		folder: string,
+		email: any,
+		attachments: any[],
+	) => {
+		createdEmails.push({ folder, email, attachments });
+	},
+);
+
+const mockFindThreadBySubject = mock.fn(async () => null);
+
+const mockGetDomainByName = mock.fn(async () => null);
+
+mock.module("./db", {
+	namedExports: {
+		...actualDb,
+		createEmail: mockCreateEmail,
+		findThreadBySubject: mockFindThreadBySubject,
+		getDomainByName: mockGetDomainByName,
+	},
+});
+
 // ── Mock env builder ───────────────────────────────────────────────
 
 interface MockEnvOptions {
@@ -89,12 +138,14 @@ interface MockEnvOptions {
 
 function createMockEnv(opts: MockEnvOptions = {}) {
 	const {
-		resendApiKey,
-		emailAddresses = [],
+		// The defaults describe a healthy, fully configured mailbox so each test
+		// only has to override the one thing it is actually about.
+		resendApiKey = DEFAULT_RESEND_API_KEY,
+		emailAddresses = [PROBE_MAILBOX],
 		mailboxExists = true,
 	} = opts;
 
-	const createdEmails: Array<{ folder: string; email: any; attachments: any[] }> = [];
+	createdEmails.length = 0;
 	let agentCalled = false;
 	let agentPayload: any = null;
 
@@ -104,21 +155,21 @@ function createMockEnv(opts: MockEnvOptions = {}) {
 		mailboxSettings.resendApiKey = resendApiKey;
 	}
 
+	// Production probes a mailbox by address (mailboxes/<address>.json), so a
+	// mailbox "exists" exactly when its address is registered through opts.
+	const r2Known = new Set(mailboxExists ? emailAddresses : []);
+	const addressOf = (key: string) =>
+		key.replace(/^mailboxes\//, "").replace(/\.json$/, "");
+
 	const mockBucket = {
-		head: mock.fn(async (key: string) => {
-			if (key === `mailboxes/incoming@example.com.json`) {
-				return mailboxExists ? { key } as R2Object : null;
-			}
-			return null;
-		}),
-		get: mock.fn(async (key: string) => {
-			if (key === `mailboxes/incoming@example.com.json` && mailboxExists) {
-				return {
-					json: async () => mailboxSettings,
-				} as any;
-			}
-			return null;
-		}),
+		head: mock.fn(async (key: string) =>
+			r2Known.has(addressOf(key)) ? ({ key } as R2Object) : null,
+		),
+		get: mock.fn(async (key: string) =>
+			r2Known.has(addressOf(key))
+				? ({ json: async () => mailboxSettings } as any)
+				: null,
+		),
 		put: mock.fn(async () => {}),
 		delete: mock.fn(async () => {}),
 		list: mock.fn(async () => ({ objects: [] })),
@@ -152,6 +203,9 @@ function createMockEnv(opts: MockEnvOptions = {}) {
 	} as unknown as DurableObjectNamespace;
 
 	const env = {
+		// The db module is stubbed above, so this binding is only forwarded
+		// through by the handler and never touched directly.
+		DB: {} as any,
 		BUCKET: mockBucket,
 		MAILBOX: mockMailboxNs,
 		EMAIL_AGENT: mockAgentNs,
@@ -228,7 +282,6 @@ describe("handleResendInbound", async () => {
 		setupGlobals();
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
-	
 		});
 
 		const result = await handleResendInbound(
@@ -267,8 +320,10 @@ describe("handleResendInbound", async () => {
 			1,
 		);
 
-		// Verify agent was triggered
-		assert.strictEqual(ctx.waitUntil.mock.callCount(), 1);
+		// The handler writes straight to D1 now; it no longer hands work to the
+		// EmailAgent through ctx.waitUntil. `ctx` is a hand-rolled stub, so its
+		// waitUntil is a mock even though the declared type is ExecutionContext.
+		assert.strictEqual((ctx.waitUntil as any).mock.callCount(), 0);
 
 		teardownGlobals();
 	});
@@ -278,7 +333,6 @@ describe("handleResendInbound", async () => {
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
 			emailAddresses: ["incoming@example.com"],
-	
 		});
 
 		const result = await handleResendInbound(
@@ -322,7 +376,6 @@ describe("handleResendInbound", async () => {
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
 			mailboxExists: false,
-	
 		});
 
 		const result = await handleResendInbound(
@@ -341,7 +394,9 @@ describe("handleResendInbound", async () => {
 		setupGlobals();
 		const { handleResendInbound } = await import("./inbound");
 		const { env, ctx, createdEmails } = createMockEnv({
-				// No mailbox-specific key either
+			// An empty string is a present-but-unconfigured key, which the handler
+			// treats as "no Resend API key".
+			resendApiKey: "",
 		});
 
 		const result = await handleResendInbound(
@@ -401,7 +456,6 @@ describe("handleResendInbound", async () => {
 		});
 
 		const { env, ctx, createdEmails } = createMockEnv({
-	
 		});
 
 		const result = await handleResendInbound(
@@ -448,7 +502,6 @@ describe("handleResendInbound", async () => {
 		});
 
 		const { env, ctx, createdEmails } = createMockEnv({
-	
 		});
 
 		const result = await handleResendInbound(

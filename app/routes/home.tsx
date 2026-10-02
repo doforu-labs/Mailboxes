@@ -432,9 +432,9 @@ export default function HomeRoute() {
 												<div className="flex h-9 w-9 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
 													<Mail size={14} className="text-kumo-subtle" />
 												</div>
-												{account.unread_count > 0 && (
+												{(account.unread_count ?? 0) > 0 && (
 													<div className="absolute -right-1.5 -top-1.5 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-bold text-white leading-none">
-														{account.unread_count > 99 ? '99+' : account.unread_count}
+														{(account.unread_count ?? 0) > 99 ? '99+' : account.unread_count}
 													</div>
 												)}
 											</div>

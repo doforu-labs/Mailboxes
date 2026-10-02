@@ -48,7 +48,7 @@
 		"postinstall": "npx --yes patch-package",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
-		"test": "npx tsx --test 'workers/**/*.test.ts'",
+		"test": "node --experimental-test-module-mocks --import tsx --test 'workers/**/*.test.ts'",
 		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
 	},
 	"dependencies": {

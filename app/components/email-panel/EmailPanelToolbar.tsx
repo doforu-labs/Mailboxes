@@ -14,7 +14,7 @@ import {
 	Code,
 	MailOpen,
 	Mail,
-	Folder,
+	Folder as FolderIcon,
 	Send,
 	Pencil,
 	Star,
@@ -217,7 +217,7 @@ function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id:
 					variant="ghost"
 					shape="square"
 					size="sm"
-					icon={<Folder size={18} />}
+					icon={<FolderIcon size={18} />}
 					onClick={() => setOpen((o) => !o)}
 					aria-label="Move to folder"
 				/>

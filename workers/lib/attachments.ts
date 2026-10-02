@@ -15,8 +15,8 @@ export interface StoredAttachment {
 	filename: string;
 	mimetype: string;
 	size: number;
-	content_id: string | null;
-	disposition: string;
+	content_id?: string | null;
+	disposition?: string;
 }
 
 /**
@@ -28,8 +28,10 @@ export async function storeAttachments(
 	attachments?: {
 		content: string;
 		filename: string;
-		type: string;
-		disposition: string;
+		// Optional: route handlers pass the zod-parsed attachment shape, where
+		// `type` / `disposition` are `.optional()` (defaulted below).
+		type?: string;
+		disposition?: string;
 		contentId?: string;
 	}[],
 ): Promise<StoredAttachment[]> {
@@ -48,10 +50,13 @@ export async function storeAttachments(
 			id: attachmentId,
 			email_id: emailId,
 			filename: safeFilename,
-			mimetype: att.type,
+			// `?? fallback` keeps the previous runtime result for callers that
+			// always sent a type/disposition, and gives the optional-field shape
+			// a sane value instead of `undefined`.
+			mimetype: att.type ?? "application/octet-stream",
 			size: bytes.byteLength,
 			content_id: att.contentId || null,
-			disposition: att.disposition,
+			disposition: att.disposition ?? "attachment",
 		});
 	}
 	return results;

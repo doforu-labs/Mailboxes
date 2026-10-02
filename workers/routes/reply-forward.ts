@@ -54,7 +54,7 @@ export async function handleReplyEmail(c: AppContext) {
 		}
 
 		// Derive reply fields from the original email
-		const to = [originalEmail.sender];
+		const to = originalEmail.sender ? [originalEmail.sender] : [];
 		const from = mailboxId;
 		const subject = originalEmail.subject
 			? `Re: ${originalEmail.subject}`
@@ -124,9 +124,9 @@ export async function handleReplyEmail(c: AppContext) {
 				attachments: attachments?.map((att) => ({
 					content: att.content,
 					filename: att.filename,
-					type: att.type,
-					disposition: att.disposition,
-					contentId: att.contentId,
+					// default only when absent (the zod schema allows both to be omitted)
+					type: att.type ?? "application/octet-stream",
+					disposition: att.disposition ?? "attachment",
 				})),
 				headers: buildThreadingHeaders(originalMsgId, references),
 			}, undefined, c.env.DB);
@@ -159,7 +159,7 @@ export async function handleForwardEmail(c: AppContext) {
 		}
 
 		const body = ForwardBodySchema.parse(rawBody);
-		const { to: rawTo, cc, bcc, body: bodyContent, html, text, attachments } = body;
+		const { to: rawTo, body: bodyContent, html, text, attachments } = body;
 		const resolvedHtml = html || bodyContent || text || "";
 		const resolvedText = text || undefined;
 
@@ -176,7 +176,7 @@ export async function handleForwardEmail(c: AppContext) {
 			: "Fwd: (no subject)";
 
 		// Fill to from original email if not provided
-		const to = rawTo
+		const to: string[] = rawTo
 			? (Array.isArray(rawTo) ? rawTo : [rawTo])
 			: rawOriginal.sender
 				? [rawOriginal.sender]
@@ -212,8 +212,10 @@ export async function handleForwardEmail(c: AppContext) {
 				sender: fromEmail,
 				sender_name: null, // forwards are sent from the mailbox itself
 				recipient: toStr,
-				cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
-				bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
+				// NOTE: ForwardBodySchema has no cc/bcc, so the old expressions were
+				// always `undefined` -> NULL. Kept as explicit NULLs (unchanged runtime).
+				cc: null,
+				bcc: null,
 				date: new Date().toISOString(),
 				body: resolvedHtml,
 				in_reply_to: null,
@@ -222,9 +224,7 @@ export async function handleForwardEmail(c: AppContext) {
 				message_id: outgoingMessageId,
 				raw_headers: JSON.stringify([
 					{ key: "from", value: from },
-					{ key: "to", value: Array.isArray(to) ? to.join(", ") : to },
-					...(cc ? [{ key: "cc", value: Array.isArray(cc) ? cc.join(", ") : cc }] : []),
-					...(bcc ? [{ key: "bcc", value: Array.isArray(bcc) ? bcc.join(", ") : bcc }] : []),
+					{ key: "to", value: to.join(", ") },
 					{ key: "subject", value: subject },
 					{ key: "date", value: new Date().toISOString() },
 					{ key: "message-id", value: `<${outgoingMessageId}>` },
@@ -237,8 +237,8 @@ export async function handleForwardEmail(c: AppContext) {
 		try {
 			await sendEmailFromMailbox(c.env.BUCKET, mailboxId, {
 				to,
-				cc,
-				bcc,
+				// ForwardBodySchema exposes no cc/bcc; the old shorthand spread
+				// `undefined` into the params object (a no-op for sendEmail).
 				from,
 				subject,
 				html: resolvedHtml || undefined,
@@ -246,9 +246,9 @@ export async function handleForwardEmail(c: AppContext) {
 				attachments: attachments?.map((att) => ({
 					content: att.content,
 					filename: att.filename,
-					type: att.type,
-					disposition: att.disposition,
-					contentId: att.contentId,
+					// default only when absent (the zod schema allows both to be omitted)
+					type: att.type ?? "application/octet-stream",
+					disposition: att.disposition ?? "attachment",
 				})),
 			}, undefined, c.env.DB);
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");

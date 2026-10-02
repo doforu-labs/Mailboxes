@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Doforu
 // Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only).
-//     See the LICENSE file or https://www.gnu.org/licenses/agpl-3.0.txt
+//     See the LICENSE file or at https://www.gnu.org/licenses/agpl-3.0.txt
 
 /**
  * Tests for the AI Chat SSE endpoint.
@@ -14,6 +14,12 @@
 
 import assert from "node:assert";
 import { describe, it, mock } from "node:test";
+// Imported for its side effect of loading the real module: mock.module() below
+// replaces the whole module, so we spread these exports and override only the
+// few functions under test. Without the spread, any other export that the app
+// pulls in (e.g. lookupApiKey via lib/api-key-middleware-global) fails to
+// resolve at import time with "does not provide an export named ...".
+import * as actualDb from "./db";
 
 // ── Mock data ──────────────────────────────────────────────────────
 
@@ -82,15 +88,55 @@ const mockGetThreadEmails = mock.fn<
 	(db: any, mailboxId: string, threadId: string) => Promise<any[]>
 >(async () => []);
 
-mock.module("./db", {
-	namedExports: {
-		saveAiMessage: mockSaveAiMessage,
-		getAiChatHistory: mockGetAiChatHistory,
-		clearAiChatHistory: mockClearAiChatHistory,
-		getEmail: mockGetEmail,
-		getThreadEmails: mockGetThreadEmails,
-	},
-});
+// ── Admin session used by every request ────────────────────────────
+//
+// Every /api/v1/mailboxes/:mailboxId/* route sits behind requireAuth
+// (workers/lib/auth.ts), which authenticates a signed-in admin from the
+// `mailboxes_session` cookie and then looks that token up in the D1 `sessions`
+// table. These tests therefore present a real session token and stub only the
+// lookup — the middleware itself still runs untouched, so the whole auth chain
+// is exercised: a request without a cookie, or with a token the store does not
+// know, is still rejected with 401 (see the "admin session authentication"
+// block at the end of the file).
+const TEST_SESSION_TOKEN = "test-session-token";
+
+const TEST_SESSION_CREATED_AT = new Date(Date.now() - 60 * 1000).toISOString();
+
+type MockSession = { token: string; created_at: string; expires_at: string };
+
+const mockGetSession = mock.fn<
+	(db: any, token: string) => Promise<MockSession | null>
+>(async () => ({
+	token: TEST_SESSION_TOKEN,
+	created_at: TEST_SESSION_CREATED_AT,
+	expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+}));
+
+// requireAuth deletes a session row it finds expired; stub that write too so the
+// expiry path can be exercised without a real D1 binding.
+const mockDeleteSession = mock.fn<(db: any, token: string) => Promise<void>>(
+	async () => {},
+);
+
+const dbMocks = {
+	// Keep every real export, then override only the stubs this file needs.
+	...actualDb,
+	saveAiMessage: mockSaveAiMessage,
+	getAiChatHistory: mockGetAiChatHistory,
+	clearAiChatHistory: mockClearAiChatHistory,
+	getEmail: mockGetEmail,
+	getThreadEmails: mockGetThreadEmails,
+	getSession: mockGetSession,
+	deleteSession: mockDeleteSession,
+};
+
+// NOTE: ./lib/auth is deliberately NOT mocked. mock.module() builds a fresh
+// module instance for the target, which would re-evaluate workers/lib/auth.ts
+// outside this mock registry and re-bind its `./db` import to the REAL module —
+// resurrecting the unmocked session lookup. The real requireAuth is left in
+// place and satisfied through the db stub instead (see the tests at the end of
+// the file), which is what keeps the authentication path under test.
+mock.module("./db", { namedExports: dbMocks });
 
 // Now import the app (will use the mocked db module)
 const { app } = await import("./index");
@@ -104,9 +150,19 @@ function resetMockCalls() {
 		mockClearAiChatHistory,
 		mockGetEmail,
 		mockGetThreadEmails,
+		mockGetSession,
+	mockDeleteSession,
 	]) {
 		m.mock.resetCalls();
 	}
+
+	// Each test starts from an unexpired session unless it says otherwise.
+	mockGetSession.mock.mockImplementation(async () => ({
+		token: TEST_SESSION_TOKEN,
+		created_at: TEST_SESSION_CREATED_AT,
+		expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+	}));
+	mockDeleteSession.mock.mockImplementation(async () => {});
 }
 
 // ── Mock env builder ───────────────────────────────────────────────
@@ -123,7 +179,7 @@ function createMockEnv() {
 	} as any;
 
 	const mockAi = {
-		run: mock.fn(),
+		run: mock.fn<(model: string, options: unknown) => Promise<unknown>>(),
 	};
 
 	const env = {
@@ -139,20 +195,37 @@ function createMockEnv() {
 
 const BASE = "http://localhost";
 
+/**
+ * The cookie an authenticated admin browser sends. requireAuth reads it with
+ * hono/cookie's getCookie() and validates the token against the (stubbed)
+ * session store before letting the request reach the route.
+ */
+const SESSION_COOKIE = `mailboxes_session=${TEST_SESSION_TOKEN}`;
+
 function postReq(path: string, body: any, extraHeaders?: Record<string, string>) {
 	return new Request(`${BASE}${path}`, {
 		method: "POST",
-		headers: { "Content-Type": "application/json", ...extraHeaders },
+		headers: {
+			"Content-Type": "application/json",
+			Cookie: SESSION_COOKIE,
+			...extraHeaders,
+		},
 		body: JSON.stringify(body),
 	});
 }
 
 function getReq(path: string) {
-	return new Request(`${BASE}${path}`, { method: "GET" });
+	return new Request(`${BASE}${path}`, {
+		method: "GET",
+		headers: { Cookie: SESSION_COOKIE },
+	});
 }
 
 function deleteReq(path: string) {
-	return new Request(`${BASE}${path}`, { method: "DELETE" });
+	return new Request(`${BASE}${path}`, {
+		method: "DELETE",
+		headers: { Cookie: SESSION_COOKIE },
+	});
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -169,7 +242,7 @@ describe("AI Chat SSE endpoint", async () => {
 		const res = await app.fetch(req, env);
 
 		assert.strictEqual(res.status, 400);
-		const data = await res.json();
+		const data = (await res.json()) as { error?: string };
 		assert.strictEqual(data.error, "message is required");
 	});
 
@@ -183,7 +256,7 @@ describe("AI Chat SSE endpoint", async () => {
 		const res = await app.fetch(req, env);
 
 		assert.strictEqual(res.status, 400);
-		const data = await res.json();
+		const data = (await res.json()) as { error?: string };
 		assert.strictEqual(data.error, "message is required");
 	});
 
@@ -241,7 +314,11 @@ describe("AI Chat SSE endpoint", async () => {
 		const callArgs = mockAi.run.mock.calls[0].arguments;
 		assert.ok(callArgs, "ai.run should have been called");
 
-		const messages = callArgs[1]?.messages;
+		// `run` receives (model, { messages }); the mock's arguments are typed
+		// loosely, so narrow the second argument before reading it.
+		const messages = (
+			callArgs[1] as { messages?: Array<{ role: string; content: string }> }
+		)?.messages;
 		assert.ok(messages, "messages should be passed to ai.run");
 
 		const systemMsgs = messages.filter((m: any) => m.role === "system");
@@ -363,7 +440,7 @@ describe("AI Chat SSE endpoint", async () => {
 		const res = await app.fetch(req, env);
 		assert.strictEqual(res.status, 200);
 
-		const data = await res.json();
+		const data = (await res.json()) as { messages: { role: string; content: string }[] };
 		assert.ok(data.messages, "Response should have messages array");
 		assert.strictEqual(data.messages.length, 2);
 		assert.strictEqual(data.messages[0].role, "user");
@@ -402,7 +479,7 @@ describe("AI Chat SSE endpoint", async () => {
 		const res = await app.fetch(req, env);
 
 		assert.strictEqual(res.status, 400);
-		const data = await res.json();
+		const data = (await res.json()) as { error?: string };
 		assert.strictEqual(data.error, "message is required");
 	});
 
@@ -419,7 +496,7 @@ describe("AI Chat SSE endpoint", async () => {
 		const res = await app.fetch(req, env);
 
 		assert.strictEqual(res.status, 400);
-		const data = await res.json();
+		const data = (await res.json()) as { error?: string };
 		assert.strictEqual(
 			data.error,
 			"message too long",
@@ -427,3 +504,71 @@ describe("AI Chat SSE endpoint", async () => {
 		);
 	});
 });
+
+// ── Admin session authentication ───────────────────────────────────
+//
+// Guards the fix above: the requests in this file only reach the AI Chat routes
+// because they carry a valid session. These cases pin that the guard itself is
+// still in place, so the rest of the file cannot be made green by dropping the
+// cookie — or by weakening the middleware.
+
+describe("AI Chat endpoint authentication", () => {
+	it("rejects a request without a session cookie", async () => {
+		resetMockCalls();
+		const { env } = createMockEnv();
+
+		const req = new Request(`${BASE}/api/v1/mailboxes/test@example.com/ai/chat`, {
+			method: "GET",
+		});
+		const res = await app.fetch(req, env);
+
+		assert.strictEqual(res.status, 401);
+		assert.strictEqual(sessionDbQueries(), 0, "an anonymous request must not query the session store");
+		assert.deepStrictEqual(await res.json(), { error: "Unauthorized" });
+	});
+
+	it("rejects a session token that is not in the store", async () => {
+		resetMockCalls();
+		mockGetSession.mock.mockImplementationOnce(async () => null);
+
+		const { env } = createMockEnv();
+		const req = new Request(`${BASE}/api/v1/mailboxes/test@example.com/ai/chat`, {
+			method: "GET",
+			headers: { Cookie: "mailboxes_session=not-a-real-token" },
+		});
+		const res = await app.fetch(req, env);
+
+		assert.strictEqual(res.status, 401);
+		assert.strictEqual(sessionDbQueries(), 1, "the presented token must be looked up");
+		assert.strictEqual(
+			mockGetSession.mock.calls[0].arguments[1],
+			"not-a-real-token",
+			"the middleware must check the token the client actually sent",
+		);
+	});
+
+	it("rejects an expired session", async () => {
+		resetMockCalls();
+		mockGetSession.mock.mockImplementationOnce(async () => ({
+			token: TEST_SESSION_TOKEN,
+			created_at: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+			expires_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+		}));
+
+		const { env } = createMockEnv();
+		const req = getReq("/api/v1/mailboxes/test@example.com/ai/chat");
+		const res = await app.fetch(req, env);
+
+		assert.strictEqual(res.status, 401);
+		assert.strictEqual(
+			mockGetSession.mock.calls[0].arguments[1],
+			TEST_SESSION_TOKEN,
+			"the expiry check must run against the stored session row",
+		);
+	});
+});
+
+/** Number of times the (stubbed) D1 session lookup has been consulted. */
+function sessionDbQueries(): number {
+	return mockGetSession.mock.calls.length;
+}

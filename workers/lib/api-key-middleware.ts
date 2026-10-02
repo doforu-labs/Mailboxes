@@ -29,7 +29,10 @@ export const requireApiKey = createMiddleware<ApiKeyMiddlewareContext>(
 	async (c, next) => {
 		// 1. Extract Bearer token from Authorization header
 		const authHeader = c.req.header("Authorization");
-		const token = extractBearerToken(authHeader);
+		// extractBearerToken accepts `string | null`; `c.req.header()` yields
+		// `undefined` when the header is absent, so normalise it to null first
+		// (semantically identical for that helper).
+		const token = extractBearerToken(authHeader ?? null);
 
 		if (!token) {
 			return c.json({ error: "Missing Authorization header" }, 401);

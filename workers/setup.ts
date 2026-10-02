@@ -13,10 +13,12 @@ import * as dbService from "./db";
 
 const setup = new Hono<{ Bindings: Env }>();
 
-// Normalize Resend domain status to our three standard values.
+// Normalize Resend domain status to our standard values.
 // Resend may return statuses like "not_started", "dns_verification_in_progress",
 // "temporary_failure", etc. — map them all to "pending".
-function normalizeDomainStatus(status: string | undefined): "pending" | "verified" | "failed" {
+// Returns `string` (not a literal union) so that a stored value read back
+// from the DB can be passed straight through (see `originalStatus` below).
+function normalizeDomainStatus(status: string | undefined): string {
 	if (status === "verified") return "verified";
 	if (status === "failed") return "failed";
 	if (status === "temporary_failure") return "failed";
