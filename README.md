@@ -196,23 +196,29 @@ npm run deploy:full
 ## 架构
 
 ```text
-┌────────────────────────────────────────┐
-│  Browser - React SPA                   │
-│  email client + AI agent panel         │
-└───────────────────┬────────────────────┘
-                    │  HTTP / SSE
-┌───────────────────▼────────────────────┐
-│  Hono Worker  (API + SSR)              │
-└───┬────────────────────────────────────┘
-    │
-    ├──►  D1 (SQLite)    —— 邮件、会话、文件夹
-    ├──►  R2             —— 邮箱配置、附件
-    ├──►  Workers AI     —— AI 助手默认模型
-    ├──►  Resend API     —— 外发邮件
-    │
-    └──►  收信：Cloudflare Email Routing（catch-all）→ Worker
-                 或 Resend 收信 Webhook → POST /api/v1/inbound/resend
+  Browser —— React 19 + React Router v7（首屏 SSR + 客户端取数）
+      │  同源请求：/api/v1/*（Cookie 会话）＋ SSE 流式（AI 助手）
+      ▼
+  Cloudflare Worker「mailboxes」—— Hono（入口 workers/app.ts）
+      ├── /api/v1/*        → API 路由（workers/index.ts）
+      ├── 其它所有路径      → React Router SSR
+      ├── email()          → 收信入口（receiveEmail）
+      └── 静态资源          → Workers Static Assets（构建时注入）
+      │
+      ├──►  D1（SQLite / Drizzle）—— 邮件、附件、文件夹、域名、API Key、
+      │                              登录会话、管理员、平台设置、AI 对话记录
+      ├──►  R2「mailboxes」       —— 邮箱配置 mailboxes/<id>.json
+      │                              附件 attachments/<邮件>/<附件>/<文件名>
+      ├──►  Workers AI            —— 默认 @cf/moonshotai/kimi-k2.6
+      │                              回退 llama-3.3-70b，也可改配 OpenAI 兼容接口
+      └──►  Resend REST API       —— 外发邮件 POST /emails
+
+  收信有两条路（都写回 D1 与 R2）：
+    A. Cloudflare Email Routing（catch-all 规则）→ email() 处理器
+    B. Resend 收信 Webhook → POST /api/v1/inbound/resend → 回拉正文
 ```
+
+除了上面列出的，Worker 没有绑定任何其它 Cloudflare 资源 —— 没有 KV、Queues、Durable Objects、Vectorize，也没有定时任务（Cron）。
 
 ## 常见问题
 

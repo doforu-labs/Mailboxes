@@ -196,23 +196,30 @@ npm run deploy:full
 ## Architecture
 
 ```text
-┌────────────────────────────────────────┐
-│  Browser - React SPA                   │
-│  email client + AI agent panel         │
-└───────────────────┬────────────────────┘
-                    │  HTTP / SSE
-┌───────────────────▼────────────────────┐
-│  Hono Worker  (API + SSR)              │
-└───┬────────────────────────────────────┘
-    │
-    ├──►  D1 (SQLite)    mails, threads, folders
-    ├──►  R2             mailbox config, attachments
-    ├──►  Workers AI     (default) or OpenAI-compatible
-    ├──►  Resend API     outbound mail
-    │
-    └──►  Inbound: Cloudflare Email Routing (catch-all) -> Worker
-                 or Resend inbound webhook -> POST /api/v1/inbound/resend
+  Browser -- React 19 + React Router v7 (SSR shell, client-side data)
+      |  same-origin: /api/v1/* (cookie session) + SSE (AI assistant)
+      v
+  Cloudflare Worker "mailboxes" -- Hono (entry: workers/app.ts)
+      |-- /api/v1/*         -> API routes (workers/index.ts)
+      |-- all other paths   -> React Router SSR
+      |-- email()           -> inbound entry (receiveEmail)
+      `-- static assets     -> Workers Static Assets (injected at build)
+      |
+      |-->  D1 (SQLite / Drizzle) -- mails, attachments, folders, domains,
+      |                              API keys, sessions, admins, settings, AI chats
+      |-->  R2 "mailboxes"        -- mailbox config  mailboxes/<id>.json
+      |                              attachments  attachments/<email>/<att>/<file>
+      |-->  Workers AI            -- default @cf/moonshotai/kimi-k2.6
+      |                              falls back to llama-3.3-70b, or any
+      |                              OpenAI-compatible endpoint
+      `-->  Resend REST API       -- outbound mail  POST /emails
+
+  Inbound takes one of two paths (both write back to D1 and R2):
+    A. Cloudflare Email Routing (catch-all rule) -> email() handler
+    B. Resend inbound webhook -> POST /api/v1/inbound/resend -> fetch body
 ```
+
+Beyond the above, the Worker binds nothing else on Cloudflare -- no KV, no Queues, no Durable Objects, no Vectorize, and no Cron triggers.
 
 ## FAQ
 
