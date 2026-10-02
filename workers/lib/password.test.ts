@@ -140,10 +140,19 @@ describe("verifyPassword", () => {
 	it("rejects a tampered digest", async () => {
 		const stored = await toStoredPassword(PASSWORD);
 		const [prefix, iterations, salt, hash] = stored.split("$");
-		const flipped =
-			hash.slice(0, -2) + (hash.endsWith("A=") ? "B=" : "A=");
+
+		// Flip one bit of one byte in the middle of the digest instead of
+		// editing the base64 text. The final character of a 32-byte digest
+		// carries only four significant bits, so a textual edit can decode
+		// to the very same bytes — which made this assertion depend on the
+		// random salt (it failed roughly once every 16 runs).
+		const digest = Buffer.from(hash, "base64");
+		digest.writeUInt8(digest.readUInt8(16) ^ 0x01, 16);
+		const tampered = digest.toString("base64");
+		assert.notStrictEqual(tampered, hash);
+
 		assert.strictEqual(
-			await verifyPassword(PASSWORD, [prefix, iterations, salt, flipped].join("$")),
+			await verifyPassword(PASSWORD, [prefix, iterations, salt, tampered].join("$")),
 			false,
 		);
 	});
