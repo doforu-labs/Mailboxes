@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Mailboxes</h1>
-  <p><em>Send, receive, and auto-reply from your own domain — a self-hosted email client with an AI agent, running entirely on Cloudflare.</em></p>
+  <p><em>Send, receive, and auto-reply from your own domain — a self-hosted email client with an AI agent, running entirely on Cloudflare.<br><strong>It's free to run</strong>: no server to rent and no per-seat fee, so your monthly bill is <strong>$0</strong>.</em></p>
 
   <p>
     <a href="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml/badge.svg"></a>
