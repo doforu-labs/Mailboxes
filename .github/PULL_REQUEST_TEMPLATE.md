@@ -10,7 +10,7 @@
 
 - [ ] `npm run typecheck` passes
 - [ ] `npm test` passes
-- [ ] Docs updated (README.md / README.en.md) if needed
+- [ ] Docs updated (README.md / README.zh-CN.md) if needed
 - [ ] No secrets or personal data committed
 
 ## Screenshots (for UI changes)

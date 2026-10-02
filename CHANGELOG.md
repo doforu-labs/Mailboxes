@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **README language swap.** `README.md` is now the English document, so the repository's
+  front page reads for an English-speaking audience; the Simplified Chinese version moved
+  to [`README.zh-CN.md`](README.zh-CN.md). The Add Domain steps no longer tell you to
+  register the domain on Resend by hand — the app does it, and doing it manually makes
+  Resend reject the domain with "registered to another team".
+
 ## [0.1.0] - 2026-10-02
 
 First public release.
@@ -44,8 +52,8 @@ the upstream notices are retained in [`NOTICE`](NOTICE) and
   falling back to Workers AI when the custom provider is unreachable).
 - **Programmatic sending** — per-mailbox API keys, so your own app can send through
   `POST /api/v1/send`.
-- **Documentation in two languages** — [`README.md`](README.md) (Simplified Chinese) and
-  [`README.en.md`](README.en.md) (English).
+- **Documentation in two languages** — [`README.md`](README.md) (English) and
+  [`README.zh-CN.md`](README.zh-CN.md) (Simplified Chinese).
 - **CI** — typecheck, unit tests and a production build on every push and pull request
   (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 

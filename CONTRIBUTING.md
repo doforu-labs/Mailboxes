@@ -24,7 +24,7 @@ See the **Local development** section of the [README](README.md) for the full se
   [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 - **Add tests** for behavior changes where practical (`workers/**/*.test.ts`).
-- **Update docs** (README.md / README.en.md) if you change configuration, setup
+- **Update docs** (README.md / README.zh-CN.md) if you change configuration, setup
   steps, or user-facing behavior.
 
 ## Commit & PR style
