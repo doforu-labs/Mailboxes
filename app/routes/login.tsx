@@ -51,7 +51,15 @@ export default function LoginRoute() {
 							alt="Mailboxes"
 							width={48}
 							height={48}
-							className="h-12 w-12 rounded-xl"
+							className="brand-logo-light h-12 w-12 rounded-xl"
+						/>
+						<img
+							src="/logo-dark.png"
+							alt=""
+							aria-hidden="true"
+							width={48}
+							height={48}
+							className="brand-logo-dark h-12 w-12 rounded-xl"
 						/>
 						<div className="text-center">
 							<h1 className="m-0 text-xl font-bold text-kumo-default">

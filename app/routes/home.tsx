@@ -292,7 +292,15 @@ export default function HomeRoute() {
 								alt="Mailboxes"
 								width={32}
 								height={32}
-								className="h-8 w-8 rounded-lg"
+								className="brand-logo-light h-8 w-8 rounded-lg"
+							/>
+							<img
+								src="/logo-dark.png"
+								alt=""
+								aria-hidden="true"
+								width={32}
+								height={32}
+								className="brand-logo-dark h-8 w-8 rounded-lg"
 							/>
 							<h1 className="text-2xl font-bold text-kumo-default">
 								Mailboxes

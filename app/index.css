@@ -26,6 +26,29 @@ body {
   margin: 0;
 }
 
+/* 品牌 logo 的深色变体。
+ *
+ * 定案的标记是「纯黑磁贴 + 白色 M」：浅色底上 19.4:1，很深色主题下只剩 1.04:1 ——
+ * 磁贴 #0D0D0F 与 kumo-recessed 的深色档（porcelain 约 #131313、midnight 约 #14141C）
+ * 几乎同色，磁贴边界消失，只剩白色 M 悬空。换白磁贴变体后实测 18.6:1。
+ *
+ * 这里用两个 <img> 按 data-mode 显示/隐藏，而不是 CSS 换图：
+ * 在 <img> 上用 `content: url()` 只有 Chrome / Safari 认，Firefox 不支持。
+ * 用 data-mode 而不是 prefers-color-scheme：主题由 <html data-mode> 决定，
+ * 与操作系统的深浅色无关（用户可以在浅色系统下把应用切成 dark）。
+ */
+.brand-logo-dark {
+  display: none;
+}
+
+[data-mode="dark"] .brand-logo-light {
+  display: none;
+}
+
+[data-mode="dark"] .brand-logo-dark {
+  display: revert;
+}
+
 /* Allow toast text to be selectable (kumo Toast applies select-none on toast items) */
 .fixed.right-4.bottom-4 [class*="select-none"] {
   user-select: text !important;
