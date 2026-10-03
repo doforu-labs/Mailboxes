@@ -1,5 +1,5 @@
 <div align="center">
-  <h1><img src="./logo-rounded.png" alt="Mailboxes 图标：一只白猫的脸同时构成信封，粉色底" width="48" align="absmiddle">&nbsp;&nbsp;Mailboxes</h1>
+  <h1><picture><source media="(prefers-color-scheme: dark)" srcset="./logo-rounded-dark.png"><img src="./logo-rounded.png" alt="Mailboxes 图标：白色字母 M，中间谷底构成信封翻盖，黑色磁贴底" width="48" align="absmiddle"></picture>&nbsp;&nbsp;Mailboxes</h1>
   <p><em>用你自己的域名收发邮件 —— 完全免费、跑在 Cloudflare 上的自托管邮件客户端，内置 AI 助手。</em></p>
 
   <p>
