@@ -254,30 +254,30 @@ export function PlatformSettingsSection() {
 								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
 							>
 								<Link size={12} />
-								创建预配置 Token →
+								Create a pre-configured Token →
 							</a>
 						</p>
 						<p className="text-xs text-kumo-subtle mt-2">
-							点击上方链接会自动勾选前 3 项权限。还需手动添加第 4 项：
+							Clicking the link above auto-selects the first 3 permissions. You still need to add the 4th one manually:
 						</p>
 						<ul className="text-xs text-kumo-subtle list-disc list-inside mt-1 space-y-0.5">
 							<li>
-								Zone Edit — 创建域名区域（必需）
+								Zone Edit — Create zones (required)
 							</li>
 							<li>
-								DNS Edit — 管理 DNS 记录
+								DNS Edit — Manage DNS records
 							</li>
 							<li>
-								Zone Settings Edit — 区域设置
+								Zone Settings Edit — Zone settings
 							</li>
 							<li>
-								Email Routing Rules Edit — 邮件路由（⚠️ 需手动添加）
+								Email Routing Rules Edit — Email Routing (⚠️ add manually)
 							</li>
 						</ul>
 						<p className="text-xs text-kumo-subtle mt-2">
-							链接已自动勾选前 3 项权限。请额外点击"添加更多"，手动添加：
-								区域 → 电子邮件路由规则 → 编辑
-								然后复制 Token 粘贴到上方输入框。
+							The link auto-selects the first 3 permissions. Click "Add more" to manually add:
+								Zone → Email Routing Rules → Edit
+								Then copy the Token and paste it into the field above.
 						</p>
 					</div>
 
