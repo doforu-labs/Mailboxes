@@ -372,14 +372,14 @@ export default function HomeRoute() {
 												size={16}
 												className="shrink-0 text-kumo-subtle"
 											/>
-											<span className="text-sm font-semibold text-kumo-default">
+											<span className="min-w-0 truncate text-sm font-semibold text-kumo-default">
 												{isOther ? t("otherDomain") : domain.name}
 											</span>
 											{!isOther && <DomainFullStatus domain={domain} />}
-											<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
+											<span className="shrink-0 rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
 												{groupMailboxes.length}
 											</span>
-											<div className="ml-auto" ref={menuRef}>
+											<div className="ml-auto shrink-0" ref={menuRef}>
 												{!isOther && (
 													<div className="relative">
 														<button

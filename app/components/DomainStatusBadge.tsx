@@ -116,9 +116,9 @@ export function DomainFullStatus({ domain }: { domain: Domain }) {
 	const { badge, subtitle } = getDomainStatus(domain, t);
 
 	return (
-		<div className="mt-1">
+		<span className="inline-flex min-w-0 items-center gap-1.5">
 			<Badge variant={badge.variant}>{badge.label}</Badge>
-			<div className="text-[11px] text-kumo-subtle mt-0.5">{subtitle}</div>
-		</div>
+			<span className="truncate text-[11px] text-kumo-subtle" title={subtitle}>{subtitle}</span>
+		</span>
 	);
 }
