@@ -6,20 +6,25 @@
 
 import { Button, Empty } from "@cloudflare/kumo";
 import { TriangleAlert } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 
 export default function NotFoundRoute() {
 	const navigate = useNavigate();
+	// [i18n-foundation] End-to-end example: a fully translated route.
+	// Every other route in the app still renders hard-coded English until the
+	// text-extraction chunks migrate them.
+	const { t } = useTranslation("common");
 
 	return (
 		<div className="flex items-center justify-center min-h-screen">
 			<Empty
 				icon={<TriangleAlert size={48} className="text-kumo-inactive" />}
-				title="404 -- Page Not Found"
-				description="The page you're looking for doesn't exist."
+				title={t("notFoundTitle")}
+				description={t("notFoundDescription")}
 				contents={
 					<Button variant="primary" size="sm" onClick={() => navigate("/")}>
-						Go Home
+						{t("goHome")}
 					</Button>
 				}
 			/>

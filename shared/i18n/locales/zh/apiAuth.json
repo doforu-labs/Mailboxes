@@ -1,0 +1,21 @@
+{
+	"missingAuthorizationHeader": "缺少 Authorization 请求头",
+	"invalidAuthorizationHeaderFormat": "Authorization 请求头格式无效。应为：Bearer mb_...",
+	"invalidApiKey": "API 密钥无效或已过期",
+	"domainIdRequired": "需要域名 ID",
+	"unauthorized": "未授权",
+	"usernameRequired": "请输入用户名",
+	"usernameTooLong": "用户名最多 {{max}} 个字符",
+	"usernameInvalidChars": "用户名包含无效字符",
+	"invalidCredentials": "用户名或密码不正确",
+	"setupRequired": "需要先完成初始化设置",
+	"alreadyInitialised": "已经初始化过了",
+	"databaseNotReady": "数据库尚未就绪——请先运行 D1 迁移，然后重试",
+	"passwordRequired": "请输入密码",
+	"passwordTooShort": "密码至少需要 {{min}} 个字符",
+	"passwordTooLong": "密码最多 {{max}} 个字符",
+	"mailboxIdRequired": "需要邮箱 ID",
+	"notFound": "未找到",
+	"eitherHtmlOrTextRequired": "必须提供 'html' 或 'text' 其中之一",
+	"eitherBodyHtmlOrTextRequired": "必须提供 'body'、'html' 或 'text' 其中之一"
+}

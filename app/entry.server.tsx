@@ -7,19 +7,32 @@ import type { AppLoadContext, EntryContext } from "react-router";
 import { ServerRouter } from "react-router";
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
+import { I18nextProvider } from "react-i18next";
+import { getInstance } from "~/middleware/i18next";
 
 export default async function handleRequest(
   request: Request,
   responseStatusCode: number,
   responseHeaders: Headers,
   routerContext: EntryContext,
-  _loadContext: AppLoadContext
+  loadContext: AppLoadContext
 ) {
   let shellRendered = false;
   const userAgent = request.headers.get("user-agent");
 
+  // [i18n-foundation] The per-request i18next instance created by
+  // `i18nextMiddleware` (app/root.tsx) lives on the Router context, which is
+  // the same object React Router passes here as the load context. Passing it
+  // through `<I18nextProvider>` guarantees the SSR markup is rendered in the
+  // detected language, so the client hydrates without a mismatch.
+  // @ts-expect-error — with `future.v8_middleware` the context is a
+  // `RouterContextProvider`, but the template types this arg as AppLoadContext.
+  const i18n = getInstance(loadContext);
+
   const body = await renderToReadableStream(
-    <ServerRouter context={routerContext} url={request.url} />,
+    <I18nextProvider i18n={i18n}>
+      <ServerRouter context={routerContext} url={request.url} />
+    </I18nextProvider>,
     {
       onError(error: unknown) {
         responseStatusCode = 500;

@@ -5,10 +5,18 @@
 import { Button, Input, Loader, Text } from "@cloudflare/kumo";
 import { Mail } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { type MetaArgs } from "react-router";
+import { useTranslation } from "react-i18next";
+import { isLocale } from "shared/i18n/config";
+import { translate } from "shared/i18n/translate";
 import api from "~/services/api";
 
-export function meta() {
-	return [{ title: "Set up · Mailboxes" }];
+export function meta({ matches }: MetaArgs) {
+	const rootData = matches.find((m) => m?.id === "root")?.data as
+		| { locale?: string }
+		| undefined;
+	const locale = isLocale(rootData?.locale) ? rootData.locale : "en";
+	return [{ title: translate(locale, "auth:setupMetaTitle") }];
 }
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -21,6 +29,7 @@ const MIN_PASSWORD_LENGTH = 8;
  * account exists.
  */
 export default function SetupRoute() {
+	const { t } = useTranslation("auth");
 	const [username, setUsername] = useState("admin");
 	const [password, setPassword] = useState("");
 	const [confirm, setConfirm] = useState("");
@@ -33,15 +42,15 @@ export default function SetupRoute() {
 		setError(null);
 
 		if (!username.trim()) {
-			setError("Username is required.");
+			setError(t("setupUsernameRequired"));
 			return;
 		}
 		if (password.length < MIN_PASSWORD_LENGTH) {
-			setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+			setError(t("setupPasswordTooShort", { n: MIN_PASSWORD_LENGTH }));
 			return;
 		}
 		if (password !== confirm) {
-			setError("Passwords do not match.");
+			setError(t("setupPasswordMismatch"));
 			return;
 		}
 
@@ -57,7 +66,7 @@ export default function SetupRoute() {
 			setError(
 				err instanceof Error && err.message
 					? err.message
-					: "Setup failed. Please try again.",
+					: t("setupError"),
 			);
 			setIsSubmitting(false);
 		}
@@ -74,17 +83,17 @@ export default function SetupRoute() {
 						</div>
 						<div className="text-center">
 							<h1 className="m-0 text-xl font-bold text-kumo-default">
-								Create your admin account
+								{t("setupTitle")}
 							</h1>
 							<p className="mt-1 text-sm text-kumo-subtle">
-								This is the only account on this deployment.
+								{t("setupSubtitle")}
 							</p>
 						</div>
 					</div>
 
 					<form onSubmit={handleSubmit} className="grid gap-4">
 						<Input
-							label="Username"
+							label={t("username")}
 							autoComplete="username"
 							value={username}
 							onChange={(e) => setUsername(e.target.value)}
@@ -92,18 +101,18 @@ export default function SetupRoute() {
 							autoFocus
 						/>
 						<Input
-							label="Password"
+							label={t("password")}
 							type="password"
-							placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+							placeholder={t("setupPasswordPlaceholder", { n: MIN_PASSWORD_LENGTH })}
 							autoComplete="new-password"
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
 							required
 						/>
 						<Input
-							label="Confirm password"
+							label={t("confirmPassword")}
 							type="password"
-							placeholder="••••••••"
+							placeholder={t("passwordPlaceholder")}
 							autoComplete="new-password"
 							value={confirm}
 							onChange={(e) => setConfirm(e.target.value)}
@@ -124,17 +133,17 @@ export default function SetupRoute() {
 						>
 							{isSubmitting ? (
 								<span className="inline-flex items-center gap-2">
-									<Loader size="sm" /> Creating…
+									<Loader size="sm" /> {t("creating")}
 								</span>
 							) : (
-								"Create admin account"
+								t("createAdminAccount")
 							)}
 						</Button>
 					</form>
 				</div>
 
 				<p className="mt-4 text-center text-xs text-kumo-subtle">
-					Self-hosted email client · Cloudflare Workers
+					{t("footer")}
 				</p>
 			</div>
 		</div>

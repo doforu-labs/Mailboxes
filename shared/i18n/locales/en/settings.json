@@ -1,0 +1,70 @@
+{
+	"title": "Settings",
+	"platformSettingsTitle": "Platform Settings",
+	"domainsTitle": "Domains",
+	"backToMailboxes": "Back to Mailboxes",
+	"metaTitle": "Settings — Mailboxes",
+
+	"mailbox": {
+		"saved": "Settings saved!",
+		"saveFailed": "Failed to save settings",
+		"general": "General",
+		"displayNameLabel": "Display Name",
+		"emailLabel": "Email",
+
+		"aiModelTitle": "AI Model",
+		"badgeCustom": "Custom",
+		"badgeCloudflare": "Cloudflare",
+		"badgeDefault": "Default",
+		"baseUrlLabel": "Base URL",
+		"baseUrlPlaceholder": "https://api.deepseek.com/v1",
+		"modelNameLabel": "Model Name",
+		"modelNamePlaceholder": "deepseek-v4-flash",
+		"apiKeyLabel": "API Key",
+		"apiKeyPlaceholder": "sk-...",
+		"hideKey": "Hide key",
+		"showKey": "Show key",
+		"customFallbackHint": "Falls back to Cloudflare Workers AI if the custom provider is unreachable.",
+		"cloudflareInUse": "Using <strong>Cloudflare Workers AI</strong> — {{model}}. Toggle the switch above to connect a custom OpenAI-compatible provider.",
+
+		"agentPromptTitle": "AI Agent Prompt",
+		"resetToDefault": "Reset to default",
+		"agentPromptHint": "Customize how the AI agent behaves for this mailbox. Leave empty to use the built-in default prompt.",
+		"agentPromptNote": "The prompt is sent as the system message to the AI model. It controls the agent's personality, writing style, and behavior rules.",
+
+		"saveChanges": "Save Changes"
+	},
+
+	"domains": {
+		"addDomain": "Add Domain",
+		"empty": "No domains configured yet.",
+		"catchAll": "Catch-all: {{mailbox}}"
+	},
+
+	"platform": {
+		"bothRequired": "Both API Token and Account ID are required",
+		"verificationFailed": "Verification failed",
+		"invalidCredentials": "The provided Cloudflare API Token or Account ID is invalid. Please check and try again.",
+		"saveFailed": "Failed to save credentials",
+		"databaseError": "An error occurred while saving to the database. Please try again.",
+		"verified": "Cloudflare credentials verified successfully",
+		"accountSummary": "Account: {{accountName}} · {{count}} zone(s) found",
+		"zonesFound": "{{count}} zone(s) found",
+		"credentialsSubtitle": "Cloudflare API credentials",
+		"loading": "Loading…",
+		"configured": "Configured",
+		"notConfigured": "Not configured",
+		"apiTokenLabel": "Cloudflare API Token",
+		"accountIdLabel": "Cloudflare Account ID",
+		"createToken": "Create a pre-configured Token →",
+		"autoSelectHint": "Clicking the link above auto-selects the first 3 permissions. You still need to add the 4th one manually:",
+		"permZoneEdit": "Zone Edit — Create zones (required)",
+		"permDnsEdit": "DNS Edit — Manage DNS records",
+		"permZoneSettingsEdit": "Zone Settings Edit — Zone settings",
+		"permEmailRoutingEdit": "Email Routing Rules Edit — Email Routing (⚠️ add manually)",
+		"addMoreHint": "The link auto-selects the first 3 permissions. Click \"Add more\" to manually add: Zone → Email Routing Rules → Edit Then copy the Token and paste it into the field above.",
+		"verifying": "Verifying…",
+		"saving": "Saving…",
+		"verifyAndSave": "Verify & Save"
+	}
+}

@@ -24,8 +24,12 @@ import { escapeHtml, stripHtmlToText, textToHtml } from "./email-helpers";
  * Key design: the quoted reply block (<blockquote>) is stripped BEFORE
  * sending to the AI and reattached AFTER, so the verifier only sees
  * the user's own reply text.
+ *
+ * AI-facing: the verifier prompt and this logic stay English-localized —
+ * they steer model behaviour, not user-visible text.
  */
 
+// AI-facing: keep English — this is a model instruction, not user-facing copy.
 const VERIFIER_PROMPT = `You are a proofreader for outgoing business emails. You will receive the text of an email draft that was composed by an AI assistant on behalf of a human.
 
 This is a REAL email being sent to a REAL person. It contains legitimate business content: URLs, links, questions, technical details, pricing info, Discord invites, docs references, etc. ALL of that is intentional and MUST be preserved exactly.

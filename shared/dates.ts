@@ -6,10 +6,23 @@
 /**
  * Consolidated date formatting utilities.
  *
- * Previously spread across `app/lib/utils.ts` (4 functions) and
- * `workers/lib/html.ts` (`formatEmailDate`). Now one canonical set
- * imported by both the frontend and backend.
+ * Previously spread across several modules on the frontend and backend.
+ * Now one canonical set imported by both the frontend and backend.
+ *
+ * [i18n-foundation] Every formatter takes an OPTIONAL `locale` as its last
+ * argument. Omitting it preserves the previous behaviour (browser/runtime
+ * default locale, deterministic `en-US` for quoted dates) so existing call
+ * sites and tests are unaffected. Pass a `Locale` ("en" | "zh") once a call
+ * site is locale-aware.
  */
+
+import type { Locale } from "./i18n/types";
+
+/** Map an app `Locale` to the BCP-47 tag `Intl` expects. */
+function toIntlLocale(locale?: Locale): string | undefined {
+	if (!locale) return undefined;
+	return locale === "zh" ? "zh-CN" : "en-US";
+}
 
 /** Parse safely — returns null on invalid dates instead of NaN-date. */
 function safeParse(dateStr: string | undefined | null): Date | null {
@@ -28,24 +41,25 @@ function safeParse(dateStr: string | undefined | null): Date | null {
  * - This year: "Apr 15"
  * - Older: "Apr 15, 2024"
  */
-export function formatListDate(dateStr: string): string {
+export function formatListDate(dateStr: string, locale?: Locale): string {
 	const date = safeParse(dateStr);
 	if (!date) return dateStr;
 
+	const intl = toIntlLocale(locale);
 	const now = new Date();
 	if (date.toDateString() === now.toDateString()) {
-		return date.toLocaleTimeString(undefined, {
+		return date.toLocaleTimeString(intl, {
 			hour: "numeric",
 			minute: "2-digit",
 		});
 	}
 	if (date.getFullYear() === now.getFullYear()) {
-		return date.toLocaleDateString(undefined, {
+		return date.toLocaleDateString(intl, {
 			month: "short",
 			day: "numeric",
 		});
 	}
-	return date.toLocaleDateString(undefined, {
+	return date.toLocaleDateString(intl, {
 		month: "short",
 		day: "numeric",
 		year: "numeric",
@@ -56,11 +70,11 @@ export function formatListDate(dateStr: string): string {
  * Email detail header.
  * "Tue, Apr 15, 3:42 PM"
  */
-export function formatDetailDate(dateStr: string): string {
+export function formatDetailDate(dateStr: string, locale?: Locale): string {
 	const date = safeParse(dateStr);
 	if (!date) return dateStr;
 
-	return date.toLocaleDateString(undefined, {
+	return date.toLocaleDateString(toIntlLocale(locale), {
 		weekday: "short",
 		month: "short",
 		day: "numeric",
@@ -73,11 +87,11 @@ export function formatDetailDate(dateStr: string): string {
  * Thread message headers — time only.
  * "3:42 PM"
  */
-export function formatShortDate(dateStr: string): string {
+export function formatShortDate(dateStr: string, locale?: Locale): string {
 	const date = safeParse(dateStr);
 	if (!date) return dateStr;
 
-	return date.toLocaleTimeString(undefined, {
+	return date.toLocaleTimeString(toIntlLocale(locale), {
 		hour: "numeric",
 		minute: "2-digit",
 	});
@@ -87,15 +101,19 @@ export function formatShortDate(dateStr: string): string {
  * Compose quoted replies & backend quoted blocks.
  * "Tue, Apr 15, 2026, 3:42 PM"
  *
- * Uses explicit "en-US" locale for deterministic output on both browser
- * and Cloudflare Workers (which support `toLocaleString`).
+ * Previously hard-coded to "en-US" for deterministic output on both browser
+ * and Cloudflare Workers. Passing `locale` overrides that; omitting it keeps
+ * the original `en-US` behaviour.
  */
-export function formatQuotedDate(dateStr: string | undefined): string {
+export function formatQuotedDate(
+	dateStr: string | undefined,
+	locale?: Locale,
+): string {
 	if (!dateStr) return "";
 	const date = safeParse(dateStr);
 	if (!date) return dateStr;
 
-	return date.toLocaleString("en-US", {
+	return date.toLocaleString(toIntlLocale(locale) ?? "en-US", {
 		weekday: "short",
 		month: "short",
 		day: "numeric",

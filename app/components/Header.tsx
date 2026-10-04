@@ -4,13 +4,17 @@
 //     https://opensource.org/licenses/Apache-2.0
 // Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
+// [i18n-foundation] LanguageSwitcher mounted here; preserve on text extraction
 import { Button, Input, Tooltip } from "@cloudflare/kumo";
 import { Settings, List, Search, Sparkles, X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useUIStore } from "~/hooks/useUIStore";
+import LanguageSwitcher from "~/components/LanguageSwitcher";
 
 export default function Header() {
+	const { t } = useTranslation("layout");
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 	const { mailboxId } = useParams<{ mailboxId: string }>();
@@ -66,7 +70,7 @@ export default function Header() {
 				size="sm"
 				icon={<List size={20} />}
 				onClick={toggleSidebar}
-				aria-label="Toggle sidebar"
+				aria-label={t("header.toggleSidebar")}
 				className="md:hidden shrink-0"
 			/>
 
@@ -79,8 +83,8 @@ export default function Header() {
 				<div className="flex-1 relative flex items-center">
 					<Input
 						className="w-full"
-						aria-label="Search emails"
-						placeholder="Search emails... (try from:name, is:unread, has:attachment)"
+						aria-label={t("header.searchEmailsLabel")}
+						placeholder={t("header.searchEmailsPlaceholder")}
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 						onKeyDown={handleKeyDown}
@@ -90,19 +94,19 @@ export default function Header() {
 							type="button"
 							onClick={clearSearch}
 							className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-kumo-subtle hover:text-kumo-default hover:bg-kumo-tint transition-colors"
-							aria-label="Clear search"
+							aria-label={t("header.clearSearch")}
 						>
 							<X size={14} />
 						</button>
 					)}
 				</div>
-				<Tooltip content="Search" side="bottom" asChild>
+				<Tooltip content={t("header.search")} side="bottom" asChild>
 					<Button
 						variant="ghost"
 						shape="square"
 						icon={<Search size={20} />}
 						onClick={performSearch}
-						aria-label="Search"
+						aria-label={t("header.search")}
 					/>
 				</Tooltip>
 			</div>
@@ -115,7 +119,7 @@ export default function Header() {
 					size="sm"
 					icon={<Search size={20} />}
 					onClick={() => setIsSearchExpanded(true)}
-					aria-label="Search"
+					aria-label={t("header.search")}
 					className="md:hidden shrink-0"
 				/>
 			)}
@@ -128,22 +132,24 @@ export default function Header() {
 					size="sm"
 					icon={<X size={20} />}
 					onClick={() => setIsSearchExpanded(false)}
-					aria-label="Close search"
+					aria-label={t("header.closeSearch")}
 					className="md:hidden shrink-0"
 				/>
 			)}
 
 			<div className="flex items-center gap-1 ml-auto shrink-0">
-				<Tooltip content="AI Assistant" side="bottom" asChild>
+				{/* [i18n-foundation] LanguageSwitcher mounted here; preserve on text extraction */}
+				<LanguageSwitcher />
+				<Tooltip content={t("header.aiAssistant")} side="bottom" asChild>
 					<Button
 						variant="ghost"
 						shape="square"
 						icon={<Sparkles size={20} />}
 						onClick={toggleAiPanel}
-						aria-label="AI Assistant"
+						aria-label={t("header.aiAssistant")}
 					/>
 				</Tooltip>
-				<Tooltip content="Settings" side="bottom" asChild>
+				<Tooltip content={t("common:settings")} side="bottom" asChild>
 					<Button
 						variant={isSettingsActive ? "secondary" : "ghost"}
 						shape="square"
@@ -155,7 +161,7 @@ export default function Header() {
 									: `/mailbox/${mailboxId}/settings`,
 							)
 						}
-						aria-label="Settings"
+						aria-label={t("common:settings")}
 					/>
 				</Tooltip>
 			</div>

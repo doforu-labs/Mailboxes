@@ -6,6 +6,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@cloudflare/kumo";
 import {
 	Sparkles,
@@ -14,6 +15,10 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useUIStore } from "~/hooks/useUIStore";
+// [i18n-foundation] The server persists a stable sentinel for the AI fallback
+// reply instead of translated text (see shared/ai-fallback.ts). Map it back to
+// UI copy here, in the language active *now*.
+import { AI_FALLBACK_SENTINEL } from "../../shared/ai-fallback";
 
 interface ChatMessage {
 	id: string;
@@ -23,6 +28,7 @@ interface ChatMessage {
 }
 
 export default function AiPanel() {
+	const { t } = useTranslation("aiPanel");
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const { isAiPanelOpen, toggleAiPanel, selectedEmailId } = useUIStore();
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -129,7 +135,7 @@ export default function AiPanel() {
 							setMessages((prev) =>
 								prev.map((m) =>
 									m.id === streamId
-										? { ...m, content: "Error: " + data.error }
+										? { ...m, content: t("errorPrefix", { message: data.error }) }
 										: m,
 								),
 							);
@@ -143,7 +149,7 @@ export default function AiPanel() {
 			setMessages((prev) =>
 				prev.map((m) =>
 					m.id === streamId
-						? { ...m, content: "Sorry, something went wrong. Please try again." }
+						? { ...m, content: t("genericError") }
 						: m,
 				),
 			);
@@ -159,6 +165,15 @@ export default function AiPanel() {
 		setMessages([]);
 	};
 
+	/**
+	 * Render an assistant message: the persisted fallback sentinel is resolved to
+	 * localized copy at display time, everything else is shown verbatim.
+	 */
+	const displayContent = (msg: ChatMessage): string =>
+		msg.role === "assistant" && msg.content === AI_FALLBACK_SENTINEL
+			? t("fallbackNoInfo")
+			: msg.content;
+
 	if (!isAiPanelOpen) return null;
 
 	return (
@@ -167,7 +182,7 @@ export default function AiPanel() {
 			<div className="flex items-center justify-between px-3 py-2.5 border-b border-kumo-line">
 				<div className="flex items-center gap-2">
 					<Sparkles size={18} className="text-kumo-brand" />
-					<span className="font-medium text-sm">AI Assistant</span>
+					<span className="font-medium text-sm">{t("title")}</span>
 				</div>
 				<div className="flex items-center gap-1">
 					<Button
@@ -176,7 +191,7 @@ export default function AiPanel() {
 						size="sm"
 						icon={<Trash2 size={16} />}
 						onClick={clearChat}
-						aria-label="Clear chat"
+						aria-label={t("clearChat")}
 					/>
 					<Button
 						variant="ghost"
@@ -184,7 +199,7 @@ export default function AiPanel() {
 						size="sm"
 						icon={<X size={16} />}
 						onClick={toggleAiPanel}
-						aria-label="Close AI panel"
+						aria-label={t("closePanel")}
 					/>
 				</div>
 			</div>
@@ -193,14 +208,14 @@ export default function AiPanel() {
 			<div className="flex-1 overflow-y-auto p-3 space-y-3">
 				{initialLoading ? (
 					<div className="flex items-center justify-center h-full text-kumo-subtle text-sm">
-						Loading...
+						{t("loading")}
 					</div>
 				) : messages.length === 0 ? (
 					<div className="flex flex-col items-center justify-center h-full text-kumo-subtle text-sm gap-2">
 						<Sparkles size={32} className="opacity-50" />
-						<p>Search your inbox, draft replies, manage folders</p>
+						<p>{t("emptyHint")}</p>
 						<p className="text-xs opacity-70">
-							e.g. "Find the latest invoice from Stripe"
+							{t("emptyExample")}
 						</p>
 					</div>
 				) : (
@@ -224,7 +239,7 @@ export default function AiPanel() {
 									</div>
 								) : (
 									<p className="whitespace-pre-wrap">
-										{msg.content}
+										{displayContent(msg)}
 									</p>
 								)}
 							</div>
@@ -245,7 +260,7 @@ export default function AiPanel() {
 						onKeyDown={(e) =>
 							e.key === "Enter" && !loading && sendMessage()
 						}
-						placeholder="Search, draft, manage your inbox..."
+						placeholder={t("inputPlaceholder")}
 						disabled={loading}
 						className="flex-1 px-3 py-2 text-sm rounded-lg border border-kumo-line bg-kumo-control focus:outline-none focus:ring-2 focus:ring-kumo-brand disabled:opacity-50"
 					/>
@@ -262,7 +277,7 @@ export default function AiPanel() {
 						}
 						onClick={sendMessage}
 						disabled={loading || !input.trim()}
-						aria-label="Send"
+						aria-label={t("send")}
 					/>
 				</div>
 			</div>

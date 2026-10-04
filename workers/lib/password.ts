@@ -44,9 +44,12 @@
  * every write and read path goes through this one file.
  */
 
+import { DEFAULT_LOCALE } from "../../shared/i18n/config";
+import { getBackendT } from "../../shared/i18n/translate";
+import type { Locale } from "../../shared/i18n/types";
+
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 512;
-
 /**
  * Work factor. Must stay <= 100,000: workerd clamps PBKDF2 above that, so a
  * larger number silently means the same amount of work.
@@ -212,14 +215,29 @@ export async function verifyPassword(
 	return timingSafeEqual(candidate, parsed.hash);
 }
 
-/** Returns an error message, or null when the password is acceptable. */
-export function validatePassword(password: unknown): string | null {
-	if (typeof password !== "string") return "Password is required";
+/**
+ * Returns an error message, or null when the password is acceptable.
+ *
+ * [i18n apiAuth] The message is localized. `locale` is optional and defaults
+ * to English so existing (non-request-scoped) callers keep working; Hono
+ * handlers pass the request locale resolved by the API middleware.
+ */
+export function validatePassword(
+	password: unknown,
+	locale: Locale = DEFAULT_LOCALE,
+): string | null {
+	if (typeof password !== "string") {
+		return getBackendT(locale, "apiAuth")("passwordRequired") as string;
+	}
 	if (password.length < MIN_PASSWORD_LENGTH) {
-		return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+		return getBackendT(locale, "apiAuth")("passwordTooShort", {
+			min: MIN_PASSWORD_LENGTH,
+		}) as string;
 	}
 	if (password.length > MAX_PASSWORD_LENGTH) {
-		return `Password must be at most ${MAX_PASSWORD_LENGTH} characters`;
+		return getBackendT(locale, "apiAuth")("passwordTooLong", {
+			max: MAX_PASSWORD_LENGTH,
+		}) as string;
 	}
 	return null;
 }

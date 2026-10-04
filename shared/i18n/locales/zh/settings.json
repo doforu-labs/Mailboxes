@@ -1,0 +1,70 @@
+{
+	"title": "设置",
+	"platformSettingsTitle": "平台设置",
+	"domainsTitle": "域名",
+	"backToMailboxes": "返回 Mailboxes",
+	"metaTitle": "设置 — Mailboxes",
+
+	"mailbox": {
+		"saved": "设置已保存！",
+		"saveFailed": "保存设置失败",
+		"general": "常规",
+		"displayNameLabel": "显示名称",
+		"emailLabel": "邮箱地址",
+
+		"aiModelTitle": "AI 模型",
+		"badgeCustom": "自定义",
+		"badgeCloudflare": "Cloudflare",
+		"badgeDefault": "默认",
+		"baseUrlLabel": "Base URL",
+		"baseUrlPlaceholder": "https://api.deepseek.com/v1",
+		"modelNameLabel": "模型名称",
+		"modelNamePlaceholder": "deepseek-v4-flash",
+		"apiKeyLabel": "API Key",
+		"apiKeyPlaceholder": "sk-...",
+		"hideKey": "隐藏密钥",
+		"showKey": "显示密钥",
+		"customFallbackHint": "当自定义服务商无法访问时，将回退到 Cloudflare Workers AI。",
+		"cloudflareInUse": "正在使用 <strong>Cloudflare Workers AI</strong> —— {{model}}。打开上方开关即可接入自定义的 OpenAI 兼容服务商。",
+
+		"agentPromptTitle": "AI Agent 提示词",
+		"resetToDefault": "重置为默认",
+		"agentPromptHint": "自定义 AI Agent 在此邮箱中的行为方式。留空则使用内置的默认提示词。",
+		"agentPromptNote": "该提示词会作为系统消息发送给 AI 模型，用于控制 Agent 的个性、写作风格和行为规则。",
+
+		"saveChanges": "保存更改"
+	},
+
+	"domains": {
+		"addDomain": "添加域名",
+		"empty": "尚未配置任何域名。",
+		"catchAll": "全部接收（Catch-all）：{{mailbox}}"
+	},
+
+	"platform": {
+		"bothRequired": "API Token 和 Account ID 均为必填项",
+		"verificationFailed": "验证失败",
+		"invalidCredentials": "所提供的 Cloudflare API Token 或 Account ID 无效，请检查后重试。",
+		"saveFailed": "保存凭据失败",
+		"databaseError": "写入数据库时发生错误，请重试。",
+		"verified": "Cloudflare 凭据验证成功",
+		"accountSummary": "账户：{{accountName}} · 找到 {{count}} 个 Zone",
+		"zonesFound": "找到 {{count}} 个 Zone",
+		"credentialsSubtitle": "Cloudflare API 凭据",
+		"loading": "加载中…",
+		"configured": "已配置",
+		"notConfigured": "未配置",
+		"apiTokenLabel": "Cloudflare API Token",
+		"accountIdLabel": "Cloudflare Account ID",
+		"createToken": "创建预配置的 Token →",
+		"autoSelectHint": "点击上方链接会自动勾选前 3 项权限，第 4 项仍需手动添加：",
+		"permZoneEdit": "Zone Edit — 创建 Zone（必需）",
+		"permDnsEdit": "DNS Edit — 管理 DNS 记录",
+		"permZoneSettingsEdit": "Zone Settings Edit — Zone 设置",
+		"permEmailRoutingEdit": "Email Routing Rules Edit — Email Routing（⚠️ 需手动添加）",
+		"addMoreHint": "该链接会自动勾选前 3 项权限。点击「Add more」手动添加：Zone → Email Routing Rules → Edit，然后复制 Token 并粘贴到上方输入框中。",
+		"verifying": "验证中…",
+		"saving": "保存中…",
+		"verifyAndSave": "验证并保存"
+	}
+}

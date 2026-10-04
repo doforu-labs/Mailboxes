@@ -17,6 +17,7 @@ opencode.jsonc
 skills-lock.json
 .DS_Store
 bun.lock
+pnpm-lock.yaml
 worker-configuration.d.ts
 
 # Local build / test artifacts

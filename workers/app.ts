@@ -5,9 +5,27 @@
 // Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
 import { Hono } from "hono";
-import { createRequestHandler } from "react-router";
+import {
+	createContext,
+	createRequestHandler,
+	RouterContextProvider,
+} from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import type { Env } from "./types";
+
+/**
+ * Context key for the Cloudflare bindings, exposed to React Router loaders
+ * and middleware via `context.get(cloudflareContext)`.
+ *
+ * With `future.v8_middleware` enabled, the request context is a
+ * `RouterContextProvider` (not a plain object), and `createRequestHandler`
+ * rejects any other shape — so the bindings now travel as a typed context
+ * entry instead of a plain `AppLoadContext` object.
+ */
+export const cloudflareContext = createContext<{
+	env: Env;
+	ctx: ExecutionContext;
+}>();
 
 declare module "react-router" {
 	export interface AppLoadContext {
@@ -31,9 +49,14 @@ app.route("/", apiApp);
 
 // React Router catch-all: serves the SPA for all non-API routes
 app.all("*", (c) => {
-	return requestHandler(c.req.raw, {
-		cloudflare: { env: c.env, ctx: c.executionCtx as ExecutionContext },
+	// With middleware enabled the load context must be a `RouterContextProvider`.
+	// Route middleware (e.g. i18n) extends this same object for the request.
+	const context = new RouterContextProvider();
+	context.set(cloudflareContext, {
+		env: c.env,
+		ctx: c.executionCtx as ExecutionContext,
 	});
+	return requestHandler(c.req.raw, context);
 });
 
 // Export the Hono app as the default export with an email handler

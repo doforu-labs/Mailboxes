@@ -5,7 +5,7 @@
 // Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
 /**
- * Shared email helpers to eliminate duplication across API routes, MCP, and agent.
+ * Shared email helpers to eliminate duplication across API routes and agent.
  *
  * Includes: D1 helpers, sender validation, message-ID generation,
  * threading, HTML utilities, and tool-logic (getFullEmail / getFullThread).
@@ -15,6 +15,13 @@ import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { formatQuotedDate } from "../../shared/dates";
 import * as dbService from "../db";
+// [i18n apiSetup] `validateSender` produces user-facing messages that callers
+// return verbatim in a 400 response, so they must be localized. It is a plain
+// helper (no Hono context), so the request locale is an optional trailing
+// parameter that defaults to English to stay backward compatible.
+import { DEFAULT_LOCALE } from "../../shared/i18n/config";
+import { getBackendT } from "../../shared/i18n/translate";
+import type { Locale } from "../../shared/i18n/types";
 
 // ── D1 Database ────────────────────────────────────────────────────
 
@@ -38,22 +45,32 @@ export async function listMailboxes(
 /**
  * Normalise to/from addresses and validate the sender matches the mailbox.
  * Returns the normalised values or throws with a user-facing message.
+ *
+ * @param locale - Request locale for the thrown message (trailing, optional so
+ *   existing callers keep working). Defaults to `DEFAULT_LOCALE` (English).
  */
 export function validateSender(
 	to: string | string[],
 	from: string | { email: string; name: string },
 	mailboxId: string,
+	locale: Locale = DEFAULT_LOCALE,
 ): { toStr: string; fromEmail: string; fromDomain: string } {
 	const toStr = (Array.isArray(to) ? to.join(", ") : to).toLowerCase();
 	const fromEmail = (typeof from === "string" ? from : from.email).toLowerCase();
 
+	// The thrown `message` is surfaced verbatim in the API response, so build it
+	// in the request's language (namespace `apiSetup`).
 	if (fromEmail !== mailboxId.toLowerCase()) {
-		throw new SenderValidationError("From address must match the mailbox email address");
+		throw new SenderValidationError(
+			getBackendT(locale, "apiSetup")("senderMustMatchMailbox") as string,
+		);
 	}
 
 	const fromDomain = fromEmail.split("@")[1];
 	if (!fromDomain) {
-		throw new SenderValidationError("Invalid sender email address");
+		throw new SenderValidationError(
+			getBackendT(locale, "apiSetup")("invalidSenderAddress") as string,
+		);
 	}
 
 	return { toStr, fromEmail, fromDomain };

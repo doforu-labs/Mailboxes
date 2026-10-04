@@ -1113,6 +1113,15 @@ export async function initMailboxFolders(
 
 // ── 22. saveAiMessage ────────────────────────────────────────────
 
+// [i18n-foundation] ⚠️  DO NOT persist localized text here.
+// AI chat history is stored once and replayed across sessions (and across
+// language switches). Persist the user's own input verbatim and stable
+// machine-readable fields (role, enum values, ids). Anything the server
+// generates for display — error strings, "assistant is thinking" markers,
+// tool summaries — must be produced at READ time in the request's locale
+// (via `getBackendT(locale)`), never baked into `content` at write time.
+// Writing a translated string here would freeze the language it was generated
+// in and read as mixed-language after a switch. See shared/i18n/translate.ts.
 export async function saveAiMessage(
 	db: D1Database,
 	mailboxId: string,

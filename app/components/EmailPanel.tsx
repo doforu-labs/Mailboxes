@@ -6,6 +6,7 @@
 
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { Folders } from "shared/folders";
 import EmailPanelDialogs from "~/components/email-panel/EmailPanelDialogs";
@@ -32,6 +33,7 @@ function EmailPanelSkeleton() {
 }
 
 export default function EmailPanel({ emailId }: { emailId: string }) {
+	const { t } = useTranslation("mailPanel");
 	const { mailboxId, folder } = useParams<{ mailboxId: string; folder: string }>();
 	const { data: email } = useEmail(mailboxId, emailId) as { data?: Email };
 	const { data: threadRepliesRaw } = useThreadReplies(mailboxId, email?.thread_id) as {
@@ -91,7 +93,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const toggleStar = () => { if (mailboxId) updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } }); };
 	const handleMove = (folderId: string) => { if (mailboxId) { moveEmailMut.mutate({ mailboxId, id: email.id, folderId }); closePanel(); } };
-	const handleDelete = () => { if (mailboxId) { if (!window.confirm("Are you sure you want to delete this email?")) return; deleteEmailMut.mutate({ mailboxId, id: email.id }); closePanel(); } };
+	const handleDelete = () => { if (mailboxId) { if (!window.confirm(t("desc.confirmDelete"))) return; deleteEmailMut.mutate({ mailboxId, id: email.id }); closePanel(); } };
 
 	const handleEditDraft = (draftMsg?: Email) => {
 		const target = draftMsg || email;
@@ -102,9 +104,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const handleDeleteDraft = async (draftMsg?: Email) => {
 		const target = draftMsg || email;
 		if (!mailboxId) return;
-		if (!window.confirm("Discard this draft?")) return;
+		if (!window.confirm(t("desc.confirmDiscardDraft"))) return;
 		deleteEmailMut.mutate({ mailboxId, id: target.id });
-		toastManager.add({ title: "Draft discarded" });
+		toastManager.add({ title: t("desc.draftDiscarded") });
 		if (target.id === emailId) closePanel();
 	};
 
@@ -114,9 +116,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 		setIsSending(true);
 		try {
 			if (!target.recipient || !target.subject) { try { const fresh = await api.getEmail(mailboxId, target.id) as Email; if (fresh) target = fresh; } catch {} }
-			if (!target.recipient) { toastManager.add({ title: "Cannot send: no recipient set on this draft.", variant: "error" }); return; }
+			if (!target.recipient) { toastManager.add({ title: t("desc.sendErrorNoRecipient"), variant: "error" }); return; }
 			const toRecipients = splitEmailList(target.recipient);
-			if (toRecipients.length === 0) { toastManager.add({ title: "Cannot send: no valid recipient set on this draft.", variant: "error" }); return; }
+			if (toRecipients.length === 0) { toastManager.add({ title: t("desc.sendErrorInvalidRecipient"), variant: "error" }); return; }
 			const fromName = currentMailbox.settings?.fromName || currentMailbox.name;
 			const from = fromName && fromName !== currentMailbox.email ? { email: currentMailbox.email, name: fromName } : currentMailbox.email;
 			const originalEmail = target.in_reply_to ? allMessages.find((msg) => msg.id === target.in_reply_to) : undefined;
@@ -131,10 +133,10 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 			};
 			if (originalEmail) await replyMut.mutateAsync({ mailboxId, emailId: originalEmail.id, email: emailData }); else await sendEmailMut.mutateAsync({ mailboxId, email: emailData });
 			await deleteEmailMut.mutateAsync({ mailboxId, id: target.id });
-			toastManager.add({ title: "Email sent!" });
+			toastManager.add({ title: t("desc.emailSent") });
 			if (isDraftFolder) closePanel();
 		} catch (err) {
-			const message = (err instanceof Error ? err.message : null) || "Failed to send email.";
+			const message = (err instanceof Error ? err.message : null) || t("desc.sendFailed");
 			toastManager.add({ title: message, variant: "error" });
 		} finally { setIsSending(false); }
 	};
@@ -185,9 +187,9 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 			{email.send_status && (
 				<div className={`px-4 py-1.5 text-xs font-medium border-b border-kumo-line md:px-6 ${email.send_status === "sending" ? "bg-blue-50 text-blue-700" : email.send_status === "failed" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
-					{email.send_status === "sending" && "Sending..."}
-					{email.send_status === "sent" && "Sent successfully"}
-					{email.send_status === "failed" && "Delivery failed - email was not sent"}
+					{email.send_status === "sending" && t("desc.sendStatusSending")}
+					{email.send_status === "sent" && t("desc.sendStatusSent")}
+					{email.send_status === "failed" && t("desc.sendStatusFailed")}
 				</div>
 			)}
 

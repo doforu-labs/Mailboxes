@@ -1,0 +1,13 @@
+{
+	"title": "AI 助手",
+	"clearChat": "清空对话",
+	"closePanel": "关闭 AI 面板",
+	"loading": "加载中…",
+	"emptyHint": "搜索收件箱、撰写回复、管理文件夹",
+	"emptyExample": "例如“查找 Stripe 发来的最新发票”",
+	"inputPlaceholder": "搜索、撰写、管理你的收件箱…",
+	"send": "发送",
+	"fallbackNoInfo": "我查看了你的邮箱，但没有找到相关信息。你可以让我搜索更具体的内容！",
+	"errorPrefix": "错误：{{message}}",
+	"genericError": "抱歉，出了点问题。请重试。"
+}

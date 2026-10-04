@@ -3,7 +3,9 @@
 //     See the LICENSE file or https://www.gnu.org/licenses/agpl-3.0.txt
 
 import { Badge } from "@cloudflare/kumo";
+import { useTranslation } from "react-i18next";
 import type { Domain } from "~/types";
+import type { TFunction } from "i18next";
 
 // ── StatusBadge (kept for backward compat) ───────────────────────
 
@@ -20,14 +22,14 @@ const variants: Record<Domain["status"], "success" | "warning" | "error"> = {
 	failed: "error",
 };
 
-const labels: Record<Domain["status"], string> = {
-	verified: "Verified",
-	pending: "Pending",
-	failed: "Failed",
-};
-
 export function StatusBadge({ status }: { status: Domain["status"] }) {
+	const { t } = useTranslation("domainDetails");
 	const normalized = normalize(status);
+	const labels: Record<Domain["status"], string> = {
+		verified: t("statusVerified"),
+		pending: t("statusPending"),
+		failed: t("statusFailed"),
+	};
 	return (
 		<Badge variant={variants[normalized]}>{labels[normalized]}</Badge>
 	);
@@ -39,7 +41,10 @@ export function StatusBadge({ status }: { status: Domain["status"] }) {
 
 type DomainStatus = "active" | "awaiting_dns" | "sending_only" | "receiving" | "failed";
 
-function getDomainStatus(domain: Domain): {
+function getDomainStatus(
+	domain: Domain,
+	t: TFunction<"domainDetails">,
+): {
 	status: DomainStatus;
 	badge: { label: string; variant: "success" | "warning" | "error" };
 	subtitle: string;
@@ -52,8 +57,8 @@ function getDomainStatus(domain: Domain): {
 	if (domain.status === "failed") {
 		return {
 			status: "failed",
-			badge: { label: "Failed", variant: "error" },
-			subtitle: "DNS verification failed — check your DNS records and retry",
+			badge: { label: t("statusFailed"), variant: "error" },
+			subtitle: t("statusSubtitleDnsVerificationFailed"),
 		};
 	}
 
@@ -63,19 +68,19 @@ function getDomainStatus(domain: Domain): {
 			// 收发都正常
 			return {
 				status: "active",
-				badge: { label: "Active", variant: "success" },
-				subtitle: "Sending and receiving emails",
+				badge: { label: t("statusActive"), variant: "success" },
+				subtitle: t("statusSubtitleActive"),
 			};
 		}
 		// 只能接收，不能发送 — 用副标题区分原因
 		return {
 			status: "receiving",
-			badge: { label: "Receiving", variant: "success" },
+			badge: { label: t("statusReceiving"), variant: "success" },
 			subtitle: isVerified
-				? "Receiving emails. Add a Resend API key to enable sending"
+				? t("statusSubtitleReceivingNoKey")
 				: hasKey
-					? "Receiving emails. Sending pending DNS verification with Resend"
-					: "Receiving emails. Add a Resend API key to enable sending",
+					? t("statusSubtitleReceivingPendingVerification")
+					: t("statusSubtitleReceivingNoKey"),
 		};
 	}
 
@@ -84,8 +89,8 @@ function getDomainStatus(domain: Domain): {
 		// 只能发送，不能接收
 		return {
 			status: "sending_only",
-			badge: { label: "Sending Only", variant: "warning" },
-			subtitle: "Configure MX records at your DNS provider to enable receiving",
+			badge: { label: t("statusSendingOnly"), variant: "warning" },
+			subtitle: t("statusSubtitleSendingOnly"),
 		};
 	}
 
@@ -93,21 +98,22 @@ function getDomainStatus(domain: Domain): {
 		// 已验证但什么都没配置
 		return {
 			status: "awaiting_dns",
-			badge: { label: "Verified", variant: "success" },
-			subtitle: "Configure sending and receiving to activate",
+			badge: { label: t("statusVerified"), variant: "success" },
+			subtitle: t("statusSubtitleVerifiedNoConfig"),
 		};
 	}
 
 	// 未验证 + 无 zone — 收发都未就绪
 	return {
 		status: "awaiting_dns",
-		badge: { label: "Awaiting DNS", variant: "warning" },
-		subtitle: "Add DNS records and verify to start sending and receiving",
+		badge: { label: t("statusAwaitingDns"), variant: "warning" },
+		subtitle: t("statusSubtitleAwaitingDns"),
 	};
 }
 
 export function DomainFullStatus({ domain }: { domain: Domain }) {
-	const { badge, subtitle } = getDomainStatus(domain);
+	const { t } = useTranslation("domainDetails");
+	const { badge, subtitle } = getDomainStatus(domain, t);
 
 	return (
 		<div className="mt-1">

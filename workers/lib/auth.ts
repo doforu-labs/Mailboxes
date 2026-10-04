@@ -29,10 +29,40 @@ import {
 	verifyPassword,
 	validatePassword,
 } from "./password";
+// [i18n apiAuth] Every error string returned to the client is localized. The
+// locale middleware mounted on `/api/*` in ../index.ts puts `locale`/`t` on
+// the request context, and `authT` below re-reads `locale` from there — so
+// these helpers stay correct even when they are invoked from a test or from a
+// Hono instance that never ran that middleware (see `requestLocale`).
+import { DEFAULT_LOCALE, isLocale, resolveLocale } from "../../shared/i18n/config";
+import { getBackendT } from "../../shared/i18n/translate";
+import type { Locale } from "../../shared/i18n/types";
 
 export const AUTH_COOKIE = "mailboxes_session";
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const MAX_USERNAME_LENGTH = 64;
+
+/**
+ * Resolve the request locale, preferring the value the `/api/*` middleware in
+ * ../index.ts put on the shared request context and falling back to resolving
+ * it from the request itself.
+ */
+function requestLocale(c: Context<D1MailboxContext>): Locale {
+	const scoped = c.get("locale" as never) as string | undefined;
+	return isLocale(scoped) ? scoped : resolveLocale(c.req.raw);
+}
+
+/**
+ * Translator scoped to the `apiAuth` namespace for the request's locale.
+ * Built lazily so the happy path allocates nothing extra.
+ */
+function authT(c: Context<D1MailboxContext>) {
+	let t: ReturnType<typeof getBackendT> | undefined;
+	return ((key: string, options?: Record<string, unknown>) => {
+		t ??= getBackendT(requestLocale(c) ?? DEFAULT_LOCALE, "apiAuth");
+		return t(key, options);
+	}) as ReturnType<typeof getBackendT>;
+}
 
 /**
  * Routes reachable without an admin session:
@@ -70,17 +100,18 @@ export const requireAuth = createMiddleware<D1MailboxContext>(async (c, next) =>
 	if (isExemptPath(c.req.path)) {
 		return next();
 	}
+	const t = authT(c);
 	const token = getCookie(c, AUTH_COOKIE);
 	if (!token) {
-		return c.json({ error: "Unauthorized" }, 401);
+		return c.json({ error: t("unauthorized") }, 401);
 	}
 	const session = await db.getSession(c.env.DB, token);
 	if (!session) {
-		return c.json({ error: "Unauthorized" }, 401);
+		return c.json({ error: t("unauthorized") }, 401);
 	}
 	if (new Date(session.expires_at).getTime() < Date.now()) {
 		await db.deleteSession(c.env.DB, token);
-		return c.json({ error: "Unauthorized" }, 401);
+		return c.json({ error: t("unauthorized") }, 401);
 	}
 	await next();
 });
@@ -136,30 +167,31 @@ export async function handleAdminStatus(c: Context<D1MailboxContext>) {
  * never both create an account: the loser receives 409.
  */
 export async function handleCreateAdmin(c: Context<D1MailboxContext>) {
+	const t = authT(c);
 	const body = await c.req.json().catch(() => null);
 
 	const username = (readString(body, "username") ?? "").trim();
 	const password = readString(body, "password") ?? "";
 
 	if (!username) {
-		return c.json({ error: "Username is required" }, 400);
+		return c.json({ error: t("usernameRequired") }, 400);
 	}
 	if (username.length > MAX_USERNAME_LENGTH) {
 		return c.json(
-			{ error: `Username must be at most ${MAX_USERNAME_LENGTH} characters` },
+			{ error: t("usernameTooLong", { max: MAX_USERNAME_LENGTH }) },
 			400,
 		);
 	}
 	if (/[\u0000-\u001f\u007f]/.test(username)) {
-		return c.json({ error: "Username contains invalid characters" }, 400);
+		return c.json({ error: t("usernameInvalidChars") }, 400);
 	}
-	const passwordError = validatePassword(password);
+	const passwordError = validatePassword(password, requestLocale(c));
 	if (passwordError) {
 		return c.json({ error: passwordError }, 400);
 	}
 
 	if ((await countAdmins(c.env)) > 0) {
-		return c.json({ error: "Already initialised", code: "already_initialized" }, 409);
+		return c.json({ error: t("alreadyInitialised"), code: "already_initialized" }, 409);
 	}
 
 	let created: boolean;
@@ -175,14 +207,14 @@ export async function handleCreateAdmin(c: Context<D1MailboxContext>) {
 			e instanceof Error ? e.message : e,
 		);
 		return c.json(
-			{ error: "Database not ready — run the D1 migrations, then try again" },
+			{ error: t("databaseNotReady") },
 			500,
 		);
 	}
 
 	if (!created) {
 		// Lost the first-run race, or an admin appeared concurrently.
-		return c.json({ error: "Already initialised", code: "already_initialized" }, 409);
+		return c.json({ error: t("alreadyInitialised"), code: "already_initialized" }, 409);
 	}
 
 	await issueSession(c);
@@ -192,17 +224,18 @@ export async function handleCreateAdmin(c: Context<D1MailboxContext>) {
 // ── Login / logout / me ─────────────────────────────────────────────
 
 export async function handleLogin(c: Context<D1MailboxContext>) {
+	const t = authT(c);
 	const body = await c.req.json().catch(() => null);
 	const username = readString(body, "username");
 	const password = readString(body, "password");
 
 	if (username === null || password === null) {
-		return c.json({ error: "Invalid username or password" }, 401);
+		return c.json({ error: t("invalidCredentials") }, 401);
 	}
 
 	// No admin account yet — the client should run the setup wizard instead.
 	if ((await countAdmins(c.env)) === 0) {
-		return c.json({ error: "Setup required", code: "setup_required" }, 409);
+		return c.json({ error: t("setupRequired"), code: "setup_required" }, 409);
 	}
 
 	const admin = await db.getAdminByUsername(c.env.DB, username.trim());
@@ -212,7 +245,7 @@ export async function handleLogin(c: Context<D1MailboxContext>) {
 	const ok = await verifyPassword(password, stored);
 
 	if (!admin || !ok) {
-		return c.json({ error: "Invalid username or password" }, 401);
+		return c.json({ error: t("invalidCredentials") }, 401);
 	}
 
 	await issueSession(c);
@@ -230,18 +263,19 @@ export async function handleLogout(c: Context<D1MailboxContext>) {
 }
 
 export async function handleMe(c: Context<D1MailboxContext>) {
+	const t = authT(c);
 	const token = getCookie(c, AUTH_COOKIE);
 	if (!token) {
-		return c.json({ error: "Unauthorized" }, 401);
+		return c.json({ error: t("unauthorized") }, 401);
 	}
 	const session = await db.getSession(c.env.DB, token);
 	if (!session || new Date(session.expires_at).getTime() < Date.now()) {
-		return c.json({ error: "Unauthorized" }, 401);
+		return c.json({ error: t("unauthorized") }, 401);
 	}
 	const admin = await db.getFirstAdmin(c.env.DB);
 	if (!admin) {
 		// The admin account was removed — treat the session as invalid.
-		return c.json({ error: "Unauthorized" }, 401);
+		return c.json({ error: t("unauthorized") }, 401);
 	}
 	return c.json({ authenticated: true, username: admin.username });
 }

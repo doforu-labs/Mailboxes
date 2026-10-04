@@ -1,0 +1,26 @@
+{
+	"header": {
+		"toggleSidebar": "Toggle sidebar",
+		"searchEmailsLabel": "Search emails",
+		"searchEmailsPlaceholder": "Search emails... (try from:name, is:unread, has:attachment)",
+		"clearSearch": "Clear search",
+		"search": "Search",
+		"closeSearch": "Close search",
+		"aiAssistant": "AI Assistant"
+	},
+	"sidebar": {
+		"mailboxes": "Mailboxes",
+		"new": "New",
+		"folders": "Folders",
+		"newFolder": "New folder",
+		"createNewFolder": "Create new folder",
+		"createFolder": "Create folder",
+		"folderName": "Folder name",
+		"folderNamePlaceholder": "e.g. Projects",
+		"mailboxFallback": "Mailbox"
+	},
+	"mailbox": {
+		"closeSidebar": "Close sidebar"
+	},
+	"languageAria": "Language"
+}

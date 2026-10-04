@@ -37,6 +37,13 @@ export interface SendEmailParams {
 }
 
 import { fetchWithTimeout } from "./lib/fetch-with-timeout";
+// [i18n apiSetup] The "no API key configured" error is returned verbatim in the
+// API response (callers surface `error.message`), so it must be localized. The
+// send helpers have no Hono context, so the request locale is an optional
+// trailing parameter defaulting to English (backward compatible).
+import { DEFAULT_LOCALE } from "../shared/i18n/config";
+import { getBackendT } from "../shared/i18n/translate";
+import type { Locale } from "../shared/i18n/types";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -127,6 +134,7 @@ export async function sendEmailFromMailbox(
 	params: SendEmailParams,
 	_fallbackKey?: string,
 	db?: D1Database,
+	locale: Locale = DEFAULT_LOCALE,
 ): Promise<{ messageId: string }> {
 	// 1. Read API key from mailbox settings in R2 (per-mailbox, highest priority)
 	const obj = await bucket.get(`mailboxes/${mailboxId}.json`);
@@ -162,6 +170,6 @@ export async function sendEmailFromMailbox(
 	}
 
 	throw new Error(
-		"Resend API key not configured for this mailbox. Go to Settings > Account to add one,\nor set a domain-level API key in Domain Settings.",
+		getBackendT(locale, "apiSetup")("resendApiKeyNotConfigured") as string,
 	);
 }

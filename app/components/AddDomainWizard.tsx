@@ -25,6 +25,7 @@ import {
 	ArrowRight,
 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useCreateDomain } from "~/queries/domains";
 import api from "~/services/api";
 import { ApiError } from "~/services/api";
@@ -72,11 +73,11 @@ function positionForStep(step: WizardStep): StepPosition {
 	}
 }
 
-const STEP_LABELS: Record<StepPosition, string> = {
-	domain: "Domain",
-	receive: "Receiving",
-	sending: "Sending",
-	done: "Done",
+const STEP_LABEL_KEYS: Record<StepPosition, string> = {
+	domain: "stepDomain",
+	receive: "stepReceiving",
+	sending: "stepSending",
+	done: "stepDone",
 };
 
 // ── DNS Provider Guide Links ─────────────────────────────────────
@@ -93,6 +94,7 @@ function getDnsProviderGuide(provider: string): string | null {
 // ── Step Indicator ────────────────────────────────────────────────
 
 function StepIndicator({ currentStep }: { currentStep: WizardStep }) {
+	const { t } = useTranslation("domain");
 	const current = positionForStep(currentStep);
 	const currentIdx = STEP_POSITIONS.indexOf(current);
 
@@ -128,7 +130,7 @@ function StepIndicator({ currentStep }: { currentStep: WizardStep }) {
 											: "text-kumo-muted"
 								}`}
 							>
-								{STEP_LABELS[pos]}
+								{t(STEP_LABEL_KEYS[pos])}
 							</span>
 						</div>
 						{i < STEP_POSITIONS.length - 1 && (
@@ -166,6 +168,7 @@ export function AddDomainWizard({
 	defaultApiKey,
 }: AddDomainWizardProps) {
 	const toastManager = useKumoToastManager();
+	const { t } = useTranslation("domain");
 	const createDomain = useCreateDomain();
 
 	// ── State ──
@@ -216,11 +219,11 @@ export function AddDomainWizard({
 		e.preventDefault();
 		setError(null);
 		if (!domainName.trim()) {
-			setError("Please enter a domain name");
+			setError(t("enterDomainName"));
 			return;
 		}
 		if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(domainName.trim())) {
-			setError("Please enter a valid domain (e.g. example.com)");
+			setError(t("invalidDomain"));
 			return;
 		}
 
@@ -288,11 +291,11 @@ export function AddDomainWizard({
 				setMxVerified(true);
 			} else {
 				setMxError(
-					"MX record not found. Please add the MX record at your DNS provider and try again. DNS changes may take a few minutes to propagate.",
+					t("mxRecordNotFound"),
 				);
 			}
 		} catch {
-			setMxError("Failed to verify MX record. Please try again.");
+			setMxError(t("failedToVerifyMx"));
 		} finally {
 			setMxVerifying(false);
 		}
@@ -330,7 +333,7 @@ export function AddDomainWizard({
 				setReceiveError(
 					err instanceof Error
 						? err.message
-						: "Failed to configure email routing",
+						: t("failedToConfigureEmailRouting"),
 				);
 			}
 		};
@@ -355,10 +358,10 @@ export function AddDomainWizard({
 			setStep("dns-records");
 		} catch (err: unknown) {
 			if (err instanceof ApiError && err.status === 409) {
-				setError("This domain has already been added. You can find it in the Domains list.");
+				setError(t("domainAlreadyAdded"));
 			} else {
 				const msg =
-					err instanceof Error ? err.message : "Failed to create domain";
+					err instanceof Error ? err.message : t("failedToCreateDomain");
 				setError(msg);
 			}
 		} finally {
@@ -387,14 +390,14 @@ export function AddDomainWizard({
 					});
 					setStep("done");
 					toastManager.add({
-						title: `Domain ${domainName} verified successfully!`,
+						title: t("toastDomainVerified", { name: domainName }),
 					});
 					onSuccess();
 					onComplete?.();
 				} else {
 					setVerifyStatus("failed");
 					setVerifyError(
-						`Domain status: ${result.status}. DNS records may still be propagating. Please wait a few minutes and try again.`,
+						t("toastDomainStatusRedirect", { status: result.status }),
 					);
 				}
 			} else {
@@ -409,21 +412,21 @@ export function AddDomainWizard({
 					});
 					setStep("done");
 					toastManager.add({
-						title: `Domain ${domainName} verified successfully!`,
+						title: t("toastDomainVerified", { name: domainName }),
 					});
 					onSuccess();
 					onComplete?.();
 				} else {
 					setVerifyStatus("failed");
 					setVerifyError(
-						"Domain status: pending. DNS records may still be propagating. Please wait a few minutes and try again.",
+						t("toastDomainStatusPending"),
 					);
 				}
 			}
 		} catch (err: unknown) {
 			setVerifyStatus("failed");
 			const msg =
-				err instanceof Error ? err.message : "Verification failed";
+				err instanceof Error ? err.message : t("verificationFailed");
 			setVerifyError(msg);
 		}
 	};
@@ -435,7 +438,7 @@ export function AddDomainWizard({
 		});
 		setStep("done");
 		toastManager.add({
-			title: "Domain added! You can verify DNS later from the Domains page.",
+			title: t("toastDomainAdded"),
 		});
 		onSuccess();
 		onComplete?.();
@@ -453,12 +456,12 @@ export function AddDomainWizard({
 			});
 			setStep("done");
 			toastManager.add({
-				title: "Domain added for receiving. You can set up sending later.",
+				title: t("toastDomainAddedForReceiving"),
 			});
 			onSuccess();
 			onComplete?.();
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to create domain";
+			const msg = err instanceof Error ? err.message : t("failedToCreateDomain");
 			setError(msg);
 		} finally {
 			setIsProcessing(false);
@@ -476,21 +479,20 @@ export function AddDomainWizard({
 				{step === "domain" && (
 					<>
 						<Dialog.Title className="text-base font-semibold mb-1">
-							Add Domain
+							{t("addDomain")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle mb-5">
-							Enter the domain you want to add for sending and
-							receiving email.
+							{t("addDomainDescription")}
 						</p>
 						<form onSubmit={handleDomainSubmit} className="space-y-4">
 							{error && <ErrorBanner message={error} />}
 							<div>
 								<label className="block text-sm font-medium text-kumo-strong mb-1">
-									Domain Name
+									{t("domainName")}
 								</label>
 								<input
 									type="text"
-									placeholder="example.com"
+									placeholder={t("domainNamePlaceholder")}
 									className="w-full rounded-md border border-kumo-line bg-kumo-fill px-3 py-2 text-sm text-kumo-default placeholder:text-kumo-muted focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
 									value={domainName}
 									onChange={(e) => setDomainName(e.target.value)}
@@ -502,7 +504,7 @@ export function AddDomainWizard({
 								<Dialog.Close
 									render={(props) => (
 										<Button {...props} variant="secondary" size="sm">
-											Cancel
+											{t("common:cancel")}
 										</Button>
 									)}
 								/>
@@ -513,7 +515,7 @@ export function AddDomainWizard({
 									loading={detecting}
 									disabled={detecting}
 								>
-									Continue
+									{t("common:continue")}
 									<ChevronRight size={14} />
 								</Button>
 							</div>
@@ -547,34 +549,30 @@ export function AddDomainWizard({
 						</div>
 						<Dialog.Title className="text-base font-semibold text-center mb-1">
 							{isCfManaged
-								? "Cloudflare-Managed Domain"
-								: "External Domain"}
+								? t("cfManagedTitle")
+								: t("externalDomainTitle")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle text-center mb-2">
 							<strong className="text-kumo-default">
 								{domainName}
 							</strong>{" "}
 							{isCfManaged
-								? `is managed by Cloudflare${cfZoneName ? ` (${cfZoneName})` : ""}.`
-								: "is not managed by Cloudflare."}
+								? t("isManagedByCf", { zone: cfZoneName ? ` (${cfZoneName})` : "" })
+								: t("isNotManagedByCf")}
 						</p>
 						{!isCfManaged && detectedDnsProvider?.provider && detectedDnsProvider.provider !== "Other" && (
 							<p className="text-xs text-kumo-subtle text-center mb-2">
-								Managed by <strong className="text-kumo-default">{detectedDnsProvider.provider}</strong>
+								{t("managedBy")} <strong className="text-kumo-default">{detectedDnsProvider.provider}</strong>
 							</p>
 						)}
 						<div className="rounded-lg bg-kumo-fill px-3 py-2.5 mb-5">
 							{isCfManaged ? (
 								<p className="text-xs text-kumo-subtle">
-									Email Routing can be configured automatically.
-									In the next step we'll set up a catch-all route
-									to receive all email sent to this domain.
+									{t("cfManagedHint")}
 								</p>
 							) : (
 								<p className="text-xs text-kumo-subtle">
-									You'll need to manually configure MX records
-									and email forwarding at your DNS provider. We'll
-									provide the instructions.
+									{t("externalDomainHint")}
 								</p>
 							)}
 						</div>
@@ -585,14 +583,14 @@ export function AddDomainWizard({
 								onClick={() => setStep("domain")}
 							>
 								<ChevronLeft size={14} />
-								Back
+								{t("common:back")}
 							</Button>
 							<Button
 								variant="primary"
 								size="sm"
 								onClick={handleDomainTypeContinue}
 							>
-								Continue
+								{t("common:continue")}
 								<ChevronRight size={14} />
 							</Button>
 						</div>
@@ -611,14 +609,13 @@ export function AddDomainWizard({
 							</div>
 						</div>
 						<Dialog.Title className="text-base font-semibold text-center mb-1">
-							Email Routing Setup
+							{t("emailRoutingSetup")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle text-center mb-5">
-							Configuring Cloudflare Email Routing for{" "}
+							{t("configuringEmailRoutingFor")}{" "}
 							<strong className="text-kumo-default">
 								{domainName}
 							</strong>
-							.
 						</p>
 
 						<div className="space-y-3 mb-5">
@@ -626,7 +623,7 @@ export function AddDomainWizard({
 								<div className="flex flex-col items-center gap-3 py-4">
 									<Loader size="base" />
 									<p className="text-sm text-kumo-subtle">
-										Configuring catch-all email routing…
+										{t("configuringCatchAll")}
 									</p>
 								</div>
 							)}
@@ -637,11 +634,11 @@ export function AddDomainWizard({
 										className="text-green-600 shrink-0"
 									/>
 									<span className="text-sm text-green-700">
-										Email Routing configured! All email sent to{" "}
+										{t("emailRoutingConfiguredPrefix")}{" "}
 										<code className="font-mono">
 											*@{domainName}
 										</code>{" "}
-										will be delivered to your catch-all mailbox.
+										{t("emailRoutingConfiguredSuffix")}
 									</span>
 								</div>
 							)}
@@ -650,12 +647,11 @@ export function AddDomainWizard({
 									<ErrorBanner
 										message={
 											receiveError ??
-											"Failed to configure email routing"
+											t("failedToConfigureEmailRouting")
 										}
 									/>
 									<p className="text-xs text-kumo-subtle">
-										You can set this up manually later, or try
-										again from the Domains page.
+										{t("setupManuallyLater")}
 									</p>
 								</div>
 							)}
@@ -672,7 +668,7 @@ export function AddDomainWizard({
 										setStep("sending");
 									}}
 								>
-									Skip for now
+									{t("skipForNow")}
 								</Button>
 							) : (
 								<>
@@ -682,7 +678,7 @@ export function AddDomainWizard({
 										onClick={() => setStep("domain-type")}
 									>
 										<ChevronLeft size={14} />
-										Back
+										{t("common:back")}
 									</Button>
 									{receiveStatus === "success" ? (
 										<Button
@@ -690,7 +686,7 @@ export function AddDomainWizard({
 											size="sm"
 											onClick={() => setStep("sending")}
 										>
-											Continue
+											{t("common:continue")}
 											<ChevronRight size={14} />
 										</Button>
 									) : receiveStatus === "failed" ? (
@@ -704,7 +700,7 @@ export function AddDomainWizard({
 													setStep("sending");
 												}}
 											>
-												Skip receiving
+												{t("skipReceiving")}
 											</Button>
 											<Button
 												variant="primary"
@@ -714,7 +710,7 @@ export function AddDomainWizard({
 													setReceiveError(null);
 												}}
 											>
-												Retry
+												{t("common:retry")}
 											</Button>
 										</>
 									) : (
@@ -723,7 +719,7 @@ export function AddDomainWizard({
 											size="sm"
 											onClick={() => setStep("sending")}
 										>
-											Continue
+											{t("common:continue")}
 											<ChevronRight size={14} />
 										</Button>
 									)}
@@ -748,21 +744,21 @@ export function AddDomainWizard({
 							</div>
 						</div>
 						<Dialog.Title className="text-base font-semibold text-center mb-1">
-							Receiving Setup
+							{t("receivingSetup")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle text-center mb-5">
-							To receive email for{" "}
+							{t("receivingSetupIntroPrefix")}{" "}
 							<strong className="text-kumo-default">
 								{domainName}
 							</strong>
-							, add these MX records at your DNS provider.
+							{t("receivingSetupIntroSuffix")}
 						</p>
 
 						<div className="space-y-3 mb-4">
 							{detectedDnsProvider?.provider && detectedDnsProvider.provider !== "Other" && (
 								<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
 									<p className="text-xs text-kumo-subtle">
-										Your domain's DNS is managed by <strong className="text-kumo-default">{detectedDnsProvider.provider}</strong>.{' '}
+										{t("dnsManagedByPrefix")} <strong className="text-kumo-default">{detectedDnsProvider.provider}</strong>.{' '}
 										{(() => {
 										const guideUrl = getDnsProviderGuide(detectedDnsProvider.provider);
 										if (guideUrl) {
@@ -773,7 +769,7 @@ export function AddDomainWizard({
 													rel="noopener noreferrer"
 													className="text-blue-600 underline"
 												>
-													View {detectedDnsProvider.provider} DNS setup guide
+													{t("viewDnsSetupGuide", { provider: detectedDnsProvider.provider })}
 													</a>
 											);
 										}
@@ -788,20 +784,20 @@ export function AddDomainWizard({
 										MX
 									</span>
 									<span className="text-xs text-kumo-subtle">
-										Name:{" "}
+										{t("mxName")}{" "}
 										<code className="text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
 											@
 										</code>
 									</span>
 								</div>
 								<p className="text-xs text-kumo-subtle mb-1">
-									Value:{" "}
+									{t("mxValue")}{" "}
 									<code className="text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
 										mailboxes.pages.dev
 									</code>
 								</p>
 								<p className="text-xs text-kumo-subtle">
-									Priority:{" "}
+									{t("mxPriority")}{" "}
 									<code className="text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
 										10
 									</code>
@@ -809,10 +805,7 @@ export function AddDomainWizard({
 							</div>
 							<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
 								<p className="text-xs text-kumo-subtle">
-									After adding the MX record, set up email
-									forwarding at your DNS provider to forward
-									mail to your Cloudflare Worker endpoint. The
-									exact steps depend on your provider.
+									{t("mxForwardingHint")}
 								</p>
 							</div>
 						</div>
@@ -826,7 +819,7 @@ export function AddDomainWizard({
 							<div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2.5 mb-2">
 								<p className="text-xs text-green-700 flex items-center gap-1.5">
 									<CircleCheckBig size={14} className="text-green-600" />
-									MX record verified! Your domain is configured to receive email.
+									{t("mxRecordVerified")}
 								</p>
 							</div>
 						)}
@@ -837,7 +830,7 @@ export function AddDomainWizard({
 								onClick={() => setStep("domain-type")}
 							>
 								<ChevronLeft size={14} />
-								Back
+								{t("common:back")}
 							</Button>
 							<Button
 								variant="primary"
@@ -848,12 +841,12 @@ export function AddDomainWizard({
 								{mxVerifying ? (
 									<>
 										<Loader2 size={14} className="animate-spin" />
-										Verifying
+										{t("verifying")}
 									</>
 								) : mxVerified ? (
-									<>Verified</>
+									<>{t("verified")}</>
 								) : (
-									<>Verify MX Record</>
+									<>{t("verifyMxRecord")}</>
 								)}
 							</Button>
 							{mxVerified && (
@@ -862,7 +855,7 @@ export function AddDomainWizard({
 									size="sm"
 									onClick={() => setStep("sending")}
 								>
-									Continue
+									{t("common:continue")}
 									<ChevronRight size={14} />
 								</Button>
 							)}
@@ -882,20 +875,18 @@ export function AddDomainWizard({
 							</div>
 						</div>
 						<Dialog.Title className="text-base font-semibold text-center mb-1">
-							Sending Setup
+							{t("sendingSetup")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle text-center mb-5">
-							Enter your Resend API key to enable email sending
-							for{" "}
+							{t("sendingSetupIntroPrefix")}{" "}
 							<strong className="text-kumo-default">
 								{domainName}
 							</strong>
-							.
 						</p>
 						<form onSubmit={handleSendingSubmit} className="space-y-4">
 							{error && <ErrorBanner message={error} />}
 							<Input
-								label="Resend API Key"
+								label={t("resendApiKey")}
 								placeholder="re_••••••••••••••••••••••••••••"
 								size="sm"
 								type="password"
@@ -905,7 +896,7 @@ export function AddDomainWizard({
 							/>
 							<div className="rounded-lg bg-kumo-fill px-3 py-2.5">
 								<p className="text-xs text-kumo-subtle">
-									Get your key from{" "}
+									{t("resendApiKeyHintPrefix")}{" "}
 									<a
 										href="https://resend.com/api-keys"
 										target="_blank"
@@ -914,7 +905,7 @@ export function AddDomainWizard({
 									>
 										resend.com/api-keys
 									</a>
-									. Free plan includes 100 emails/day.
+									{t("resendApiKeyHintSuffix")}
 								</p>
 							</div>
 							<div className="flex justify-end gap-2 pt-2">
@@ -932,7 +923,7 @@ export function AddDomainWizard({
 									}}
 								>
 									<ChevronLeft size={14} />
-									Back
+									{t("common:back")}
 								</Button>
 								<Button
 									variant="secondary"
@@ -940,7 +931,7 @@ export function AddDomainWizard({
 									type="button"
 									onClick={handleSkipSending}
 								>
-									Skip sending
+									{t("skipSending")}
 								</Button>
 								<Button
 									type="submit"
@@ -949,7 +940,7 @@ export function AddDomainWizard({
 									loading={isProcessing}
 									disabled={isProcessing}
 								>
-									Create Domain
+									{t("createDomain")}
 									<ChevronRight size={14} />
 								</Button>
 							</div>
@@ -961,14 +952,14 @@ export function AddDomainWizard({
 				{step === "dns-records" && (
 					<>
 						<Dialog.Title className="text-base font-semibold mb-1">
-							DNS Records for Sending
+							{t("dnsRecordsForSending")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle mb-5">
-							Add these DNS records to{" "}
+							{t("dnsRecordsIntroPrefix")}{" "}
 							<strong className="text-kumo-default">
 								{domainName}
 							</strong>{" "}
-							at your domain registrar or DNS provider.
+							{t("dnsRecordsIntroSuffix")}
 						</p>
 
 						<div className="space-y-3 mb-5">
@@ -983,7 +974,7 @@ export function AddDomainWizard({
 										</span>
 										{record.name && (
 											<span className="text-xs text-kumo-subtle">
-												Name:{" "}
+												{t("mxName")}{" "}
 												<code className="text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
 													{record.name}
 												</code>
@@ -1004,7 +995,7 @@ export function AddDomainWizard({
 									{record.value && (
 										<div className="mt-1.5">
 										<p className="text-xs text-kumo-subtle mb-1">
-											Value:{" "}
+											{t("mxValue")}{" "}
 											<code className="text-kumo-default font-mono bg-kumo-recessed px-1.5 py-0.5 rounded">
 												{record.value}
 											</code>
@@ -1013,26 +1004,23 @@ export function AddDomainWizard({
 												className="ml-1.5 text-blue-600 hover:text-blue-800 underline text-xs"
 												onClick={() => {
 													navigator.clipboard.writeText(record.value!);
-													toastManager.add({ title: "Copied to clipboard" });
+													toastManager.add({ title: t("copiedToClipboard") });
 												}}
 											>
-												Copy
+												{t("dnsRecordCopy")}
 											</button>
 											</p>
 										</div>
 									)}
 									<p className="text-xs text-kumo-subtle">
-										Add this {record.type} record at your DNS
-										provider. The status above shows whether
-										Resend has detected it.
+										{t("dnsRecordHint", { type: record.type })}
 									</p>
 								</div>
 							))}
 							{dnsRecords.length === 0 && (
 								<div className="rounded-lg border border-kumo-line bg-kumo-fill p-3">
 									<p className="text-sm text-kumo-subtle">
-										No DNS records returned. The domain may
-										already be configured.
+										{t("noDnsRecords")}
 									</p>
 								</div>
 							)}
@@ -1040,10 +1028,9 @@ export function AddDomainWizard({
 
 						<div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 mb-5">
 							<p className="text-xs text-kumo-subtle">
-								DNS changes may take a few minutes to propagate.
-								After adding the records, click{" "}
-								<strong>"Verify DNS"</strong> to check if they
-								are detected.
+								{t("dnsPropagationHintPrefix")}{" "}
+								<strong>{`"${t("verifyDns")}"`}</strong>{" "}
+								{t("dnsPropagationHintSuffix")}
 							</p>
 						</div>
 
@@ -1052,16 +1039,16 @@ export function AddDomainWizard({
 								variant="secondary"
 								size="sm"
 								disabled
-								title="Domain already created. Please continue with DNS setup."
+								title={t("dnsRecordsBackTooltip")}
 							>
-								Back
+								{t("common:back")}
 							</Button>
 							<Button
 								variant="secondary"
 								size="sm"
 								onClick={handleSkipVerify}
 							>
-								Skip for Now
+								{t("skipForNow")}
 							</Button>
 							<Button
 								variant="primary"
@@ -1069,14 +1056,14 @@ export function AddDomainWizard({
 								loading={verifyStatus === "verifying"}
 								onClick={handleVerify}
 							>
-								Verify DNS
+								{t("verifyDns")}
 								<CircleCheckBig size={14} />
 							</Button>
 						</div>
 
 						{warnings.length > 0 && (
 							<div className="rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2.5 mb-5">
-								<p className="text-xs font-medium text-yellow-800 mb-1">Warnings</p>
+								<p className="text-xs font-medium text-yellow-800 mb-1">{t("warnings")}</p>
 								<ul className="text-xs text-yellow-700 list-disc list-inside space-y-0.5">
 									{warnings.map((w, i) => (
 										<li key={i}>{w}</li>
@@ -1107,13 +1094,13 @@ export function AddDomainWizard({
 							</div>
 						</div>
 						<Dialog.Title className="text-base font-semibold text-center mb-1">
-							Domain Added
+							{t("domainAdded")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle text-center mb-5">
 							<strong className="text-kumo-default">
 								{domainName}
 							</strong>{" "}
-							has been added successfully.
+							{t("domainAddedSuccessSuffix")}
 						</p>
 
 						<div className="space-y-2 mb-5">
@@ -1123,7 +1110,7 @@ export function AddDomainWizard({
 									className="text-kumo-subtle shrink-0"
 								/>
 								<span className="text-sm text-kumo-default font-medium">
-									Receiving
+									{t("receivingLabel")}
 								</span>
 								<Badge
 									variant={
@@ -1135,10 +1122,10 @@ export function AddDomainWizard({
 									}
 								>
 									{summary.receiving === "configured"
-										? "Configured"
+										? t("statusConfigured")
 										: summary.receiving === "failed"
-											? "Failed"
-											: "Skipped"}
+											? t("statusFailed")
+											: t("statusSkipped")}
 								</Badge>
 							</div>
 							<div className="flex items-center gap-2 rounded-lg bg-kumo-fill px-3 py-2">
@@ -1147,7 +1134,7 @@ export function AddDomainWizard({
 									className="text-kumo-subtle shrink-0"
 								/>
 								<span className="text-sm text-kumo-default font-medium">
-									Sending
+									{t("sendingLabel")}
 								</span>
 								<Badge
 									variant={
@@ -1159,24 +1146,23 @@ export function AddDomainWizard({
 									}
 								>
 									{summary.sending === "configured"
-										? "Configured"
+										? t("statusConfigured")
 										: summary.sending === "failed"
-											? "Failed"
-											: "Skipped"}
+											? t("statusFailed")
+											: t("statusSkipped")}
 								</Badge>
 							</div>
 						</div>
 
 						<p className="text-xs text-kumo-subtle text-center mb-5">
-							You can configure additional settings from the
-							Domains page at any time.
+							{t("doneFooter")}
 						</p>
 
 						<div className="flex justify-center">
 							<Dialog.Close
 								render={(props) => (
 									<Button {...props} variant="primary" size="sm">
-										Done
+										{t("stepDone")}
 										<ArrowRight size={14} />
 									</Button>
 								)}

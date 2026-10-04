@@ -28,7 +28,10 @@ import {
 	LogOut,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link as RouterLink } from "react-router";
+import { Link as RouterLink, type MetaArgs } from "react-router";
+import { useTranslation } from "react-i18next";
+import { isLocale } from "shared/i18n/config";
+import { translate } from "shared/i18n/translate";
 import {
 	useCreateMailbox,
 	useDeleteMailbox,
@@ -40,11 +43,17 @@ import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { formatSenderLabel } from "shared/participants";
 import type { Domain, Mailbox } from "~/types";
 
-export function meta() {
-	return [{ title: "Mailboxes" }];
+export function meta({ matches }: MetaArgs) {
+	const rootData = matches.find((m) => m?.id === "root")?.data as
+		| { locale?: string }
+		| undefined;
+	const locale = isLocale(rootData?.locale) ? rootData.locale : "en";
+	return [{ title: translate(locale, "dashboard:metaTitle") }];
 }
 
 export default function HomeRoute() {
+	const { t } = useTranslation("dashboard");
+	const { i18n } = useTranslation();
 	const toastManager = useKumoToastManager();
 	const {
 		data: mailboxes = [],
@@ -147,11 +156,11 @@ export default function HomeRoute() {
 		setCreateError(null);
 
 		if (!localPart) {
-			setCreateError("Please enter a local part");
+			setCreateError(t("errorLocalPartRequired"));
 			return;
 		}
 		if (!selectedDomain) {
-			setCreateError("Please select a domain");
+			setCreateError(t("errorDomainRequired"));
 			return;
 		}
 
@@ -160,7 +169,7 @@ export default function HomeRoute() {
 		// Handle catch-all pattern (localPart === "*")
 		if (localPart === "*") {
 			const catchAllEmail = `*@${selectedDomain}`;
-			const name = newName || "Catch-all";
+			const name = newName || t("catchAllDefaultName");
 			setIsCreating(true);
 			try {
 				await createMailbox.mutateAsync({ email: catchAllEmail, name });
@@ -172,7 +181,7 @@ export default function HomeRoute() {
 					await api.domains.setCatchAll(matchedDomain.id, catchAllEmail);
 				}
 				toastManager.add({
-					title: `Catch-all mailbox ${catchAllEmail} created!`,
+					title: t("catchAllCreated", { email: catchAllEmail }),
 				});
 				setIsCreateOpen(false);
 				setLocalPart("");
@@ -181,7 +190,7 @@ export default function HomeRoute() {
 			} catch (err: unknown) {
 				const message =
 					(err instanceof Error ? err.message : null) ||
-					"Failed to create catch-all mailbox";
+					t("catchAllCreateFailed");
 				setCreateError(message);
 			} finally {
 				setIsCreating(false);
@@ -193,7 +202,7 @@ export default function HomeRoute() {
 		setIsCreating(true);
 		try {
 			await createMailbox.mutateAsync({ email, name });
-			toastManager.add({ title: "Mailbox created successfully!" });
+			toastManager.add({ title: t("mailboxCreated") });
 			setIsCreateOpen(false);
 			setLocalPart("");
 			setSelectedDomain("");
@@ -201,7 +210,7 @@ export default function HomeRoute() {
 		} catch (err: unknown) {
 			const message =
 				(err instanceof Error ? err.message : null) ||
-				"Failed to create mailbox";
+				t("mailboxCreateFailed");
 			setCreateError(message);
 		} finally {
 			setIsCreating(false);
@@ -247,12 +256,12 @@ export default function HomeRoute() {
 				domainId: apiKeyDomain.id,
 				apiKey: finalKey,
 			});
-			toastManager.add({ title: `Resend API Key updated for ${apiKeyDomain.name}` });
+			toastManager.add({ title: t("resendKeyUpdated", { name: apiKeyDomain.name }) });
 			setIsApiKeyOpen(false);
 			setApiKeyDomain(null);
 		} catch {
 			toastManager.add({
-				title: "Failed to update Resend API Key",
+				title: t("resendKeyUpdateFailed"),
 				variant: "error",
 			});
 		} finally {
@@ -265,12 +274,12 @@ export default function HomeRoute() {
 		setIsDeleting(true);
 		try {
 			await deleteMailbox.mutateAsync(mailboxToDelete.id);
-			toastManager.add({ title: "Mailbox deleted" });
+			toastManager.add({ title: t("mailboxDeleted") });
 			setIsDeleteOpen(false);
 			setMailboxToDelete(null);
 		} catch {
 			toastManager.add({
-				title: "Failed to delete mailbox",
+				title: t("mailboxDeleteFailed"),
 				variant: "error",
 			});
 		} finally {
@@ -289,7 +298,7 @@ export default function HomeRoute() {
 						<div className="flex items-center gap-2.5">
 							<img
 								src="/logo.png"
-								alt="Mailboxes"
+								alt={t("brandAlt")}
 								width={32}
 								height={32}
 								className="brand-logo-light h-8 w-8 rounded-lg"
@@ -303,14 +312,14 @@ export default function HomeRoute() {
 								className="brand-logo-dark h-8 w-8 rounded-lg"
 							/>
 							<h1 className="text-2xl font-bold text-kumo-default">
-								Mailboxes
+								{t("heading")}
 							</h1>
 						</div>
 						<div className="flex items-center gap-2">
 							<RouterLink
 								to="/settings"
 								className="inline-flex items-center justify-center rounded-lg border border-kumo-line bg-kumo-base p-2 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
-								aria-label="Settings"
+								aria-label={t("settingsAria")}
 							>
 								<Settings size={18} />
 							</RouterLink>
@@ -319,8 +328,8 @@ export default function HomeRoute() {
 								onClick={handleLogout}
 								disabled={isLoggingOut}
 								className="inline-flex items-center justify-center rounded-lg border border-kumo-line bg-kumo-base p-2 text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default disabled:opacity-50"
-								aria-label="Sign out"
-								title="Sign out"
+								aria-label={t("signOutAria")}
+								title={t("signOutTitle")}
 							>
 								<LogOut size={18} />
 							</button>
@@ -329,7 +338,7 @@ export default function HomeRoute() {
 								icon={<Plus size={16} />}
 								onClick={() => setIsCreateOpen(true)}
 							>
-								New Mailbox
+								{t("newMailbox")}
 							</Button>
 						</div>
 					</div>
@@ -364,7 +373,7 @@ export default function HomeRoute() {
 												className="shrink-0 text-kumo-subtle"
 											/>
 											<span className="text-sm font-semibold text-kumo-default">
-												{isOther ? "Other" : domain.name}
+												{isOther ? t("otherDomain") : domain.name}
 											</span>
 											{!isOther && <DomainFullStatus domain={domain} />}
 											<span className="rounded-full bg-kumo-fill px-2 py-0.5 text-xs font-medium text-kumo-subtle">
@@ -379,7 +388,7 @@ export default function HomeRoute() {
 															onClick={() =>
 																setOpenMenu(openMenu === domainId ? null : domainId)
 															}
-															aria-label="Domain actions"
+															aria-label={t("domainActionsAria")}
 														>
 															<MoreVertical size={16} />
 														</button>
@@ -390,14 +399,14 @@ export default function HomeRoute() {
 																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
 																	onClick={() => setOpenMenu(null)}
 																>
-																	Edit
+																	{t("menuEdit")}
 																</RouterLink>
 																<RouterLink
 																	to={`/settings/domains/${domainId}`}
 																	className="block px-3 py-2 text-sm text-kumo-default hover:bg-kumo-tint no-underline"
 																	onClick={() => setOpenMenu(null)}
 																>
-																	Manage DNS
+																	{t("menuManageDns")}
 																</RouterLink>
 																<button
 																	type="button"
@@ -405,7 +414,7 @@ export default function HomeRoute() {
 																	onClick={() => handleApiKeyOpen(domain)}
 																>
 																	<Key size={14} />
-																	Resend API Key
+																	{t("menuResendApiKey")}
 																	{(domain as any).resend_api_key ? (
 																		<CircleCheckBig size={12} className="ml-auto text-green-500" fill="currentColor" />
 																	) : (
@@ -414,7 +423,7 @@ export default function HomeRoute() {
 																</button>
 																{domain.catch_all_mailbox && (
 																	<div className="px-3 py-2 text-xs text-kumo-subtle">
-																		Catch-all: {domain.catch_all_mailbox}
+																	{t("catchAllLabel", { mailbox: domain.catch_all_mailbox })}
 																	</div>
 																)}
 															</div>
@@ -427,10 +436,10 @@ export default function HomeRoute() {
 										{!isOther && (
 											<div className="flex items-center gap-3 px-5 pb-2.5 text-[11px]">
 												<span className="text-kumo-subtle">
-													Added {domain.created_at ? new Date(domain.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+													{t("domainAdded", { date: domain.created_at ? new Date(domain.created_at).toLocaleDateString(i18n.language, { month: "short", day: "numeric", year: "numeric" }) : "—" })}
 												</span>
 												{domain.catch_all_mailbox && (
-													<span className="text-blue-600">Catch-all: {domain.catch_all_mailbox}</span>
+													<span className="text-blue-600">{t("catchAllLabel", { mailbox: domain.catch_all_mailbox })}</span>
 												)}
 											</div>
 										)}
@@ -481,11 +490,11 @@ export default function HomeRoute() {
 												)}
 												{!account.latest_subject && account.latest_sender && (
 													<div className="mt-0.5 flex items-center gap-1.5 text-xs text-kumo-subtle/50 truncate">
-														<span>Latest: {formatSenderLabel(account.latest_sender_name, account.latest_sender)}</span>
+														<span>{t("latestSender", { sender: formatSenderLabel(account.latest_sender_name, account.latest_sender) })}</span>
 														{account.latest_date && (
 															<>
 																<span className="shrink-0">·</span>
-																<span>{new Date(account.latest_date).toLocaleDateString()}</span>
+																<span>{new Date(account.latest_date).toLocaleDateString(i18n.language)}</span>
 															</>
 														)}
 													</div>
@@ -496,7 +505,7 @@ export default function HomeRoute() {
 												size="sm"
 												shape="square"
 												icon={<Trash2 size={16} />}
-												aria-label={`Delete mailbox ${account.email}`}
+												aria-label={t("deleteMailboxAria", { email: account.email })}
 												onClick={(e) => {
 													e.preventDefault();
 													e.stopPropagation();
@@ -514,7 +523,7 @@ export default function HomeRoute() {
 									{!isOther && hasNoMailboxes && (
 										<div className="px-5 py-4 border-t border-kumo-line space-y-3">
 											<p className="text-sm text-kumo-subtle">
-												No mailboxes on this domain yet.
+												{t("noMailboxesOnDomain")}
 											</p>
 											<div className="flex gap-2">
 												<Button
@@ -526,7 +535,7 @@ export default function HomeRoute() {
 														setIsCreateOpen(true);
 													}}
 												>
-													Create Mailbox
+													{t("createMailbox")}
 												</Button>
 												{!domain.cf_zone_id && (
 													<RouterLink
@@ -534,7 +543,7 @@ export default function HomeRoute() {
 														className="inline-flex items-center justify-center gap-1.5 rounded-md border border-kumo-line px-3 py-1.5 text-xs font-medium text-kumo-default hover:bg-kumo-tint no-underline"
 													>
 														<RotateCw size={13} />
-														Setup Receiving
+														{t("setupReceiving")}
 													</RouterLink>
 												)}
 											</div>
@@ -555,18 +564,17 @@ export default function HomeRoute() {
 								/>
 							</div>
 							<h3 className="text-base font-semibold text-kumo-default mb-1.5">
-								No mailboxes yet
+								{t("emptyTitle")}
 							</h3>
 							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
-								Get started by adding a domain to create your first
-								mailbox.
+								{t("emptyDescription")}
 							</p>
 							<RouterLink
 							to="/settings"
 							className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-kumo-brand text-white hover:bg-kumo-brand/90 no-underline"
 						>
 							<Plus size={16} />
-							Add Domain
+							{t("addDomain")}
 						</RouterLink>
 						</div>
 					</div>
@@ -577,7 +585,7 @@ export default function HomeRoute() {
 			<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-5">
-						Create New Mailbox
+						{t("createDialogTitle")}
 					</Dialog.Title>
 					<form onSubmit={handleCreate} className="space-y-4">
 						{createError && (
@@ -587,13 +595,13 @@ export default function HomeRoute() {
 						)}
 						<div className="grid gap-2">
 							<label className="m-0 text-base font-medium text-kumo-default">
-								Email Address
+								{t("emailAddressLabel")}
 							</label>
 							<div className="flex items-center">
 								<input
 									type="text"
 									className="h-7 min-w-0 flex-1 rounded-l-md border border-kumo-hairline border-r-0 bg-kumo-control px-2 text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none"
-									placeholder="hello"
+									placeholder={t("emailLocalPartPlaceholder")}
 									value={localPart}
 									onChange={(e) => setLocalPart(e.target.value)}
 									required
@@ -609,7 +617,7 @@ export default function HomeRoute() {
 										required
 									>
 										<option value="" disabled>
-											Select domain…
+											{t("selectDomainPlaceholder")}
 										</option>
 										{domains.map((domain) => (
 											<option key={domain.id} value={domain.name}>
@@ -619,18 +627,18 @@ export default function HomeRoute() {
 									</select>
 								) : (
 									<p className="text-xs text-kumo-subtle">
-										No domains configured yet.{" "}
+										{t("noDomainsConfigured")}{" "}
 										<RouterLink to="/settings" className="underline">
-											Add a domain
+											{t("addDomainLink")}
 										</RouterLink>{" "}
-										first.
+										{t("noDomainsConfiguredSuffix")}
 									</p>
 								)}
 							</div>
 						</div>
 						<Input
-							label="Display Name (optional)"
-							placeholder="Info"
+							label={t("displayNameLabel")}
+							placeholder={t("displayNamePlaceholder")}
 							size="sm"
 							value={newName}
 							onChange={(e) => setNewName(e.target.value)}
@@ -639,7 +647,7 @@ export default function HomeRoute() {
 							<Dialog.Close
 								render={(props) => (
 									<Button {...props} variant="secondary" size="sm">
-										Cancel
+										{t("common:cancel")}
 									</Button>
 								)}
 							/>
@@ -649,7 +657,7 @@ export default function HomeRoute() {
 								size="sm"
 								loading={isCreating}
 							>
-								Create
+								{t("common:create")}
 							</Button>
 						</div>
 					</form>
@@ -666,20 +674,20 @@ export default function HomeRoute() {
 			>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-2">
-						Delete Mailbox
+						{t("deleteDialogTitle")}
 					</Dialog.Title>
 					<Dialog.Description className="text-kumo-subtle text-sm mb-5">
-						Are you sure you want to delete{" "}
+						{t("deleteConfirmLead")}{" "}
 						<strong className="text-kumo-default">
 							{mailboxToDelete?.email}
 						</strong>
-						? This action cannot be undone.
+						{t("deleteConfirmTail")}
 					</Dialog.Description>
 					<div className="flex justify-end gap-2">
 						<Dialog.Close
 							render={(props) => (
 								<Button {...props} variant="secondary" size="sm">
-									Cancel
+									{t("common:cancel")}
 								</Button>
 							)}
 						/>
@@ -689,7 +697,7 @@ export default function HomeRoute() {
 							loading={isDeleting}
 							onClick={handleDelete}
 						>
-							Delete
+							{t("common:delete")}
 						</Button>
 					</div>
 				</Dialog>
@@ -699,27 +707,27 @@ export default function HomeRoute() {
 			<Dialog.Root open={isApiKeyOpen} onOpenChange={setIsApiKeyOpen}>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-1">
-						Resend API Key — {apiKeyDomain?.name}
+						{t("apiKeyDialogTitle", { name: apiKeyDomain?.name })}
 					</Dialog.Title>
 					<p className="text-sm text-kumo-subtle mb-5">
-						Configure the Resend API key for this domain.
+						{t("apiKeyDialogDescription")}
 					</p>
 
 					{/* ── 1. API Key Configuration Status ── */}
 					<div className="rounded-lg border px-3 py-2 mb-3">
 						<div className="flex items-center gap-2">
 							<Key size={14} className="text-kumo-subtle shrink-0" />
-							<span className="text-xs font-medium text-kumo-default">API Key</span>
+							<span className="text-xs font-medium text-kumo-default">{t("apiKeyLabel")}</span>
 						</div>
 						{apiKeyDomain?.hasKey ? (
 							<div className="flex items-center gap-2 mt-2">
 								<CircleCheckBig size={12} className="text-green-600 shrink-0" fill="currentColor" />
-								<span className="text-xs text-green-700">Configured</span>
+								<span className="text-xs text-green-700">{t("apiKeyConfigured")}</span>
 							</div>
 						) : (
 							<div className="flex items-center gap-2 mt-2">
 								<TriangleAlert size={12} className="text-amber-500 shrink-0" fill="currentColor" />
-								<span className="text-xs text-amber-700">Not Configured</span>
+								<span className="text-xs text-amber-700">{t("apiKeyNotConfigured")}</span>
 							</div>
 						)}
 					</div>
@@ -729,38 +737,38 @@ export default function HomeRoute() {
 						<div className="rounded-lg border px-3 py-2 mb-3">
 							<div className="flex items-center gap-2">
 								<Globe size={14} className="text-kumo-subtle shrink-0" />
-								<span className="text-xs font-medium text-kumo-default">Domain</span>
+								<span className="text-xs font-medium text-kumo-default">{t("apiKeyDomainLabel")}</span>
 							</div>
 
 							{apiKeyVerifyStatus === "verifying" && (
 								<div className="flex items-center gap-2 mt-2">
 									<Loader2 size={12} className="animate-spin text-kumo-subtle shrink-0" />
-									<span className="text-xs text-kumo-subtle">Verifying with Resend...</span>
+									<span className="text-xs text-kumo-subtle">{t("verifyingWithResend")}</span>
 								</div>
 							)}
 
 							{apiKeyVerifyStatus === "valid" && apiKeyVerifyResult && (
 								<div className="space-y-1.5 mt-2">
-									<Badge variant="success"><CircleCheckBig size={12} fill="currentColor" /> API key verified</Badge>
+									<Badge variant="success"><CircleCheckBig size={12} fill="currentColor" /> {t("apiKeyVerifiedBadge")}</Badge>
 									{apiKeyVerifyResult.sendingReady ? (
-										<Badge variant="success">Domain verified & ready to send</Badge>
+										<Badge variant="success">{t("domainReadyToSend")}</Badge>
 									) : apiKeyVerifyResult.matchingDomain ? (
-										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> Domain "{apiKeyVerifyResult.matchingDomain.domain}" is "{apiKeyVerifyResult.matchingDomain.status}" — <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">verify DNS records in Resend</a></Badge>
+										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> {t("domainStatusBadge", { domain: apiKeyVerifyResult.matchingDomain.domain, status: apiKeyVerifyResult.matchingDomain.status })}{" "}<a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">{t("verifyDnsInResend")}</a></Badge>
 									) : (
-										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> No matching domain for {apiKeyDomain?.name} in Resend</Badge>
+										<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> {t("noMatchingDomain", { name: apiKeyDomain?.name })}</Badge>
 									)}
 								</div>
 							)}
 
 							{apiKeyVerifyStatus === "invalid" && (
 								<div className="mt-2">
-									<Badge variant="error"><TriangleAlert size={12} fill="currentColor" /> {apiKeyVerifyResult?.error || "Invalid API key"}</Badge>
+									<Badge variant="error"><TriangleAlert size={12} fill="currentColor" /> {apiKeyVerifyResult?.error || t("invalidApiKey")}</Badge>
 								</div>
 							)}
 
 							{apiKeyVerifyStatus === "error" && (
 								<div className="mt-2">
-									<Badge variant="error">Verification failed — try again</Badge>
+									<Badge variant="error">{t("verificationFailed")}</Badge>
 								</div>
 							)}
 						</div>
@@ -769,9 +777,9 @@ export default function HomeRoute() {
 					<div className="space-y-4">
 						<div className="relative">
 							<Input
-								label="Resend API Key"
+								label={t("resendApiKeyFieldLabel")}
 								type="text"
-								placeholder="re_..."
+								placeholder={t("resendApiKeyPlaceholder")}
 								value={apiKeyValue}
 								onFocus={() => {
 									// Auto-clear mask so user can type a new key
@@ -788,7 +796,7 @@ export default function HomeRoute() {
 						</div>
 						{apiKeyDomain?.hasKey && apiKeyValue === "••••••••••••••••••••" && (
 							<p className="text-xs text-kumo-subtle mt-1">
-								Click the input to enter a new key.
+								{t("enterNewKeyHint")}
 							</p>
 						)}
 
@@ -796,7 +804,7 @@ export default function HomeRoute() {
 							<Dialog.Close
 								render={(props) => (
 									<Button {...props} variant="secondary" size="sm">
-										Cancel
+										{t("common:cancel")}
 									</Button>
 								)}
 							/>
@@ -808,9 +816,9 @@ export default function HomeRoute() {
 									onClick={handleVerifyApiKey}
 								>
 									{isVerifyingApiKey ? (
-										<><Loader2 size={14} className="animate-spin" /> Verifying…</>
+										<><Loader2 size={14} className="animate-spin" /> {t("verifying")}</>
 									) : (
-										<>Verify</>
+										<>{t("common:verify")}</>
 									)}
 								</Button>
 							)}
@@ -820,7 +828,7 @@ export default function HomeRoute() {
 								loading={isSavingApiKey}
 								onClick={handleApiKeySave}
 							>
-								Save
+								{t("common:save")}
 							</Button>
 						</div>
 					</div>

@@ -7,12 +7,27 @@
 /**
  * Shared types and Zod schemas for email data.
  *
- * Types (from email-types.ts): used by the agent, MCP server, and route
- * handlers to avoid `as any` casting.
+ * Types: used by the agent and route handlers to avoid `as any` casting.
  *
  * Zod schemas: used across route handlers to eliminate duplication.
  */
 import { z } from "zod";
+import { DEFAULT_LOCALE } from "../../shared/i18n/config";
+import { getBackendT } from "../../shared/i18n/translate";
+import type { Locale } from "../../shared/i18n/types";
+
+/**
+ * [i18n apiAuth] These zod schemas are module-level singletons, so they cannot
+ * capture a per-request locale. The refine messages below are therefore
+ * resolved ONCE, at module load, against `DEFAULT_LOCALE` (English) — there is
+ * no request-scoped/parameterized localization path for a schema's `message`.
+ * English here is intentionally a last-resort fallback (schema-level wording
+ * also ends up in `details`): handlers localize the user-facing `error` field
+ * themselves via `api:validationFailed`.
+ */
+function schemaMessage(locale: Locale, key: string): string {
+	return getBackendT(locale, "apiAuth")(key) as string;
+}
 
 // ── TypeScript Interfaces ──────────────────────────────────────────
 
@@ -89,7 +104,7 @@ export const SendEmailRequestSchema = z
 		thread_id: z.string().optional(),
 	})
 	.refine((data) => data.html || data.text, {
-		message: "Either 'html' or 'text' must be provided",
+		message: schemaMessage(DEFAULT_LOCALE, "eitherHtmlOrTextRequired"),
 	});
 
 export const ReplyBodySchema = z
@@ -109,7 +124,7 @@ export const ReplyBodySchema = z
 			.optional(),
 	})
 	.refine((data) => data.body || data.html || data.text, {
-		message: "Either 'body', 'html', or 'text' must be provided",
+		message: schemaMessage(DEFAULT_LOCALE, "eitherBodyHtmlOrTextRequired"),
 	});
 
 export const ForwardBodySchema = z
@@ -130,7 +145,7 @@ export const ForwardBodySchema = z
 			.optional(),
 	})
 	.refine((data) => data.body || data.html || data.text, {
-		message: "Either 'body', 'html', or 'text' must be provided",
+		message: schemaMessage(DEFAULT_LOCALE, "eitherBodyHtmlOrTextRequired"),
 	});
 
 export const SendEmailResponseSchema = z.object({

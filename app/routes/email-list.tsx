@@ -20,8 +20,10 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
-import { Folders } from "shared/folders";
+import { Folders, getFolderDisplayName } from "shared/folders";
+import type { Locale } from "shared/i18n/types";
 import { formatParticipantLabel } from "shared/participants";
 import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
@@ -43,43 +45,40 @@ const FOLDER_EMPTY_STATES: Record<
 	string,
 	{
 		icon: React.ReactNode;
-		title: string;
-		description: string;
+		titleKey: string;
+		descriptionKey: string;
 		showCompose?: boolean;
 	}
 > = {
 	[Folders.INBOX]: {
 		icon: <Inbox size={48} className="text-kumo-subtle" />,
-		title: "Your inbox is empty",
-		description:
-			"New emails will appear here when they arrive. Send an email to get the conversation started.",
+		titleKey: "emptyInboxTitle",
+		descriptionKey: "emptyInboxDescription",
 		showCompose: true,
 	},
 	[Folders.SENT]: {
 		icon: (
 			<Send size={48} className="text-kumo-subtle" />
 		),
-		title: "No sent emails",
-		description: "Emails you send will show up here.",
+		titleKey: "emptySentTitle",
+		descriptionKey: "emptySentDescription",
 		showCompose: true,
 	},
 	[Folders.DRAFT]: {
 		icon: <File size={48} className="text-kumo-subtle" />,
-		title: "No drafts",
-		description: "Emails you're still working on will be saved here.",
+		titleKey: "emptyDraftTitle",
+		descriptionKey: "emptyDraftDescription",
 		showCompose: true,
 	},
 	[Folders.ARCHIVE]: {
 		icon: <Archive size={48} className="text-kumo-subtle" />,
-		title: "Archive is empty",
-		description:
-			"Move emails here to keep your inbox clean without deleting them.",
+		titleKey: "emptyArchiveTitle",
+		descriptionKey: "emptyArchiveDescription",
 	},
 	[Folders.TRASH]: {
 		icon: <Trash2 size={48} className="text-kumo-subtle" />,
-		title: "Trash is empty",
-		description:
-			"Deleted emails will appear here. You can restore them or permanently delete them.",
+		titleKey: "emptyTrashTitle",
+		descriptionKey: "emptyTrashDescription",
 	},
 };
 
@@ -112,22 +111,23 @@ function FolderEmptyState({
 	folder?: string;
 	onCompose: () => void;
 }) {
+	const { t } = useTranslation("mail");
 	const config = (folder && FOLDER_EMPTY_STATES[folder]) || {
 		icon: (
 			<Mail size={48} className="text-kumo-subtle" />
 		),
-		title: "No emails",
-		description: "This folder is empty.",
+		titleKey: "emptyGenericTitle",
+		descriptionKey: "emptyGenericDescription",
 	};
 
 	return (
 		<div className="flex flex-col items-center justify-center py-24 px-6 text-center">
 			<div className="mb-4">{config.icon}</div>
 			<h3 className="text-base font-semibold text-kumo-default mb-1.5">
-				{config.title}
+				{t(config.titleKey)}
 			</h3>
 			<p className="text-sm text-kumo-subtle max-w-xs mb-5">
-				{config.description}
+				{t(config.descriptionKey)}
 			</p>
 			{"showCompose" in config && config.showCompose && (
 				<Button
@@ -136,7 +136,7 @@ function FolderEmptyState({
 					icon={<Pencil size={16} />}
 					onClick={onCompose}
 				>
-					Compose
+					{t("compose")}
 				</Button>
 			)}
 		</div>
@@ -144,6 +144,8 @@ function FolderEmptyState({
 }
 
 export default function EmailListRoute() {
+	const { t, i18n } = useTranslation("mail");
+	const locale = i18n.language as Locale;
 	const { mailboxId, folder } = useParams<{
 		mailboxId: string;
 		folder: string;
@@ -186,8 +188,8 @@ export default function EmailListRoute() {
 	const folderName = useMemo(() => {
 		const found = folders.find((f) => f.id === folder);
 		if (found) return found.name;
-		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "Inbox";
-	}, [folders, folder]);
+		return folder ? getFolderDisplayName(folder, locale) : getFolderDisplayName(Folders.INBOX, locale);
+	}, [folders, folder, locale]);
 
 	const isPanelOpen = selectedEmailId !== null || isComposing;
 
@@ -287,11 +289,11 @@ export default function EmailListRoute() {
 					<div className="flex items-center gap-1">
 						{totalCount > 0 && (
 							<span className="text-sm text-kumo-subtle mr-2 hidden sm:inline">
-								{totalCount} conversation{totalCount !== 1 ? "s" : ""}
+								{t("conversations", { count: totalCount })}
 							</span>
 						)}
 						<Tooltip
-							content={isRefreshing ? "Refreshing..." : "Refresh"}
+							content={isRefreshing ? t("refreshing") : t("refresh")}
 							side="bottom"
 							asChild
 						>
@@ -307,7 +309,7 @@ export default function EmailListRoute() {
 								}
 								onClick={handleRefresh}
 								disabled={isRefreshing}
-								aria-label="Refresh"
+								aria-label={t("refresh")}
 							/>
 						</Tooltip>
 					</div>
@@ -380,11 +382,11 @@ export default function EmailListRoute() {
 												)}
 												{email.has_draft && (
 													<span className="shrink-0 text-xs text-kumo-destructive font-medium">
-														Draft
+														{t("draft")}
 													</span>
 												)}
 												{email.needs_reply && !email.has_draft && (
-													<Tooltip content="Needs reply" asChild>
+													<Tooltip content={t("needsReply")} asChild>
 														<span className="shrink-0 text-kumo-warning">
 															<Reply size={14} />
 														</span>
@@ -392,18 +394,18 @@ export default function EmailListRoute() {
 												)}
 												{folder === Folders.SENT && email.send_status === "sending" && (
 													<span className="shrink-0 text-xs text-blue-500 font-medium animate-pulse">
-														Sending...
+														{t("sending")}
 												</span>
 												)}
 												{folder === Folders.SENT && email.send_status === "sent" && (
 													<span className="shrink-0 text-xs text-green-600 font-medium">
-														✓ Sent
+														{t("sent")}
 													</span>
 												)}
 												{folder === Folders.SENT && email.send_status === "failed" && (
-													<Tooltip content="Delivery failed" asChild>
+													<Tooltip content={t("deliveryFailed")} asChild>
 														<span className="shrink-0 text-xs text-kumo-destructive font-medium">
-															Failed
+															{t("failed")}
 														</span>
 													</Tooltip>
 												)}
@@ -423,12 +425,12 @@ export default function EmailListRoute() {
 									</div>
 
 										<span className="shrink-0 text-sm text-kumo-subtle ml-2 whitespace-nowrap self-center">
-											{formatListDate(email.date)}
+											{formatListDate(email.date, locale)}
 										</span>
 
 										{/* Hover actions */}
 										<div className="hidden group-hover:flex items-center shrink-0">
-											<Tooltip content={email.read ? "Mark unread" : "Mark read"} asChild>
+											<Tooltip content={email.read ? t("markUnread") : t("markRead")} asChild>
 												<Button
 													variant="ghost"
 													shape="square"
@@ -443,17 +445,17 @@ export default function EmailListRoute() {
 																data: { read: !email.read },
 															});
 													}}
-													aria-label={email.read ? "Mark unread" : "Mark read"}
+													aria-label={email.read ? t("markUnread") : t("markRead")}
 												/>
 											</Tooltip>
-											<Tooltip content="Delete" asChild>
+											<Tooltip content={t("delete")} asChild>
 												<Button
 													variant="ghost"
 													shape="square"
 													size="sm"
 													icon={<Trash2 size={16} />}
 													onClick={(e) => handleDelete(e, email.id)}
-													aria-label="Delete"
+													aria-label={t("delete")}
 												/>
 											</Tooltip>
 										</div>
@@ -481,16 +483,16 @@ export default function EmailListRoute() {
 				>
 					<Dialog size="sm" className="p-6">
 						<Dialog.Title className="text-base font-semibold mb-1">
-							Delete Email
+							{t("deleteEmailTitle")}
 						</Dialog.Title>
 						<p className="text-sm text-kumo-subtle mb-5">
-							Are you sure you want to delete this email? This action cannot be undone.
+							{t("deleteEmailDescription")}
 						</p>
 						<div className="flex justify-end gap-2">
 							<Dialog.Close
 								render={(props) => (
 									<Button {...props} variant="secondary" size="sm">
-										Cancel
+										{t("common:cancel")}
 								</Button>
 								)}
 							/>
@@ -499,7 +501,7 @@ export default function EmailListRoute() {
 								size="sm"
 								onClick={confirmDelete}
 							>
-								Delete
+								{t("delete")}
 							</Button>
 						</div>
 					</Dialog>

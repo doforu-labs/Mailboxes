@@ -1,0 +1,42 @@
+{
+	"title": {
+		"editDraft": "编辑草稿",
+		"reply": "回复",
+		"replyAll": "全部回复",
+		"forward": "转发",
+		"newMessage": "新邮件"
+	},
+	"fields": {
+		"to": "收件人",
+		"cc": "抄送",
+		"bcc": "密送",
+		"subject": "主题",
+		"message": "正文"
+	},
+	"placeholder": {
+		"recipientMultiple": "recipient@example.com, another@example.com",
+		"recipientSingle": "recipient@example.com",
+		"separateAddresses": "多个地址请用逗号分隔",
+		"subject": "邮件主题"
+	},
+	"showCcBcc": "抄送 / 密送",
+	"actions": {
+		"closeCompose": "关闭撰写窗口",
+		"discard": "丢弃",
+		"saving": "保存中…",
+		"saveAsDraft": "存为草稿",
+		"sending": "发送中…",
+		"send": "发送"
+	},
+	"toast": {
+		"draftSaved": "草稿已保存！",
+		"draftSaveFailed": "保存草稿失败。",
+		"sending": "正在发送邮件…",
+		"sent": "邮件已发送！",
+		"sendFailed": "发送邮件失败。"
+	},
+	"error": {
+		"noMailbox": "未选择邮箱。",
+		"noRecipient": "请至少添加一位收件人。"
+	}
+}

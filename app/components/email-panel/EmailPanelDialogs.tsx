@@ -4,6 +4,7 @@
 // Distributed here as part of a work licensed under the AGPL-3.0-only (see LICENSE).
 
 import { Button, Dialog } from "@cloudflare/kumo";
+import { useTranslation } from "react-i18next";
 import { downloadFile } from "~/lib/utils";
 import type { Email } from "~/types";
 
@@ -62,6 +63,7 @@ export default function EmailPanelDialogs({
 	onCloseSource,
 	onClosePreview,
 }: EmailPanelDialogsProps) {
+	const { t } = useTranslation("mailPanel");
 	const sourceHeaders = sourceViewEmail ? getSourceHeaders(sourceViewEmail) : [];
 
 	return (
@@ -74,7 +76,7 @@ export default function EmailPanelDialogs({
 			>
 				<Dialog size="lg">
 					<Dialog.Title>
-						Email Source Headers
+						{t("source.title")}
 						{sourceViewEmail && (
 							<span className="text-sm font-normal text-kumo-subtle ml-2">
 								{sourceViewEmail.subject}
@@ -102,7 +104,7 @@ export default function EmailPanelDialogs({
 							</table>
 							{sourceHeaders.length === 0 && (
 								<p className="text-sm text-kumo-subtle text-center py-8">
-									No header data available for this email.
+									{t("source.noHeaders")}
 								</p>
 							)}
 						</div>
@@ -110,7 +112,7 @@ export default function EmailPanelDialogs({
 					<div className="flex justify-end mt-4">
 						<Dialog.Close>
 							<Button variant="secondary" size="sm">
-								Close
+								{t("common:close")}
 							</Button>
 						</Dialog.Close>
 					</div>
@@ -144,11 +146,11 @@ export default function EmailPanelDialogs({
 								}
 							}}
 						>
-							Download Original
+							{t("source.downloadOriginal")}
 						</Button>
 						<Dialog.Close>
 							<Button variant="primary" size="sm">
-								Close
+								{t("common:close")}
 							</Button>
 						</Dialog.Close>
 					</div>

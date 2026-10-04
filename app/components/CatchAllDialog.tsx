@@ -11,6 +11,7 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSetCatchAll } from "~/queries/domains";
 import type { Domain } from "~/types";
 
@@ -22,6 +23,7 @@ interface CatchAllDialogProps {
 
 export function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
 	const toastManager = useKumoToastManager();
+	const { t } = useTranslation("domain");
 	const setCatchAll = useSetCatchAll();
 
 	const [inputValue, setInputValue] = useState<string>(
@@ -44,7 +46,7 @@ export function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
 				catchAllMailbox = value;
 			} else {
 				toastManager.add({
-					title: `Please enter *@${domain.name} to enable catch-all`,
+					title: t("toastCatchAllInputInvalid", { domain: domain.name }),
 					variant: "error",
 				});
 				return;
@@ -56,12 +58,12 @@ export function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
 			});
 			toastManager.add({
 				title: catchAllMailbox
-					? `Catch-all set to ${catchAllMailbox}`
-					: "Catch-all disabled",
+					? t("toastCatchAllSet", { mailbox: catchAllMailbox })
+					: t("toastCatchAllDisabled"),
 			});
 			onClose();
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to update catch-all";
+			const msg = err instanceof Error ? err.message : t("failedToUpdateCatchAll");
 			toastManager.add({ title: msg, variant: "error" });
 		} finally {
 			setIsSaving(false);
@@ -79,38 +81,39 @@ export function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
 		>
 			<Dialog size="sm" className="p-6">
 				<Dialog.Title className="text-base font-semibold mb-1">
-					Catch-all Mailbox
+					{t("catchAllMailboxTitle")}
 				</Dialog.Title>
 				<p className="text-sm text-kumo-subtle mb-5">
-					When an email arrives for a non-existent address on{' '}
-					<strong className="text-kumo-default">{domain.name}</strong>,{' '}
-					it will be delivered to the catch-all mailbox instead of being dropped.
+					{t("catchAllDescriptionPrefix")}{' '}
+					<strong className="text-kumo-default">{domain.name}</strong>{' '}
+					{t("catchAllDescriptionSuffix")}
 				</p>
 
 				<div className="space-y-4">
 					<div>
 						<label className="block text-sm font-medium text-kumo-default mb-1.5">
 							{domain.catch_all_mailbox
-								? `Catch-all: ${domain.catch_all_mailbox}`
-								: "Catch-all: disabled"}
+								? t("catchAllLabel", { mailbox: domain.catch_all_mailbox })
+								: t("catchAllDisabledLabel")}
 						</label>
 						<Input
-							placeholder={`*@${domain.name}`}
+							placeholder={t("catchAllPlaceholder", { domain: domain.name })}
 							size="sm"
 							value={inputValue}
 							onChange={(e) => setInputValue(e.target.value)}
 							autoFocus
 						/>
 						<p className="text-xs text-kumo-subtle mt-1.5">
-							Enter <code className="font-mono">*@{domain.name}</code> to enable catch-all routing.{' '}
-							Clear the field to disable.
+							{t("catchAllInputHintPrefix")}{" "}
+							<code className="font-mono">{`*@${domain.name}`}</code>{" "}
+							{t("catchAllInputHintSuffix")}
 						</p>
 					</div>
 					<div className="flex justify-end gap-2 pt-2">
 						<Dialog.Close
 							render={(props) => (
 								<Button {...props} variant="secondary" size="sm">
-									Cancel
+									{t("common:cancel")}
 								</Button>
 							)}
 						/>
@@ -121,7 +124,7 @@ export function CatchAllDialog({ domain, open, onClose }: CatchAllDialogProps) {
 							disabled={isSaving}
 							onClick={handleSave}
 						>
-							Save
+							{t("common:save")}
 						</Button>
 					</div>
 				</div>

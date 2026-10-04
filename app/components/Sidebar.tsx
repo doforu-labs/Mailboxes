@@ -7,7 +7,6 @@
 import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
 	Archive,
-	ChevronLeft,
 	FilePen,
 	Folder,
 	Send,
@@ -17,8 +16,10 @@ import {
 	Inbox,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, useMatch, useNavigate, useParams } from "react-router";
-import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
+import { Folders, getFolderDisplayName, SYSTEM_FOLDER_IDS } from "shared/folders";
+import type { Locale } from "shared/i18n/types";
 import { useCreateFolder, useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -31,12 +32,14 @@ const FOLDER_ICONS: Record<string, React.ReactNode> = {
 	[Folders.TRASH]: <Trash2 size={18} />,
 };
 
+// Labels are resolved at render time via `getFolderDisplayName(folderId, locale)`
+// — a module-level constant cannot call hooks or read the active language.
 const SYSTEM_FOLDER_LINKS = [
-	{ id: Folders.INBOX, label: "Inbox" },
-	{ id: Folders.SENT, label: "Sent" },
-	{ id: Folders.DRAFT, label: "Drafts" },
-	{ id: Folders.ARCHIVE, label: "Archive" },
-	{ id: Folders.TRASH, label: "Trash" },
+	{ id: Folders.INBOX },
+	{ id: Folders.SENT },
+	{ id: Folders.DRAFT },
+	{ id: Folders.ARCHIVE },
+	{ id: Folders.TRASH },
 ];
 
 interface FolderLinkProps {
@@ -80,6 +83,10 @@ function FolderLink({
 }
 
 export default function Sidebar() {
+	const { t, i18n } = useTranslation("layout");
+	const locale = (i18n.resolvedLanguage ?? i18n.language ?? "en").split(
+		"-",
+	)[0] as Locale;
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
@@ -110,7 +117,9 @@ export default function Sidebar() {
 	};
 
 	const displayName = useMemo(() => {
-		if (!currentMailbox) return mailboxId?.split("@")[0] || "Mailbox";
+		if (!currentMailbox) {
+			return mailboxId?.split("@")[0] || t("sidebar.mailboxFallback");
+		}
 		// Prefer settings.fromName > name > local part of email
 		if (currentMailbox.settings?.fromName) {
 			return currentMailbox.settings.fromName;
@@ -119,7 +128,7 @@ export default function Sidebar() {
 			return currentMailbox.name;
 		}
 		return currentMailbox.email.split("@")[0] || currentMailbox.name;
-	}, [currentMailbox, mailboxId]);
+	}, [currentMailbox, mailboxId, t]);
 
 	const handleNavClick = () => {
 		// Close mobile sidebar on navigation
@@ -138,8 +147,22 @@ export default function Sidebar() {
 					}}
 					className="flex items-center gap-2 text-kumo-subtle text-base font-medium hover:text-kumo-default transition-colors mb-3 cursor-pointer bg-transparent border-0 py-0 px-1"
 				>
-					<ChevronLeft size={16} />
-					<span>Mailboxes</span>
+					<img
+						src="/logo.png"
+						alt="Mailboxes"
+						width={20}
+						height={20}
+						className="brand-logo-light h-5 w-5 rounded-md shrink-0"
+					/>
+					<img
+						src="/logo-dark.png"
+						alt=""
+						aria-hidden="true"
+						width={20}
+						height={20}
+						className="brand-logo-dark h-5 w-5 rounded-md shrink-0"
+					/>
+					<span>{t("sidebar.mailboxes")}</span>
 				</button>
 				<div className="px-1">
 					<div className="text-lg font-semibold leading-tight text-kumo-default truncate">
@@ -159,7 +182,7 @@ export default function Sidebar() {
 					onClick={() => startCompose()}
 					className="w-full"
 				>
-					New
+					{t("sidebar.new")}
 				</Button>
 			</div>
 
@@ -170,7 +193,7 @@ export default function Sidebar() {
 						key={folder.id}
 						to={`/mailbox/${mailboxId}/emails/${folder.id}`}
 						icon={FOLDER_ICONS[folder.id]}
-						label={folder.label}
+						label={getFolderDisplayName(folder.id, locale)}
 						unreadCount={getUnreadCount(folder.id)}
 						onClick={handleNavClick}
 						isHighlighted={isComposing ? false : undefined}
@@ -182,16 +205,16 @@ export default function Sidebar() {
 					<div className="pt-5">
 						<div className="flex items-center justify-between px-3 mb-1.5">
 							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
-								Folders
+								{t("sidebar.folders")}
 							</span>
-							<Tooltip content="New folder" asChild>
+							<Tooltip content={t("sidebar.newFolder")} asChild>
 								<Button
 									variant="ghost"
 									shape="square"
 									size="sm"
 									icon={<Plus size={16} />}
 									onClick={() => setIsCreateFolderOpen(true)}
-									aria-label="Create new folder"
+									aria-label={t("sidebar.createNewFolder")}
 								/>
 							</Tooltip>
 						</div>
@@ -214,16 +237,16 @@ export default function Sidebar() {
 					<div className="pt-5">
 						<div className="flex items-center justify-between px-3 mb-1.5">
 							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
-								Folders
+								{t("sidebar.folders")}
 							</span>
-							<Tooltip content="New folder" asChild>
+							<Tooltip content={t("sidebar.newFolder")} asChild>
 								<Button
 									variant="ghost"
 									shape="square"
 									size="sm"
 									icon={<Plus size={16} />}
 									onClick={() => setIsCreateFolderOpen(true)}
-									aria-label="Create new folder"
+									aria-label={t("sidebar.createNewFolder")}
 								/>
 							</Tooltip>
 						</div>
@@ -238,12 +261,12 @@ export default function Sidebar() {
 			>
 				<Dialog size="sm" className="p-6">
 					<Dialog.Title className="text-base font-semibold mb-4">
-						Create folder
+						{t("sidebar.createFolder")}
 					</Dialog.Title>
 					<form onSubmit={handleCreateFolder} className="space-y-4">
 						<Input
-							label="Folder name"
-							placeholder="e.g. Projects"
+							label={t("sidebar.folderName")}
+							placeholder={t("sidebar.folderNamePlaceholder")}
 							value={newFolderName}
 							onChange={(e) => setNewFolderName(e.target.value)}
 							required
@@ -252,7 +275,7 @@ export default function Sidebar() {
 							<Dialog.Close
 								render={(props) => (
 									<Button {...props} variant="secondary" size="sm">
-										Cancel
+										{t("common:cancel")}
 									</Button>
 								)}
 							/>
@@ -262,7 +285,7 @@ export default function Sidebar() {
 								size="sm"
 								disabled={!newFolderName.trim()}
 							>
-								Create
+								{t("common:create")}
 							</Button>
 						</div>
 					</form>

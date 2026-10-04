@@ -1,0 +1,19 @@
+{
+	"emailNotFound": "未找到该邮件",
+	"draftVerificationFailedBody": "草稿校验失败——正文无法通过校验。请重试。",
+	"draftVerificationFailedKeeping": "草稿校验失败——已保留原有草稿不变。请重试。",
+	"draftVerificationFailedSend": "草稿校验失败——拒绝发送未经校验的内容。请重试。",
+	"draftSaved": "草稿已保存到「草稿箱」。请检查并确认后发送。",
+	"draftUpdated": "草稿已在「草稿箱」中更新。",
+	"draftNotFound": "未找到该草稿",
+	"moveFailed": "移动邮件失败",
+	"cannotDiscardNotDraft": "无法丢弃：该邮件不是草稿",
+	"hourlySendLimitExceeded": "已超出每小时发送上限（{{count}}/{{limit}}）。请稍后重试。",
+	"dailySendLimitExceeded": "已超出每日发送上限（{{count}}/{{limit}}）。请稍后重试。",
+	"originalEmailNotFound": "未找到原始邮件",
+	"invalidMailboxAddress": "邮箱地址无效",
+	"sendReplyFailed": "发送回复失败：{{message}}",
+	"sendEmailFailed": "发送邮件失败：{{message}}",
+	"replySent": "回复已发送至 {{to}}",
+	"emailSent": "邮件已发送至 {{to}}"
+}

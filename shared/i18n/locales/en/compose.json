@@ -1,0 +1,42 @@
+{
+	"title": {
+		"editDraft": "Edit Draft",
+		"reply": "Reply",
+		"replyAll": "Reply All",
+		"forward": "Forward",
+		"newMessage": "New Message"
+	},
+	"fields": {
+		"to": "To",
+		"cc": "CC",
+		"bcc": "BCC",
+		"subject": "Subject",
+		"message": "Message"
+	},
+	"placeholder": {
+		"recipientMultiple": "recipient@example.com, another@example.com",
+		"recipientSingle": "recipient@example.com",
+		"separateAddresses": "Separate multiple addresses with commas",
+		"subject": "Email subject"
+	},
+	"showCcBcc": "CC / BCC",
+	"actions": {
+		"closeCompose": "Close compose",
+		"discard": "Discard",
+		"saving": "Saving...",
+		"saveAsDraft": "Save as Draft",
+		"sending": "Sending...",
+		"send": "Send"
+	},
+	"toast": {
+		"draftSaved": "Draft saved!",
+		"draftSaveFailed": "Failed to save draft.",
+		"sending": "Sending email...",
+		"sent": "Email sent!",
+		"sendFailed": "Failed to send email."
+	},
+	"error": {
+		"noMailbox": "No mailbox selected.",
+		"noRecipient": "Add at least one recipient."
+	}
+}

@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import { useTranslation } from "react-i18next";
 import { formatSenderFull } from "shared/participants";
+import { isLocale } from "shared/i18n/config";
 import {
 	formatDetailDate,
 	formatShortDate,
@@ -71,9 +73,12 @@ export default function ThreadMessage({
 	onViewSource,
 	onPreviewImage,
 }: ThreadMessageProps) {
+	const { t, i18n } = useTranslation("mailPanel");
+	// Follow the active UI language so timestamps match the rest of the app.
+	const locale = isLocale(i18n.language) ? i18n.language : "en";
 	const isSelf = email.sender === mailboxEmail;
 	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""}`;
-	const senderLabel = isDraft ? "Draft reply" : isSelf ? "You" : formatSenderFull(email.sender_name, email.sender);
+	const senderLabel = isDraft ? t("message.draftReply") : isSelf ? t("message.you") : formatSenderFull(email.sender_name, email.sender);
 
 	if (!isExpanded) {
 		return (
@@ -90,7 +95,7 @@ export default function ThreadMessage({
 								{senderLabel}
 							</span>
 							<span className="text-xs text-kumo-subtle shrink-0">
-								{formatDetailDate(email.date)}
+								{formatDetailDate(email.date, locale)}
 							</span>
 						</div>
 						<p className="text-xs text-kumo-subtle truncate">
@@ -112,7 +117,7 @@ export default function ThreadMessage({
 							type="button"
 							onClick={onToggleExpand}
 							className="shrink-0"
-							aria-label="Collapse message"
+							aria-label={t("message.collapse")}
 						>
 							<div className="cursor-pointer hover:ring-2 hover:ring-kumo-brand/30 transition-shadow rounded-full">
 								<Avatar isDraft={isDraft} isSelf={isSelf} sender={formatSenderFull(email.sender_name, email.sender)} />
@@ -123,24 +128,26 @@ export default function ThreadMessage({
 								<span className="text-sm font-medium text-kumo-default truncate">
 									{senderLabel}
 								</span>
-								{isDraft && <Badge variant="outline">Draft</Badge>}
+								{isDraft && <Badge variant="outline">{t("message.draftBadge")}</Badge>}
 							</div>
-							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
+							<div className="text-xs text-kumo-subtle">
+								{t("message.toLabel", { email: email.recipient })}
+							</div>
 						</div>
 					</div>
 					<div className="flex items-center gap-1 shrink-0">
 						<span className="text-xs text-kumo-subtle">
-							{formatShortDate(email.date)}
+							{formatShortDate(email.date, locale)}
 						</span>
 						{onViewSource && (
-							<Tooltip content="View source" side="bottom" asChild>
+							<Tooltip content={t("message.viewSource")} side="bottom" asChild>
 								<Button
 									variant="ghost"
 									shape="square"
 									size="sm"
 									icon={<Code size={14} />}
 									onClick={onViewSource}
-									aria-label="View source"
+									aria-label={t("message.viewSource")}
 									className="transition-opacity !h-6 !w-6"
 								/>
 							</Tooltip>
@@ -149,7 +156,7 @@ export default function ThreadMessage({
 							type="button"
 							onClick={onToggleExpand}
 							className="ml-1"
-							aria-label="Collapse message"
+							aria-label={t("message.collapse")}
 						>
 							<ChevronUp
 								size={14}
@@ -182,7 +189,7 @@ export default function ThreadMessage({
 								loading={isSending}
 								disabled={isSending}
 							>
-								{isSending ? "Sending..." : "Send"}
+								{isSending ? t("message.sending") : t("message.send")}
 							</Button>
 						)}
 						{onEditDraft && (
@@ -193,7 +200,7 @@ export default function ThreadMessage({
 								onClick={onEditDraft}
 								disabled={isSending}
 							>
-								Edit
+								{t("message.edit")}
 							</Button>
 						)}
 						{onDeleteDraft && (
@@ -204,7 +211,7 @@ export default function ThreadMessage({
 								onClick={onDeleteDraft}
 								disabled={isSending}
 							>
-								Discard
+								{t("message.discard")}
 							</Button>
 						)}
 					</div>

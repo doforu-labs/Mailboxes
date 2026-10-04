@@ -7,6 +7,7 @@
 import { Badge, Button, useKumoToastManager } from "@cloudflare/kumo";
 import { ChevronDown, ChevronRight, Settings, Link, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import api from "~/services/api";
 
 // ── CF Credentials (D1 via API) ──────────────────────────────────
@@ -79,6 +80,7 @@ export const CF_TOKEN_TEMPLATE_URL = (() => {
 // ── Platform Settings Section ────────────────────────────────────
 
 export function PlatformSettingsSection() {
+	const { t } = useTranslation("settings");
 	const toastManager = useKumoToastManager();
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [creds, setCreds] = useState<CfCredentials>({ cfApiToken: "", cfAccountId: "" });
@@ -114,7 +116,7 @@ export function PlatformSettingsSection() {
 	const handleSave = async () => {
 		if (!creds.cfApiToken.trim() || !creds.cfAccountId.trim()) {
 			toastManager.add({
-				title: "Both API Token and Account ID are required",
+				title: t("platform.bothRequired"),
 				variant: "error",
 			});
 			return;
@@ -130,8 +132,8 @@ export function PlatformSettingsSection() {
 			});
 		} catch {
 			toastManager.add({
-				title: "Verification failed",
-				description: "The provided Cloudflare API Token or Account ID is invalid. Please check and try again.",
+				title: t("platform.verificationFailed"),
+				description: t("platform.invalidCredentials"),
 				variant: "error",
 			});
 			setIsVerifying(false);
@@ -145,8 +147,8 @@ export function PlatformSettingsSection() {
 			await saveCfCredentials(creds);
 		} catch {
 			toastManager.add({
-				title: "Failed to save credentials",
-				description: "An error occurred while saving to the database. Please try again.",
+				title: t("platform.saveFailed"),
+				description: t("platform.databaseError"),
 				variant: "error",
 			});
 			setIsSaving(false);
@@ -155,10 +157,13 @@ export function PlatformSettingsSection() {
 		setIsSaving(false);
 		setHasChanges(false);
 		toastManager.add({
-			title: "Cloudflare credentials verified successfully",
+			title: t("platform.verified"),
 			description: result.accountName
-				? `Account: ${result.accountName} · ${result.zones.length} zone(s) found`
-				: `${result.zones.length} zone(s) found`,
+				? t("platform.accountSummary", {
+						accountName: result.accountName,
+						count: result.zones.length,
+					})
+				: t("platform.zonesFound", { count: result.zones.length }),
 		});
 	};
 
@@ -175,14 +180,18 @@ export function PlatformSettingsSection() {
 				</div>
 				<div className="min-w-0 flex-1">
 					<span className="text-sm font-medium text-kumo-default">
-						Platform Settings
+						{t("platformSettingsTitle")}
 					</span>
 					<span className="text-xs text-kumo-subtle ml-2">
-						Cloudflare API credentials
+						{t("platform.credentialsSubtitle")}
 					</span>
 				</div>
 				<Badge variant={isConfigured ? "success" : "warning"}>
-					{isLoading ? "Loading…" : isConfigured ? "Configured" : "Not configured"}
+					{isLoading
+						? t("platform.loading")
+						: isConfigured
+							? t("platform.configured")
+							: t("platform.notConfigured")}
 				</Badge>
 				{isExpanded ? (
 					<ChevronDown size={16} className="text-kumo-muted shrink-0" />
@@ -196,7 +205,7 @@ export function PlatformSettingsSection() {
 				<div className="border-t border-kumo-line px-5 py-5 space-y-4">
 					<div>
 						<label className="mb-1 block text-sm font-medium text-kumo-default">
-							Cloudflare API Token
+							{t("platform.apiTokenLabel")}
 						</label>
 						<div className="relative">
 							<input
@@ -219,7 +228,7 @@ export function PlatformSettingsSection() {
 					</div>
 					<div>
 						<label className="mb-1 block text-sm font-medium text-kumo-default">
-							Cloudflare Account ID
+							{t("platform.accountIdLabel")}
 						</label>
 						<div className="relative">
 							<input
@@ -254,30 +263,28 @@ export function PlatformSettingsSection() {
 								className="text-blue-600 underline font-medium inline-flex items-center gap-1"
 							>
 								<Link size={12} />
-								Create a pre-configured Token →
+								{t("platform.createToken")}
 							</a>
 						</p>
 						<p className="text-xs text-kumo-subtle mt-2">
-							Clicking the link above auto-selects the first 3 permissions. You still need to add the 4th one manually:
+							{t("platform.autoSelectHint")}
 						</p>
 						<ul className="text-xs text-kumo-subtle list-disc list-inside mt-1 space-y-0.5">
 							<li>
-								Zone Edit — Create zones (required)
+								{t("platform.permZoneEdit")}
 							</li>
 							<li>
-								DNS Edit — Manage DNS records
+								{t("platform.permDnsEdit")}
 							</li>
 							<li>
-								Zone Settings Edit — Zone settings
+								{t("platform.permZoneSettingsEdit")}
 							</li>
 							<li>
-								Email Routing Rules Edit — Email Routing (⚠️ add manually)
+								{t("platform.permEmailRoutingEdit")}
 							</li>
 						</ul>
 						<p className="text-xs text-kumo-subtle mt-2">
-							The link auto-selects the first 3 permissions. Click "Add more" to manually add:
-								Zone → Email Routing Rules → Edit
-								Then copy the Token and paste it into the field above.
+							{t("platform.addMoreHint")}
 						</p>
 					</div>
 
@@ -289,7 +296,11 @@ export function PlatformSettingsSection() {
 							disabled={isVerifying || isSaving || !creds.cfApiToken.trim() || !creds.cfAccountId.trim()}
 							loading={isVerifying || isSaving}
 						>
-							{isVerifying ? "Verifying…" : isSaving ? "Saving…" : "Verify & Save"}
+							{isVerifying
+								? t("platform.verifying")
+								: isSaving
+									? t("platform.saving")
+									: t("platform.verifyAndSave")}
 						</Button>
 					</div>
 				</div>

@@ -1,0 +1,42 @@
+{
+	"header": {
+		"messageCount_one": "此会话中共有 {{count}} 封邮件",
+		"messageCount_other": "此会话中共有 {{count}} 封邮件"
+	},
+	"attachment": {
+		"count_one": "{{count}} 个附件",
+		"count_other": "{{count}} 个附件"
+	},
+	"desc": {
+		"confirmDelete": "确定要删除这封邮件吗？",
+		"confirmDiscardDraft": "要丢弃这封草稿吗？",
+		"draftDiscarded": "草稿已丢弃",
+		"sendErrorNoRecipient": "无法发送：此草稿未设置收件人。",
+		"sendErrorInvalidRecipient": "无法发送：此草稿未设置有效的收件人。",
+		"emailSent": "邮件已发送！",
+		"sendFailed": "发送邮件失败。",
+		"sendStatusSending": "正在发送...",
+		"sendStatusSent": "发送成功",
+		"sendStatusFailed": "投递失败 - 邮件未发送"
+	},
+	"source": {
+		"title": "邮件原始标头",
+		"noHeaders": "此邮件没有可用的标头数据。",
+		"downloadOriginal": "下载原文件"
+	},
+	"iframe": {
+		"title": "邮件内容"
+	},
+	"message": {
+		"draftReply": "草稿回复",
+		"you": "你",
+		"draftBadge": "草稿",
+		"toLabel": "收件人：{{email}}",
+		"collapse": "折叠邮件",
+		"viewSource": "查看原始内容",
+		"sending": "正在发送...",
+		"send": "发送",
+		"edit": "编辑",
+		"discard": "丢弃"
+	}
+}

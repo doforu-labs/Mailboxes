@@ -1,0 +1,42 @@
+{
+	"header": {
+		"messageCount_one": "{{count}} message in this thread",
+		"messageCount_other": "{{count}} messages in this thread"
+	},
+	"attachment": {
+		"count_one": "{{count}} attachment",
+		"count_other": "{{count}} attachments"
+	},
+	"desc": {
+		"confirmDelete": "Are you sure you want to delete this email?",
+		"confirmDiscardDraft": "Discard this draft?",
+		"draftDiscarded": "Draft discarded",
+		"sendErrorNoRecipient": "Cannot send: no recipient set on this draft.",
+		"sendErrorInvalidRecipient": "Cannot send: no valid recipient set on this draft.",
+		"emailSent": "Email sent!",
+		"sendFailed": "Failed to send email.",
+		"sendStatusSending": "Sending...",
+		"sendStatusSent": "Sent successfully",
+		"sendStatusFailed": "Delivery failed - email was not sent"
+	},
+	"source": {
+		"title": "Email Source Headers",
+		"noHeaders": "No header data available for this email.",
+		"downloadOriginal": "Download Original"
+	},
+	"iframe": {
+		"title": "Email content"
+	},
+	"message": {
+		"draftReply": "Draft reply",
+		"you": "You",
+		"draftBadge": "Draft",
+		"toLabel": "To: {{email}}",
+		"collapse": "Collapse message",
+		"viewSource": "View source",
+		"sending": "Sending...",
+		"send": "Send",
+		"edit": "Edit",
+		"discard": "Discard"
+	}
+}

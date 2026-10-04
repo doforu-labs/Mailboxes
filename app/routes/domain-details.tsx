@@ -26,7 +26,8 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { useState } from "react";
-import { Link as RouterLink, useNavigate, useParams } from "react-router";
+import { Link as RouterLink, type MetaArgs, useNavigate, useParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { CatchAllDialog } from "~/components/CatchAllDialog";
@@ -39,6 +40,9 @@ import {
 import { useMailboxes } from "~/queries/mailboxes";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "~/queries/api-keys";
 import api, { type VerifyResendResult } from "~/services/api";
+import { isLocale } from "shared/i18n/config";
+import { translate } from "shared/i18n/translate";
+import type { Locale } from "../../shared/i18n/types";
 
 // ── DNS Record Static Data ──────────────────────────────────────
 
@@ -50,26 +54,29 @@ interface DnsRecord {
 	description: string;
 }
 
-function getDnsRecords(domain: string): DnsRecord[] {
+function getDnsRecords(
+	domain: string,
+	t: (key: string) => string,
+): DnsRecord[] {
 	return [
 		{
 			type: "MX",
 			name: `feedback-smtp.${domain}`,
 			value: "feedback-smtp.us-east-1.amazonses.com",
 			priority: 10,
-			description: "Bounce and complaint notifications",
+			description: t("dnsRecordMxBounceDescription"),
 		},
 		{
 			type: "TXT",
 			name: domain,
 			value: "v=spf1 include:amazonses.com ~all",
-			description: "Authorize Amazon SES to send on behalf of this domain",
+			description: t("dnsRecordSpfDescription"),
 		},
 		{
 			type: "CNAME",
 			name: `resend._domainkey.${domain}`,
 			value: "resend._domainkey.us-east-1.amazonses.com",
-			description: "DKIM signing key for email authentication",
+			description: t("dnsRecordDkimDescription"),
 		},
 	];
 }
@@ -83,11 +90,12 @@ function DnsRecordRow({
 	record: DnsRecord;
 	domain: string;
 }) {
+	const { t } = useTranslation("domainDetails");
 	const toastManager = useKumoToastManager();
 
 	const handleCopy = (value: string) => {
 		navigator.clipboard.writeText(value);
-		toastManager.add({ title: "Copied to clipboard" });
+		toastManager.add({ title: t("copiedToClipboard") });
 	};
 
 	const displayName =
@@ -109,7 +117,7 @@ function DnsRecordRow({
 				</div>
 				{record.priority !== undefined && (
 					<span className="text-xs text-kumo-subtle">
-						Priority: {record.priority}
+						{t("dnsRecordPriority", { priority: record.priority })}
 					</span>
 				)}
 			</div>
@@ -121,8 +129,8 @@ function DnsRecordRow({
 					type="button"
 					onClick={() => handleCopy(record.value)}
 					className="shrink-0 rounded-md p-1.5 text-kumo-muted hover:text-kumo-default hover:bg-kumo-fill transition-colors"
-					aria-label={`Copy ${record.value}`}
-					title="Copy value"
+					aria-label={t("dnsRecordCopyAriaLabel", { value: record.value })}
+					title={t("dnsRecordCopyValueTitle")}
 				>
 					<Copy size={14} />
 				</button>
@@ -147,6 +155,7 @@ function DeleteDomainDialog({
 	onDelete: () => void;
 	isDeleting: boolean;
 }) {
+	const { t } = useTranslation("domainDetails");
 	return (
 		<Dialog.Root
 			open={open}
@@ -160,19 +169,19 @@ function DeleteDomainDialog({
 						<TriangleAlert size={20} />
 					</div>
 					<Dialog.Title className="text-base font-semibold text-kumo-default">
-						Delete Domain
+						{t("deleteDomain")}
 					</Dialog.Title>
 				</div>
 				<p className="text-sm text-kumo-subtle mb-5">
-					Are you sure you want to delete{" "}
-					<strong className="text-kumo-default">{domainName}</strong>?
-					This will remove all DNS records and cannot be undone.
+					{t("deleteDomainConfirmPrefix")}
+					<strong className="text-kumo-default">{domainName}</strong>
+					{t("deleteDomainConfirmSuffix")}
 				</p>
 				<div className="flex justify-end gap-2">
 					<Dialog.Close
 						render={(props) => (
 							<Button {...props} variant="secondary" size="sm" disabled={isDeleting}>
-								Cancel
+								{t("common:cancel")}
 							</Button>
 						)}
 					/>
@@ -182,7 +191,7 @@ function DeleteDomainDialog({
 						loading={isDeleting}
 						onClick={onDelete}
 					>
-						Delete
+						{t("common:delete")}
 					</Button>
 				</div>
 			</Dialog>
@@ -192,11 +201,18 @@ function DeleteDomainDialog({
 
 // ── Page Component ──────────────────────────────────────────────
 
-export function meta() {
-	return [{ title: "Domain Details — Mailboxes" }];
+export function meta({ matches }: MetaArgs) {
+	const rootData = matches.find((m) => m?.id === "root")?.data as
+		| { locale?: string }
+		| undefined;
+	const locale = isLocale(rootData?.locale) ? rootData.locale : "en";
+	return [{ title: translate(locale, "domainDetails:metaTitle") }];
 }
 
 export default function DomainDetailsRoute() {
+	const { t } = useTranslation("domainDetails");
+	const { i18n } = useTranslation();
+	const locale: Locale = isLocale(i18n.language) ? i18n.language : "en";
 	const { id: domainId } = useParams();
 	const navigate = useNavigate();
 	const qc = useQueryClient();
@@ -243,7 +259,7 @@ export default function DomainDetailsRoute() {
 
 	const handleCopy = (value: string) => {
 		navigator.clipboard.writeText(value);
-		toastManager.add({ title: "Copied to clipboard" });
+		toastManager.add({ title: t("copiedToClipboard") });
 	};
 
 	const handleVerifyApiKey = async () => {
@@ -272,7 +288,7 @@ export default function DomainDetailsRoute() {
 		const trimmed = apiKeyInput.trim();
 		if (!trimmed) {
 			toastManager.add({
-				title: "API key cannot be empty",
+				title: t("apiKeyEmpty"),
 				variant: "error",
 			});
 			return;
@@ -280,7 +296,7 @@ export default function DomainDetailsRoute() {
 		// Auto-verify if not already verified
 		if (apiKeyVerifyStatus !== "valid") {
 			toastManager.add({
-				title: "Please verify the API key first",
+				title: t("verifyApiKeyFirst"),
 				variant: "error",
 			});
 			return;
@@ -290,14 +306,14 @@ export default function DomainDetailsRoute() {
 				domainId: domain.id,
 				apiKey: trimmed,
 			});
-			toastManager.add({ title: "Resend API key updated" });
+			toastManager.add({ title: t("resendApiKeyUpdated") });
 			setIsEditingApiKey(false);
 			setApiKeyInput("");
 			setApiKeyVerifyStatus("idle");
 			setApiKeyVerifyResult(null);
 		} catch {
 			toastManager.add({
-				title: "Failed to update API key",
+				title: t("failedToUpdateApiKey"),
 				variant: "error",
 			});
 		}
@@ -321,18 +337,18 @@ export default function DomainDetailsRoute() {
 				const dnsCreated = result.dnsResults?.some(r => r.status === "created");
 				toastManager.add({
 					title: dnsCreated
-						? "Resend domain created and DNS records configured"
-						: "Resend domain created. Add DNS records manually to enable sending",
+						? t("resendDomainCreatedDnsConfigured")
+						: t("resendDomainCreatedAddDnsManual"),
 				});
 			} else {
 				toastManager.add({
-					title: result.error || "Failed to setup Resend domain",
+					title: result.error || t("failedToSetupResendDomain"),
 					variant: "error",
 				});
 			}
 		} catch {
 			toastManager.add({
-				title: "Failed to setup Resend domain",
+				title: t("failedToSetupResendDomain"),
 				variant: "error",
 			});
 		} finally {
@@ -345,11 +361,11 @@ export default function DomainDetailsRoute() {
 		setIsDeleting(true);
 		try {
 			await deleteDomain.mutateAsync(domain.id);
-			toastManager.add({ title: "Domain deleted" });
+			toastManager.add({ title: t("domainDeleted") });
 			navigate("/settings");
 		} catch {
 			toastManager.add({
-				title: "Failed to delete domain",
+				title: t("failedToDeleteDomain"),
 				variant: "error",
 			});
 		} finally {
@@ -377,18 +393,18 @@ export default function DomainDetailsRoute() {
 							className="inline-flex items-center gap-1.5 text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
 						>
 							<ArrowLeft size={14} />
-							Back to Mailboxes
+							{t("backToMailboxes")}
 						</RouterLink>
 					</div>
 					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6 text-center">
 						<h2 className="text-lg font-semibold text-kumo-default mb-2">
-							Domain not found
+							{t("domainNotFoundTitle")}
 						</h2>
 						<p className="text-sm text-kumo-subtle mb-5">
-							The domain you're looking for doesn't exist or has been deleted.
+							{t("domainNotFoundDescription")}
 						</p>
 						<Button variant="primary" onClick={() => navigate("/settings")}>
-							Back to Mailboxes
+							{t("backToMailboxes")}
 						</Button>
 					</div>
 				</div>
@@ -396,7 +412,7 @@ export default function DomainDetailsRoute() {
 		);
 	}
 
-	const dnsRecords = getDnsRecords(domain.name);
+	const dnsRecords = getDnsRecords(domain.name, t);
 	const maskedKey = domain.resend_api_key
 		? `${domain.resend_api_key.slice(0, 4)}${"•".repeat(24)}${domain.resend_api_key.slice(-4)}`
 		: null;
@@ -412,7 +428,7 @@ export default function DomainDetailsRoute() {
 							className="inline-flex items-center gap-1.5 text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
 						>
 							<ArrowLeft size={14} />
-							Back to Mailboxes
+							{t("backToMailboxes")}
 						</RouterLink>
 					</div>
 					<h1 className="text-2xl font-bold text-kumo-default mb-1">
@@ -421,11 +437,15 @@ export default function DomainDetailsRoute() {
 					<div className="flex items-center gap-3">
 						<DomainFullStatus domain={domain} />
 						<span className="text-xs text-kumo-subtle">
-							Created{" "}
-							{new Date(domain.created_at).toLocaleDateString(undefined, {
-								year: "numeric",
-								month: "short",
-								day: "numeric",
+							{t("created", {
+								date: new Date(domain.created_at).toLocaleDateString(
+									locale === "zh" ? "zh-CN" : "en-US",
+									{
+										year: "numeric",
+										month: "short",
+										day: "numeric",
+									},
+								),
 							})}
 						</span>
 					</div>
@@ -434,11 +454,10 @@ export default function DomainDetailsRoute() {
 				{/* ── DNS Records ─────────────────────────────────── */}
 				<div className="mb-6">
 					<h2 className="text-lg font-semibold text-kumo-default mb-1">
-						DNS Records
+						{t("dnsRecordsTitle")}
 					</h2>
 					<p className="text-sm text-kumo-subtle mb-4">
-						Add these DNS records to verify your domain. Changes may take up to
-						48 hours to propagate.
+						{t("dnsRecordsDescription")}
 					</p>
 					<div className="space-y-3">
 						{dnsRecords.map((record, idx) => (
@@ -454,10 +473,10 @@ export default function DomainDetailsRoute() {
 				{/* ── Resend API Key ─────────────────────────────── */}
 				<div className="mb-6 rounded-xl border border-kumo-line bg-kumo-base p-5">
 					<h2 className="text-base font-semibold text-kumo-default mb-1">
-						Resend API Key
+						{t("resendApiKeyTitle")}
 					</h2>
 					<p className="text-sm text-kumo-subtle mb-4">
-						Required for sending emails via Resend.
+						{t("resendApiKeyDescription")}
 					</p>
 
 					{domain.resend_api_key && !isEditingApiKey ? (
@@ -471,7 +490,7 @@ export default function DomainDetailsRoute() {
 								type="button"
 								onClick={() => setShowApiKey(!showApiKey)}
 								className="shrink-0 rounded-md p-2 text-kumo-muted hover:text-kumo-default hover:bg-kumo-fill transition-colors"
-								aria-label={showApiKey ? "Hide API key" : "Show API key"}
+								aria-label={showApiKey ? t("resendApiKeyHideAriaLabel") : t("resendApiKeyShowAriaLabel")}
 							>
 								{showApiKey ? (
 									<EyeOff size={16} />
@@ -483,8 +502,8 @@ export default function DomainDetailsRoute() {
 								type="button"
 								onClick={() => handleCopy(domain.resend_api_key!)}
 								className="shrink-0 rounded-md p-2 text-kumo-muted hover:text-kumo-default hover:bg-kumo-fill transition-colors"
-								aria-label="Copy API key"
-								title="Copy to clipboard"
+								aria-label={t("resendApiKeyCopyAriaLabel")}
+								title={t("resendApiKeyCopyTitle")}
 							>
 								<Copy size={16} />
 							</button>
@@ -498,7 +517,7 @@ export default function DomainDetailsRoute() {
 									setApiKeyVerifyResult(null);
 								}}
 							>
-								Edit
+								{t("resendApiKeyEdit")}
 							</Button>
 						</div>
 					) : (
@@ -506,7 +525,7 @@ export default function DomainDetailsRoute() {
 							<div className="flex items-center gap-2">
 								<Input
 									type={showApiKey ? "text" : "password"}
-									placeholder="re_••••••••••••••••••••••••"
+									placeholder={t("resendApiKeyPlaceholder")}
 									size="sm"
 									value={apiKeyInput}
 									onChange={(e) => {
@@ -520,7 +539,7 @@ export default function DomainDetailsRoute() {
 									type="button"
 									onClick={() => setShowApiKey(!showApiKey)}
 									className="shrink-0 rounded-md p-2 text-kumo-muted hover:text-kumo-default hover:bg-kumo-fill transition-colors"
-									aria-label={showApiKey ? "Hide API key" : "Show API key"}
+									aria-label={showApiKey ? t("resendApiKeyHideAriaLabel") : t("resendApiKeyShowAriaLabel")}
 								>
 									{showApiKey ? (
 										<EyeOff size={16} />
@@ -536,24 +555,24 @@ export default function DomainDetailsRoute() {
 									{apiKeyVerifyStatus === "verifying" && (
 										<div className="flex items-center gap-2">
 											<Loader2 size={12} className="animate-spin text-kumo-subtle shrink-0" />
-											<span className="text-xs text-kumo-subtle">Verifying with Resend...</span>
+											<span className="text-xs text-kumo-subtle">{t("verifyingWithResend")}</span>
 										</div>
 									)}
 									{apiKeyVerifyStatus === "valid" && apiKeyVerifyResult && (
 										<div className="space-y-1.5">
-											<Badge variant="success"><CircleCheckBig size={12} fill="currentColor" /> API key verified</Badge>
+											<Badge variant="success"><CircleCheckBig size={12} fill="currentColor" /> {t("apiKeyVerified")}</Badge>
 											{apiKeyVerifyResult.sendingReady ? (
-												<Badge variant="success">Domain verified & ready to send</Badge>
+												<Badge variant="success">{t("domainVerifiedReadyToSend")}</Badge>
 											) : apiKeyVerifyResult.matchingDomain ? (
-												<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> Domain "{apiKeyVerifyResult.matchingDomain.domain}" is "{apiKeyVerifyResult.matchingDomain.status}" — <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">verify DNS records in Resend</a></Badge>
+												<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> {t("domainMatchingStatus", { domain: apiKeyVerifyResult.matchingDomain.domain, status: apiKeyVerifyResult.matchingDomain.status })}<a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">{t("verifyDnsRecordsInResend")}</a></Badge>
 											) : (
 												<div className="space-y-2">
-													<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> No matching domain for {domain.name} in Resend</Badge>
+													<Badge variant="warning"><TriangleAlert size={12} fill="currentColor" /> {t("noMatchingDomain", { name: domain.name })}</Badge>
 													<Button size="xs" onClick={handleSetupResendSending} disabled={isSettingUpResend}>
 														{isSettingUpResend ? (
-															<><Loader2 size={12} className="animate-spin" /> Setting up...</>
+															<><Loader2 size={12} className="animate-spin" /> {t("settingUp")}</>
 														) : (
-															"Create & Configure in Resend"
+															<>{t("createAndConfigureInResend")}</>
 														)}
 													</Button>
 												</div>
@@ -562,12 +581,12 @@ export default function DomainDetailsRoute() {
 									)}
 									{apiKeyVerifyStatus === "invalid" && (
 										<div>
-											<Badge variant="error"><TriangleAlert size={12} fill="currentColor" /> {apiKeyVerifyResult?.error || "Invalid API key"}</Badge>
+											<Badge variant="error"><TriangleAlert size={12} fill="currentColor" /> {apiKeyVerifyResult?.error || t("invalidApiKey")}</Badge>
 										</div>
 									)}
 									{apiKeyVerifyStatus === "error" && (
 										<div>
-											<Badge variant="error">Verification failed — try again</Badge>
+											<Badge variant="error">{t("verificationFailedRetry")}</Badge>
 										</div>
 									)}
 								</div>
@@ -582,9 +601,9 @@ export default function DomainDetailsRoute() {
 									disabled={!apiKeyInput || !apiKeyInput.trim() || isVerifyingApiKey}
 								>
 									{isVerifyingApiKey ? (
-										<><Loader2 size={14} className="animate-spin" /> Verifying…</>
+										<><Loader2 size={14} className="animate-spin" /> {t("verifying")}</>
 									) : (
-										<>Verify</>
+										<>{t("common:verify")}</>
 									)}
 								</Button>
 								<Button
@@ -594,7 +613,7 @@ export default function DomainDetailsRoute() {
 									disabled={updateApiKey.isPending || apiKeyVerifyStatus !== "valid"}
 									onClick={handleSaveApiKey}
 								>
-									Save
+									{t("common:save")}
 								</Button>
 								{domain.resend_api_key && (
 									<Button
@@ -608,7 +627,7 @@ export default function DomainDetailsRoute() {
 										}}
 										disabled={updateApiKey.isPending}
 									>
-										Cancel
+										{t("common:cancel")}
 									</Button>
 								)}
 							</div>
@@ -617,15 +636,15 @@ export default function DomainDetailsRoute() {
 
 					{!domain.resend_api_key && !isEditingApiKey && (
 						<p className="text-xs text-kumo-muted mt-2">
-							Not configured. Click{" "}
+							{t("resendApiKeyNotConfiguredPrefix")}
 							<button
 								type="button"
 								onClick={() => setIsEditingApiKey(true)}
 								className="text-kumo-accent hover:underline"
 							>
-								here
-							</button>{" "}
-							to add one.
+								{t("resendApiKeyNotConfiguredLink")}
+							</button>
+							{t("resendApiKeyNotConfiguredSuffix")}
 						</p>
 					)}
 				</div>
@@ -635,27 +654,27 @@ export default function DomainDetailsRoute() {
 					<div className="flex items-center justify-between">
 						<div>
 							<h2 className="text-base font-semibold text-kumo-default mb-1">
-								Catch-All Mailbox
+								{t("catchAllTitle")}
 							</h2>
 							<p className="text-sm text-kumo-subtle">
 								{domain.catch_all_mailbox ? (
 									<>
-										Emails for unknown addresses on{" "}
+										{t("catchAllRoutedPrefix")}
 										<code className="font-mono text-kumo-default">
 											{domain.name}
-										</code>{" "}
-										are routed to{" "}
+										</code>
+										{t("catchAllRoutedSuffix")}
 										<code className="font-mono text-kumo-default">
 											{domain.catch_all_mailbox}
 										</code>
 									</>
 								) : (
 									<>
-										No catch-all configured for{" "}
+										{t("catchAllNonePrefix")}
 										<code className="font-mono text-kumo-default">
 											{domain.name}
 										</code>
-										. Unknown addresses will be dropped.
+										{t("catchAllNoneSuffix")}
 									</>
 								)}
 							</p>
@@ -665,7 +684,7 @@ export default function DomainDetailsRoute() {
 							size="sm"
 							onClick={() => setIsCatchAllOpen(true)}
 						>
-							{domain.catch_all_mailbox ? "Edit" : "Configure"}
+							{domain.catch_all_mailbox ? t("catchAllEdit") : t("catchAllConfigure")}
 						</Button>
 					</div>
 				</div>
@@ -675,10 +694,10 @@ export default function DomainDetailsRoute() {
 				<div className="mb-6 rounded-xl border border-kumo-line bg-kumo-base p-5">
 					<div className="text-sm font-semibold text-kumo-default mb-1 flex items-center gap-2">
 						<Key size={16} />
-						API Keys
+						{t("apiKeysTitle")}
 					</div>
 					<div className="text-sm text-kumo-subtle mb-4">
-						Use API keys to send emails programmatically. Keys start with <code className="font-mono text-xs">mb_</code> and are scoped to this domain.
+						{t("apiKeysDescriptionPrefix")}<code className="font-mono text-xs">mb_</code>{t("apiKeysDescriptionSuffix")}
 					</div>
 
 					{isApiKeysLoading ? (
@@ -689,15 +708,15 @@ export default function DomainDetailsRoute() {
 						<>
 							{(!apiKeysData?.api_keys || apiKeysData.api_keys.length === 0) ? (
 								<div className="text-sm text-kumo-subtle mb-4">
-									No API keys yet. Create one to get started.
+									{t("apiKeysEmpty")}
 								</div>
 							) : (
 								<div className="mb-4">
 									<div className="flex text-xs font-medium text-kumo-subtle px-1 py-1 border-b border-kumo-line">
-										<div className="w-[160px]">Name</div>
-										<div className="w-[140px]">Key Prefix</div>
-										<div className="w-[80px]">Scopes</div>
-										<div className="flex-1">Last Used</div>
+										<div className="w-[160px]">{t("apiKeysColumnName")}</div>
+										<div className="w-[140px]">{t("apiKeysColumnKeyPrefix")}</div>
+										<div className="w-[80px]">{t("apiKeysColumnScopes")}</div>
+										<div className="flex-1">{t("apiKeysColumnLastUsed")}</div>
 										<div className="w-[60px]"></div>
 									</div>
 									{apiKeysData.api_keys.map((key) => (
@@ -708,7 +727,7 @@ export default function DomainDetailsRoute() {
 												<Badge variant="secondary">{key.scopes}</Badge>
 											</div>
 											<div className="flex-1 text-kumo-subtle">
-												{key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : "Never"}
+												{key.last_used_at ? new Date(key.last_used_at).toLocaleDateString(locale === "zh" ? "zh-CN" : "en-US") : t("apiKeysNever")}
 											</div>
 											<div className="w-[60px] flex justify-end">
 												<Button
@@ -727,7 +746,7 @@ export default function DomainDetailsRoute() {
 
 							<Button variant="primary" size="sm" onClick={() => setIsCreateOpen(true)}>
 								<Plus size={14} />
-								Create API Key
+								{t("createApiKey")}
 							</Button>
 						</>
 					)}
@@ -736,30 +755,30 @@ export default function DomainDetailsRoute() {
 				{/* Create API Key Dialog */}
 				<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
 					<Dialog size="sm" className="p-6">
-						<Dialog.Title>Create API Key</Dialog.Title>
+						<Dialog.Title>{t("createApiKey")}</Dialog.Title>
 						<div className="flex flex-col gap-4 py-4">
 							<Input
-								label="Key Name"
-								placeholder="e.g. Production App"
+								label={t("createApiKeyKeyName")}
+								placeholder={t("createApiKeyKeyNamePlaceholder")}
 								value={newKeyName}
 								onChange={(e) => setNewKeyName(e.target.value)}
 							/>
 							<div>
-								<div className="text-xs font-medium mb-1">Scopes</div>
+								<div className="text-xs font-medium mb-1">{t("createApiKeyScopes")}</div>
 								<Badge variant="secondary">send</Badge>
 								<div className="text-xs text-kumo-subtle mt-1">
-									Currently only "send" scope is available.
+									{t("createApiKeyScopeHint")}
 								</div>
 							</div>
 						</div>
 						<div className="flex justify-end gap-2">
-							<Button variant="secondary" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+							<Button variant="secondary" onClick={() => setIsCreateOpen(false)}>{t("common:cancel")}</Button>
 							<Button
 								variant="primary"
 								onClick={async () => {
 									try {
 										const result = await createApiKey.mutateAsync({
-											name: newKeyName.trim() || "Default",
+											name: newKeyName.trim() || t("createApiKeyDefaultName"),
 											scopes: "send",
 										});
 										setCreatedKeyData(result);
@@ -771,7 +790,7 @@ export default function DomainDetailsRoute() {
 								}}
 								disabled={createApiKey.isPending}
 							>
-								{createApiKey.isPending ? "Creating..." : "Create"}
+								{createApiKey.isPending ? t("createApiKeyCreating") : t("common:create")}
 							</Button>
 						</div>
 					</Dialog>
@@ -780,10 +799,10 @@ export default function DomainDetailsRoute() {
 				{/* Revealed Key Dialog */}
 				<Dialog.Root open={createdKeyData !== null} onOpenChange={(open) => { if (!open) { setCreatedKeyData(null); setCopiedId(null); } }}>
 					<Dialog size="sm" className="p-6">
-						<Dialog.Title>API Key Created</Dialog.Title>
+						<Dialog.Title>{t("apiKeyCreatedTitle")}</Dialog.Title>
 						<div className="flex flex-col gap-4 py-4">
 							<div className="text-sm">
-								Please save this key now. You won't be able to see it again.
+								{t("apiKeyCreatedSaveNow")}
 							</div>
 							<div className="bg-kumo-base border border-kumo-line rounded p-3 flex items-center justify-between">
 								<code className="font-mono text-sm break-all">
@@ -805,12 +824,12 @@ export default function DomainDetailsRoute() {
 							</div>
 							<div className="flex gap-1 bg-red-50 border border-red-200 rounded p-3 text-sm">
 								<TriangleAlert size={16} className="text-amber-500 shrink-0 mt-1" />
-								<span>This API key will not be shown again after you close this dialog.</span>
+								<span>{t("apiKeyCreatedWarning")}</span>
 							</div>
 						</div>
 						<div className="flex justify-end">
 							<Button variant="primary" onClick={() => { setCreatedKeyData(null); setCopiedId(null); }}>
-								I've saved my key
+								{t("apiKeyCreatedSaved")}
 							</Button>
 						</div>
 					</Dialog>
@@ -819,18 +838,17 @@ export default function DomainDetailsRoute() {
 				{/* Revoke Confirmation Dialog */}
 				<Dialog.Root open={revokeTarget !== null} onOpenChange={(open) => { if (!open) setRevokeTarget(null); }}>
 					<Dialog size="sm" className="p-6">
-						<Dialog.Title>Revoke API Key</Dialog.Title>
+						<Dialog.Title>{t("revokeApiKeyTitle")}</Dialog.Title>
 						<div className="flex flex-col gap-4 py-4">
 							<div className="flex gap-1 bg-red-50 border border-red-200 rounded p-3 text-sm">
 								<TriangleAlert size={16} className="text-red-500 shrink-0 mt-1" />
 								<span>
-									Are you sure you want to revoke the API key <strong>"{revokeTarget?.name}"</strong>?
-									Any services using this key will immediately lose access.
+									{t("revokeApiKeyConfirmPrefix")}<strong>"{revokeTarget?.name}"</strong>{t("revokeApiKeyConfirmSuffix")}
 								</span>
 							</div>
 						</div>
 						<div className="flex justify-end gap-2">
-							<Button variant="secondary" onClick={() => setRevokeTarget(null)}>Cancel</Button>
+							<Button variant="secondary" onClick={() => setRevokeTarget(null)}>{t("common:cancel")}</Button>
 							<Button
 								variant="destructive"
 								onClick={async () => {
@@ -844,7 +862,7 @@ export default function DomainDetailsRoute() {
 								}}
 								disabled={revokeApiKey.isPending}
 							>
-								{revokeApiKey.isPending ? "Revoking..." : "Revoke"}
+								{revokeApiKey.isPending ? t("revoking") : t("revoke")}
 							</Button>
 						</div>
 					</Dialog>
@@ -853,11 +871,10 @@ export default function DomainDetailsRoute() {
 				{/* ── Danger Zone ────────────────────────────────── */}
 				<div className="rounded-xl border border-red-200 bg-kumo-base p-5">
 					<h2 className="text-base font-semibold text-red-600 mb-1">
-						Danger Zone
+						{t("dangerZoneTitle")}
 					</h2>
 					<p className="text-sm text-kumo-subtle mb-4">
-						Permanently delete this domain and all associated configuration.
-						This action cannot be undone.
+						{t("dangerZoneDescription")}
 					</p>
 					<Button
 						variant="destructive"
@@ -865,7 +882,7 @@ export default function DomainDetailsRoute() {
 						icon={<Trash2 size={14} />}
 						onClick={() => setIsDeleteOpen(true)}
 					>
-						Delete Domain
+						{t("deleteDomain")}
 					</Button>
 				</div>
 			</div>

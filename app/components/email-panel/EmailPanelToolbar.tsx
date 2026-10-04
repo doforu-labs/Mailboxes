@@ -6,6 +6,7 @@
 
 import { Button, Tooltip } from "@cloudflare/kumo";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	Reply,
 	Forward,
@@ -61,6 +62,7 @@ export default function EmailPanelToolbar({
 	onViewSource,
 	onDelete,
 }: EmailPanelToolbarProps) {
+	const { t } = useTranslation("editor");
 	return (
 		<div className="flex items-center gap-1 px-3 py-2 border-b border-kumo-line shrink-0 md:px-4">
 			<Button
@@ -69,7 +71,7 @@ export default function EmailPanelToolbar({
 				size="sm"
 				icon={<ArrowLeft size={18} />}
 				onClick={onBack}
-				aria-label="Back to list"
+				aria-label={t("backToList")}
 				className="md:hidden shrink-0"
 			/>
 
@@ -82,7 +84,7 @@ export default function EmailPanelToolbar({
 						onClick={onSendDraft}
 						loading={isSending}
 					>
-						{isSending ? "Sending..." : "Send"}
+						{isSending ? t("common:sending") : t("common:send")}
 					</Button>
 					<Button
 						variant="secondary"
@@ -90,39 +92,39 @@ export default function EmailPanelToolbar({
 						icon={<Pencil size={16} />}
 						onClick={onEditDraft}
 					>
-						Edit
+						{t("edit")}
 					</Button>
 				</>
 			) : (
 				<>
-					<Tooltip content="Reply" side="bottom" asChild>
+					<Tooltip content={t("reply")} side="bottom" asChild>
 						<Button
 							variant="ghost"
 							shape="square"
 							size="sm"
 							icon={<Reply size={18} />}
 							onClick={onReply}
-							aria-label="Reply"
+							aria-label={t("reply")}
 						/>
 					</Tooltip>
-					<Tooltip content="Reply All" side="bottom" asChild>
+					<Tooltip content={t("replyAll")} side="bottom" asChild>
 						<Button
 							variant="ghost"
 							shape="square"
 							size="sm"
 							icon={<ReplyAll size={18} />}
 							onClick={onReplyAll}
-							aria-label="Reply All"
+							aria-label={t("replyAll")}
 						/>
 					</Tooltip>
-					<Tooltip content="Forward" side="bottom" asChild>
+					<Tooltip content={t("forward")} side="bottom" asChild>
 						<Button
 							variant="ghost"
 							shape="square"
 							size="sm"
 							icon={<Forward size={18} />}
 							onClick={onForward}
-							aria-label="Forward"
+							aria-label={t("forward")}
 						/>
 					</Tooltip>
 				</>
@@ -130,7 +132,7 @@ export default function EmailPanelToolbar({
 
 			<div className="h-5 w-px bg-kumo-fill mx-0.5" />
 
-			<Tooltip content={email.starred ? "Unstar" : "Star"} side="bottom" asChild>
+			<Tooltip content={email.starred ? t("unstar") : t("star")} side="bottom" asChild>
 				<Button
 					variant="ghost"
 					shape="square"
@@ -143,52 +145,52 @@ export default function EmailPanelToolbar({
 						/>
 					}
 					onClick={onToggleStar}
-					aria-label={email.starred ? "Unstar" : "Star"}
+					aria-label={email.starred ? t("unstar") : t("star")}
 				/>
 			</Tooltip>
 
-			<Tooltip content={email.read ? "Mark as unread" : "Mark as read"} side="bottom" asChild>
+			<Tooltip content={email.read ? t("markAsUnread") : t("markAsRead")} side="bottom" asChild>
 				<Button
 					variant="ghost"
 					shape="square"
 					size="sm"
 					icon={email.read ? <Mail size={18} /> : <MailOpen size={18} />}
 					onClick={onToggleRead}
-					aria-label={email.read ? "Mark as unread" : "Mark as read"}
+					aria-label={email.read ? t("markAsUnread") : t("markAsRead")}
 				/>
 			</Tooltip>
 
 			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
 
 			<div className="ml-auto flex items-center gap-0.5">
-				<Tooltip content="View source" side="bottom" asChild>
+				<Tooltip content={t("viewSource")} side="bottom" asChild>
 					<Button
 						variant="ghost"
 						shape="square"
 						size="sm"
 						icon={<Code size={18} />}
 						onClick={onViewSource}
-						aria-label="View source"
+						aria-label={t("viewSource")}
 					/>
 				</Tooltip>
-				<Tooltip content="Delete" side="bottom" asChild>
+				<Tooltip content={t("common:delete")} side="bottom" asChild>
 					<Button
 						variant="ghost"
 						shape="square"
 						size="sm"
 						icon={<Trash2 size={18} />}
 						onClick={onDelete}
-						aria-label="Delete"
+						aria-label={t("common:delete")}
 					/>
 				</Tooltip>
-				<Tooltip content="Close" side="bottom" asChild>
+				<Tooltip content={t("common:close")} side="bottom" asChild>
 					<Button
 						variant="ghost"
 						shape="square"
 						size="sm"
 						icon={<X size={18} />}
 						onClick={onBack}
-						aria-label="Close"
+						aria-label={t("common:close")}
 						className="hidden md:inline-flex"
 					/>
 				</Tooltip>
@@ -198,6 +200,7 @@ export default function EmailPanelToolbar({
 }
 
 function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id: string) => void }) {
+	const { t } = useTranslation("editor");
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
 
@@ -212,19 +215,19 @@ function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id:
 
 	return (
 		<div ref={ref} className="relative">
-			<Tooltip content="Move to folder" side="bottom" asChild>
+			<Tooltip content={t("moveToFolder")} side="bottom" asChild>
 				<Button
 					variant="ghost"
 					shape="square"
 					size="sm"
 					icon={<FolderIcon size={18} />}
 					onClick={() => setOpen((o) => !o)}
-					aria-label="Move to folder"
+					aria-label={t("moveToFolder")}
 				/>
 			</Tooltip>
 			{open && (
 				<div className="absolute top-full left-0 z-50 mt-1 min-w-[160px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
-					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Move to</div>
+					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">{t("moveTo")}</div>
 					<div className="h-px bg-kumo-line my-1" />
 					{folders.map((f) => (
 						<button

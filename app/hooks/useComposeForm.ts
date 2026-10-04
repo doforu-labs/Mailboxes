@@ -5,6 +5,7 @@
 
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	buildQuotedReplyBlock,
 	escapeHtml,
@@ -54,6 +55,10 @@ const EMPTY_FIELDS: ComposeFormFields = {
 };
 
 function getPrefixedSubject(subject: string, prefix: "Re" | "Fwd") {
+	// Intentionally NOT localized: subject prefixes ("Re" / "Fwd") are email
+	// protocol conventions understood across languages, and the recipient's
+	// language is unknown at send time. Keeping them English keeps the value
+	// deterministic and interoperable with other mail clients.
 	const expectedPrefix = `${prefix}: `;
 	return subject.startsWith(expectedPrefix)
 		? subject
@@ -64,6 +69,10 @@ function buildForwardBody(
 	original: NonNullable<ReturnType<typeof useUIStore.getState>["composeOptions"]["originalEmail"]>,
 	sigBlock: string,
 ) {
+	// Intentionally NOT localized: this HTML template is injected into the
+	// OUTGOING email body and read by whoever receives the mail, whose UI
+	// language is unknown. Localizing it would make the quoted header depend on
+	// the sender's locale; keeping it English keeps the payload deterministic.
 	const safeSender = escapeHtml(original.sender);
 	const safeSubject = escapeHtml(original.subject);
 	const safeBody = escapeHtml(stripHtml(original.body || "")).replace(/\n/g, "<br>");
@@ -165,6 +174,9 @@ function buildInitialComposeFields(
 
 export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const toastManager = useKumoToastManager();
+	// NOTE: hooks may call other hooks, so pulling the translator in here is fine.
+	// This hook is only ever invoked from React components (ComposeEmail / ComposePanel).
+	const { t } = useTranslation("compose");
 	const { composeOptions, closePanel, closeCompose } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const sendEmailMutation = useSendEmail();
@@ -186,9 +198,9 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const isDraftEdit = !!composeOptions.draftEmail;
 
 	const formTitle = useMemo(() => {
-		if (isDraftEdit) return "Edit Draft";
-		switch (composeOptions.mode) { case "reply": return "Reply"; case "reply-all": return "Reply All"; case "forward": return "Forward"; default: return "New Message"; }
-	}, [composeOptions.mode, isDraftEdit]);
+		if (isDraftEdit) return t("title.editDraft");
+		switch (composeOptions.mode) { case "reply": return t("title.reply"); case "reply-all": return t("title.replyAll"); case "forward": return t("title.forward"); default: return t("title.newMessage"); }
+	}, [composeOptions.mode, isDraftEdit, t]);
 
 	const sigBlock = useMemo(() => getSignatureBlock(currentMailbox?.settings), [currentMailbox]);
 
@@ -223,10 +235,10 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 				thread_id: composeOptions.originalEmail?.thread_id || composeOptions.draftEmail?.thread_id || undefined,
 				draft_id: composeOptions.draftEmail?.id || undefined,
 			} });
-			toastManager.add({ title: "Draft saved!" });
+			toastManager.add({ title: t("toast.draftSaved") });
 		}
 		catch (err: unknown) {
-			const message = (err instanceof Error ? err.message : null) || "Failed to save draft.";
+			const message = (err instanceof Error ? err.message : null) || t("toast.draftSaveFailed");
 			setError(message);
 			toastManager.add({ title: message, variant: "error" });
 		}
@@ -235,9 +247,9 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 
 	const handleSend = async (e: FormEvent, onClose: () => void) => {
 		e.preventDefault(); if (isSending) return; setError(null);
-		if (!currentMailbox || !mailboxId) { setError("No mailbox selected."); return; }
+		if (!currentMailbox || !mailboxId) { setError(t("error.noMailbox")); return; }
 		const toRecipients = splitEmailList(to);
-		if (toRecipients.length === 0) { setError("Add at least one recipient."); return; }
+		if (toRecipients.length === 0) { setError(t("error.noRecipient")); return; }
 		const ccRecipients = splitEmailList(cc); const bccRecipients = splitEmailList(bcc);
 		const fromName = currentMailbox.settings?.fromName || currentMailbox.name;
 		const from = fromName && fromName !== currentMailbox.email ? { email: currentMailbox.email, name: fromName } : currentMailbox.email;
@@ -251,15 +263,15 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			text: htmlToPlainText(body),
 		};
 		const draftId = composeOptions.draftEmail?.id; const mode = composeOptions.mode; const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
-		setIsSending(true); toastManager.add({ title: "Sending email..." });
+		setIsSending(true); toastManager.add({ title: t("toast.sending") });
 		try {
 			if ((mode === "reply" || mode === "reply-all") && originalId) await replyMutation.mutateAsync({ mailboxId, emailId: originalId, email: emailData });
 			else if (mode === "forward" && originalId) await forwardMutation.mutateAsync({ mailboxId, emailId: originalId, email: emailData });
 			else await sendEmailMutation.mutateAsync({ mailboxId, email: emailData });
 			if (draftId) deleteEmailMutation.mutate({ mailboxId, id: draftId });
-			toastManager.add({ title: "Email sent!" });
+			toastManager.add({ title: t("toast.sent") });
 			onClose();
-		} catch (err: unknown) { const message = (err instanceof Error ? err.message : null) || "Failed to send email."; setError(message); toastManager.add({ title: message, variant: "error" }); }
+		} catch (err: unknown) { const message = (err instanceof Error ? err.message : null) || t("toast.sendFailed"); setError(message); toastManager.add({ title: message, variant: "error" }); }
 		finally { setIsSending(false); }
 	};
 

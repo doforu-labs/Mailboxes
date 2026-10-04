@@ -11,14 +11,19 @@ import {
 	RotateCcw,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 import type { AiProviderSettings } from "~/types";
 
+// [i18n] Intentionally NOT translated: this is the example system prompt content
+// that gets sent to the AI model. Keeping it in English preserves a stable,
+// predictable instruction for the model regardless of the UI language.
 const PROMPT_PLACEHOLDER = `You are an email assistant that helps manage this inbox. You read emails, draft replies, and help organize conversations.\n\nWrite like a real person. Short, direct, flowing prose. Plain text only.\n\n(Leave empty to use the full built-in default prompt)`;
 
 export default function MailboxSettingsRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
+	const { t } = useTranslation("settings");
 	const toastManager = useKumoToastManager();
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
@@ -71,10 +76,10 @@ export default function MailboxSettingsRoute() {
 
 		try {
 			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
-			toastManager.add({ title: "Settings saved!" });
+			toastManager.add({ title: t("mailbox.saved") });
 		} catch {
 			toastManager.add({
-				title: "Failed to save settings",
+				title: t("mailbox.saveFailed"),
 				variant: "error",
 			});
 		} finally {
@@ -100,21 +105,21 @@ export default function MailboxSettingsRoute() {
 	return (
 		<div className="h-full overflow-y-auto">
 			<div className="mx-auto max-w-2xl px-4 py-4 md:px-8 md:py-6">
-				<h1 className="mb-6 text-lg font-semibold text-kumo-default">Settings</h1>
+				<h1 className="mb-6 text-lg font-semibold text-kumo-default">{t("title")}</h1>
 
 				<div className="space-y-6">
 					{/* General */}
 					<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
 						<div className="mb-4 text-sm font-medium text-kumo-default">
-							General
+							{t("mailbox.general")}
 						</div>
 						<div className="space-y-3">
 							<Input
-								label="Display Name"
+								label={t("mailbox.displayNameLabel")}
 								value={displayName}
 								onChange={(e) => setDisplayName(e.target.value)}
 							/>
-							<Input label="Email" type="email" value={mailbox.email} disabled />
+							<Input label={t("mailbox.emailLabel")} type="email" value={mailbox.email} disabled />
 						</div>
 					</div>
 
@@ -124,12 +129,14 @@ export default function MailboxSettingsRoute() {
 							<div className="flex items-center gap-2">
 								<Cpu size={16} className="text-kumo-subtle" />
 								<span className="text-sm font-medium text-kumo-default">
-									AI Model
+									{t("mailbox.aiModelTitle")}
 								</span>
 								{isCustomAi ? (
-									<Badge variant="primary">Custom</Badge>
+									<Badge variant="primary">{t("mailbox.badgeCustom")}</Badge>
 								) : (
-									<Badge variant="secondary">Cloudflare</Badge>
+									<Badge variant="secondary">
+										{t("mailbox.badgeCloudflare")}
+									</Badge>
 								)}
 							</div>
 							<Switch
@@ -141,23 +148,23 @@ export default function MailboxSettingsRoute() {
 						{useCustomAi ? (
 							<div className="space-y-3">
 								<Input
-									label="Base URL"
+									label={t("mailbox.baseUrlLabel")}
 									type="url"
-									placeholder="https://api.deepseek.com/v1"
+									placeholder={t("mailbox.baseUrlPlaceholder")}
 									value={aiBaseUrl}
 									onChange={(e) => setAiBaseUrl(e.target.value)}
 								/>
 								<Input
-									label="Model Name"
-									placeholder="deepseek-v4-flash"
+									label={t("mailbox.modelNameLabel")}
+									placeholder={t("mailbox.modelNamePlaceholder")}
 									value={aiModelName}
 									onChange={(e) => setAiModelName(e.target.value)}
 								/>
 								<div className="relative">
 									<Input
-										label="API Key"
+										label={t("mailbox.apiKeyLabel")}
 										type={showAiApiKey ? "text" : "password"}
-										placeholder="sk-..."
+										placeholder={t("mailbox.apiKeyPlaceholder")}
 										value={aiApiKey}
 										onChange={(e) => setAiApiKey(e.target.value)}
 									/>
@@ -165,19 +172,23 @@ export default function MailboxSettingsRoute() {
 										type="button"
 										onClick={() => setShowAiApiKey(!showAiApiKey)}
 										className="absolute right-2 top-1/2 -translate-y-1/2 text-kumo-subtle hover:text-kumo-default transition-colors"
-										title={showAiApiKey ? "Hide key" : "Show key"}
+										title={showAiApiKey ? t("mailbox.hideKey") : t("mailbox.showKey")}
 									>
 										{showAiApiKey ? "●" : "○"}
 									</button>
 								</div>
 								<p className="text-xs text-kumo-subtle">
-									Falls back to Cloudflare Workers AI if the custom provider is unreachable.
+									{t("mailbox.customFallbackHint")}
 								</p>
 							</div>
 						) : (
 							<p className="text-xs text-kumo-subtle">
-								Using <strong>Cloudflare Workers AI</strong> — {aiModelName || "@cf/moonshotai/kimi-k2.6"}.
-								Toggle the switch above to connect a custom OpenAI-compatible provider.
+								<Trans
+									t={t}
+									i18nKey="mailbox.cloudflareInUse"
+									values={{ model: aiModelName || "@cf/moonshotai/kimi-k2.6" }}
+									components={{ strong: <strong /> }}
+								/>
 							</p>
 						)}
 					</div>
@@ -188,12 +199,12 @@ export default function MailboxSettingsRoute() {
 							<div className="flex items-center gap-2">
 								<Bot size={16} className="text-kumo-subtle" />
 								<span className="text-sm font-medium text-kumo-default">
-									AI Agent Prompt
+									{t("mailbox.agentPromptTitle")}
 								</span>
 								{isCustomPrompt ? (
-									<Badge variant="primary">Custom</Badge>
+									<Badge variant="primary">{t("mailbox.badgeCustom")}</Badge>
 								) : (
-									<Badge variant="secondary">Default</Badge>
+									<Badge variant="secondary">{t("mailbox.badgeDefault")}</Badge>
 								)}
 							</div>
 							{isCustomPrompt && (
@@ -203,13 +214,12 @@ export default function MailboxSettingsRoute() {
 									icon={<RotateCcw size={14} />}
 									onClick={handleResetPrompt}
 								>
-									Reset to default
+									{t("mailbox.resetToDefault")}
 								</Button>
 							)}
 						</div>
 						<p className="mb-3 text-xs text-kumo-subtle">
-							Customize how the AI agent behaves for this mailbox.
-							Leave empty to use the built-in default prompt.
+							{t("mailbox.agentPromptHint")}
 						</p>
 						<textarea
 							value={agentPrompt}
@@ -219,15 +229,14 @@ export default function MailboxSettingsRoute() {
 							className="w-full resize-y rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 font-mono text-xs text-kumo-default placeholder:text-kumo-subtle focus:outline-none focus:ring-1 focus:ring-kumo-ring leading-relaxed"
 						/>
 						<p className="mt-2 text-xs text-kumo-subtle">
-							The prompt is sent as the system message to the AI model.
-							It controls the agent's personality, writing style, and behavior rules.
+							{t("mailbox.agentPromptNote")}
 						</p>
 					</div>
 
 					{/* Save */}
 					<div className="flex justify-end">
 						<Button variant="primary" onClick={handleSave} loading={isSaving}>
-							Save Changes
+							{t("mailbox.saveChanges")}
 						</Button>
 					</div>
 

@@ -1,0 +1,13 @@
+{
+	"title": "AI Assistant",
+	"clearChat": "Clear chat",
+	"closePanel": "Close AI panel",
+	"loading": "Loading...",
+	"emptyHint": "Search your inbox, draft replies, manage folders",
+	"emptyExample": "e.g. \"Find the latest invoice from Stripe\"",
+	"inputPlaceholder": "Search, draft, manage your inbox...",
+	"send": "Send",
+	"fallbackNoInfo": "I checked your mailbox but couldn't find relevant information. Feel free to ask me to search for something specific!",
+	"errorPrefix": "Error: {{message}}",
+	"genericError": "Sorry, something went wrong. Please try again."
+}

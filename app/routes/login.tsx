@@ -4,13 +4,22 @@
 
 import { Button, Input, Loader, Text } from "@cloudflare/kumo";
 import { type FormEvent, useState } from "react";
+import { type MetaArgs } from "react-router";
+import { useTranslation } from "react-i18next";
+import { isLocale } from "shared/i18n/config";
+import { translate } from "shared/i18n/translate";
 import api, { ApiError } from "~/services/api";
 
-export function meta() {
-	return [{ title: "Sign in · Mailboxes" }];
+export function meta({ matches }: MetaArgs) {
+	const rootData = matches.find((m) => m?.id === "root")?.data as
+		| { locale?: string }
+		| undefined;
+	const locale = isLocale(rootData?.locale) ? rootData.locale : "en";
+	return [{ title: translate(locale, "auth:loginMetaTitle") }];
 }
 
 export default function LoginRoute() {
+	const { t } = useTranslation("auth");
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -34,7 +43,7 @@ export default function LoginRoute() {
 			setError(
 				err instanceof Error && err.message
 					? err.message
-					: "Sign in failed. Please try again.",
+					: t("loginError"),
 			);
 			setIsSubmitting(false);
 		}
@@ -48,7 +57,7 @@ export default function LoginRoute() {
 					<div className="mb-6 flex flex-col items-center gap-3">
 						<img
 							src="/logo.png"
-							alt="Mailboxes"
+							alt={t("loginBrandTitle")}
 							width={48}
 							height={48}
 							className="brand-logo-light h-12 w-12 rounded-xl"
@@ -63,17 +72,17 @@ export default function LoginRoute() {
 						/>
 						<div className="text-center">
 							<h1 className="m-0 text-xl font-bold text-kumo-default">
-								Mailboxes
+								{t("loginBrandTitle")}
 							</h1>
 							<p className="mt-1 text-sm text-kumo-subtle">
-								Sign in to manage your mailboxes
+								{t("loginSubtitle")}
 							</p>
 						</div>
 					</div>
 
 					<form onSubmit={handleSubmit} className="grid gap-4">
 						<Input
-							label="Username"
+							label={t("username")}
 							autoComplete="username"
 							value={username}
 							onChange={(e) => setUsername(e.target.value)}
@@ -81,9 +90,9 @@ export default function LoginRoute() {
 							autoFocus
 						/>
 						<Input
-							label="Password"
+							label={t("password")}
 							type="password"
-							placeholder="••••••••"
+							placeholder={t("passwordPlaceholder")}
 							autoComplete="current-password"
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
@@ -104,17 +113,17 @@ export default function LoginRoute() {
 						>
 							{isSubmitting ? (
 								<span className="inline-flex items-center gap-2">
-									<Loader size="sm" /> Signing in…
+									<Loader size="sm" /> {t("signingIn")}
 								</span>
 							) : (
-								"Sign in"
+								t("common:signIn")
 							)}
 						</Button>
 					</form>
 				</div>
 
 				<p className="mt-4 text-center text-xs text-kumo-subtle">
-					Self-hosted email client · Cloudflare Workers
+					{t("footer")}
 				</p>
 			</div>
 		</div>

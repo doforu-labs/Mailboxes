@@ -5,6 +5,7 @@
 // Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Outlet, useParams } from "react-router";
 import AiPanel from "~/components/AiPanel";
 import ComposeEmail from "~/components/ComposeEmail";
@@ -14,6 +15,7 @@ import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
 export default function MailboxRoute() {
+	const { t } = useTranslation("layout");
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	// Prefetch mailbox data for child components
 	useMailbox(mailboxId);
@@ -49,7 +51,7 @@ export default function MailboxRoute() {
 					onKeyDown={(e) => e.key === "Escape" && closeSidebar()}
 					role="button"
 					tabIndex={-1}
-					aria-label="Close sidebar"
+					aria-label={t("mailbox.closeSidebar")}
 				/>
 			)}
 

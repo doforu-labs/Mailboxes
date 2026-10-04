@@ -15,15 +15,19 @@ import {
 	Plus,
 } from "lucide-react";
 import { useState } from "react";
-import { Link as RouterLink } from "react-router";
+import { useTranslation } from "react-i18next";
+import { type MetaArgs, Link as RouterLink } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { PlatformSettingsSection } from "~/components/PlatformSettingsSection";
 import { useDomains } from "~/queries/domains";
+import { isLocale } from "shared/i18n/config";
+import { translate } from "shared/i18n/translate";
 
 // ── Domain Management Section ───────────────────────────────────
 
 function DomainsSection() {
+	const { t, i18n } = useTranslation("settings");
 	const { data: domains = [], isLoading } = useDomains();
 
 	// Add Domain wizard
@@ -38,7 +42,7 @@ function DomainsSection() {
 				</div>
 				<div className="min-w-0 flex-1">
 					<span className="text-sm font-medium text-kumo-default">
-						Domains
+						{t("domainsTitle")}
 					</span>
 				</div>
 				<Badge variant="info">
@@ -50,7 +54,7 @@ function DomainsSection() {
 					icon={<Plus size={16} />}
 					onClick={() => setShowAddWizard(true)}
 				>
-					Add Domain
+					{t("domains.addDomain")}
 				</Button>
 			</div>
 
@@ -62,7 +66,7 @@ function DomainsSection() {
 			) : domains.length === 0 ? (
 				<div className="px-5 py-8 text-center">
 					<p className="text-sm text-kumo-subtle">
-						No domains configured yet.
+						{t("domains.empty")}
 					</p>
 				</div>
 			) : (
@@ -93,7 +97,7 @@ function DomainsSection() {
 							<div className="flex items-center gap-3 mt-1 pl-6 text-[11px]">
 								<span className="text-kumo-subtle">
 									{domain.created_at
-										? new Date(domain.created_at).toLocaleDateString("en-US", {
+										? new Date(domain.created_at).toLocaleDateString(i18n.language, {
 												month: "short",
 												day: "numeric",
 												year: "numeric",
@@ -102,7 +106,7 @@ function DomainsSection() {
 								</span>
 								{domain.catch_all_mailbox && (
 									<span className="text-blue-600">
-										Catch-all: {domain.catch_all_mailbox}
+										{t("domains.catchAll", { mailbox: domain.catch_all_mailbox })}
 									</span>
 								)}
 							</div>
@@ -125,11 +129,16 @@ function DomainsSection() {
 
 // ── Page ───────────────────────────────────────────────────────────
 
-export function meta() {
-	return [{ title: "Settings — Mailboxes" }];
+export function meta({ matches }: MetaArgs) {
+	const rootData = matches.find((m) => m?.id === "root")?.data as
+		| { locale?: string }
+		| undefined;
+	const locale = isLocale(rootData?.locale) ? rootData.locale : "en";
+	return [{ title: translate(locale, "settings:metaTitle") }];
 }
 
 export default function SettingsRoute() {
+	const { t } = useTranslation("settings");
 	return (
 		<div className="min-h-screen bg-kumo-recessed">
 			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
@@ -141,23 +150,23 @@ export default function SettingsRoute() {
 							className="inline-flex items-center gap-1.5 text-sm text-kumo-accent hover:text-kumo-accent/80 transition-colors"
 						>
 							<ArrowLeft size={14} />
-							Back to Mailboxes
+							{t("backToMailboxes")}
 						</RouterLink>
 					</div>
 					<h1 className="text-2xl font-bold text-kumo-default">
-						Settings
+						{t("title")}
 					</h1>
 				</div>
 
 				{/* Platform Settings */}
 				<div className="mb-6">
-					<h2 className="text-sm font-semibold text-kumo-default mb-3">Platform Settings</h2>
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">{t("platformSettingsTitle")}</h2>
 					<PlatformSettingsSection />
 				</div>
 
 				{/* Domain Management */}
 				<div className="mb-6">
-					<h2 className="text-sm font-semibold text-kumo-default mb-3">Domains</h2>
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">{t("domainsTitle")}</h2>
 					<DomainsSection />
 				</div>
 

@@ -1,0 +1,21 @@
+{
+	"missingAuthorizationHeader": "Missing Authorization header",
+	"invalidAuthorizationHeaderFormat": "Invalid Authorization header format. Expected: Bearer mb_...",
+	"invalidApiKey": "Invalid or expired API key",
+	"domainIdRequired": "Domain ID required",
+	"unauthorized": "Unauthorized",
+	"usernameRequired": "Username is required",
+	"usernameTooLong": "Username must be at most {{max}} characters",
+	"usernameInvalidChars": "Username contains invalid characters",
+	"invalidCredentials": "Invalid username or password",
+	"setupRequired": "Setup required",
+	"alreadyInitialised": "Already initialised",
+	"databaseNotReady": "Database not ready — run the D1 migrations, then try again",
+	"passwordRequired": "Password is required",
+	"passwordTooShort": "Password must be at least {{min}} characters",
+	"passwordTooLong": "Password must be at most {{max}} characters",
+	"mailboxIdRequired": "Mailbox ID required",
+	"notFound": "Not found",
+	"eitherHtmlOrTextRequired": "Either 'html' or 'text' must be provided",
+	"eitherBodyHtmlOrTextRequired": "Either 'body', 'html', or 'text' must be provided"
+}

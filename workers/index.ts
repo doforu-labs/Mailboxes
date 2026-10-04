@@ -21,6 +21,12 @@ import {
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
+import { resolveLocale, DEFAULT_LOCALE } from "../shared/i18n/config";
+import { getBackendT } from "../shared/i18n/translate";
+import type { Locale } from "../shared/i18n/types";
+// [i18n-foundation] Stable sentinel persisted to D1 instead of the localized
+// fallback text — see the module docstring in shared/ai-fallback.ts.
+import { AI_FALLBACK_SENTINEL } from "../shared/ai-fallback";
 import { formatSenderWithAddress } from "../shared/participants";
 import type { Env } from "./types";
 import { requireMailbox, type D1MailboxContext } from "./lib/d1-middleware";
@@ -83,6 +89,9 @@ export interface AiChatMessage {
 // -- Request body schemas (kept for validation) ---------------------
 
 const CreateMailboxBody = z.object({
+	// NOTE: the schema is built once at module scope (no request-scoped `t`),
+	// so this message stays English as a last-resort fallback. The handler
+	// localizes the surfaced error via `api:validationFailed` instead.
 	email: z.string().regex(/^[a-z0-9*][a-z0-9.*_-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i, "Invalid email address"),
 	name: z.string().min(1),
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
@@ -129,6 +138,23 @@ const normalizeDomainStatus = (status: string | undefined): "pending" | "verifie
 // -- App & middleware -----------------------------------------------
 
 const app = new Hono<D1MailboxContext>();
+
+// [i18n-foundation] Resolve the request locale once and expose it on the
+// context, so API handlers can localize their responses via `getBackendT`.
+//
+// ⚠️  Localization applies to RESPONSE strings only. Anything persisted to D1
+// (notably AI chat messages via `saveAiMessage`) MUST store stable data — user
+// input, enum values, ids — never pre-translated text. AI history is replayed
+// across sessions, so a stored translation would freeze the language it was
+// generated in and read as mixed-language after a switch. See
+// `shared/i18n/translate.ts` for the full note.
+app.use("/api/*", async (c, next) => {
+	const locale = resolveLocale(c.req.raw);
+	c.set("locale", locale);
+	c.set("t", getBackendT(locale));
+	await next();
+});
+
 app.use("/api/*", cors({
 	origin: (origin) => {
 		// Same-origin requests have no Origin header — allow them.
@@ -165,20 +191,21 @@ app.use("/api/v1/*", requireAuth);
 
 // 此路由使用 requireApiKeyGlobal 通过 Bearer token 认证，无需 mailboxId 参数
 app.post("/api/v1/send", requireApiKeyGlobal, async (c) => {
+	const t = c.get("t");
 	try {
 		const db = c.env.DB;
 	const bucket = c.env.BUCKET;
 	const apiKeyInfo = c.var.apiKeyInfo;
 
 	if (!apiKeyInfo?.domainId) {
-		return c.json({ error: "Invalid API key: no domain associated" }, 401);
+		return c.json({ error: t("api:invalidApiKeyNoDomain") }, 401);
 	}
 
 	// 查找域名
 	const { getDomain } = await import("./db/index");
 	const domain = await getDomain(db, apiKeyInfo.domainId);
 	if (!domain) {
-		return c.json({ error: "Domain not found" }, 404);
+		return c.json({ error: t("api:domainNotFound") }, 404);
 	}
 
 	const body = await c.req.json<{
@@ -204,7 +231,7 @@ app.post("/api/v1/send", requireApiKeyGlobal, async (c) => {
 	const fromParts = from.split("@");
 	if (fromParts.length !== 2 || fromParts[1].toLowerCase() !== domain.name.toLowerCase()) {
 		return c.json({
-			error: `From address "${from}" does not belong to domain "${domain.name}"`,
+			error: t("api:fromAddressNotInDomain", { from, domain: domain.name }),
 		}, 400);
 	}
 
@@ -213,7 +240,7 @@ app.post("/api/v1/send", requireApiKeyGlobal, async (c) => {
 	const key = `mailboxes/${mailboxId}.json`;
 	const obj = await bucket.head(key);
 	if (!obj) {
-		return c.json({ error: `Mailbox "${mailboxId}" not found on this domain` }, 404);
+		return c.json({ error: t("api:mailboxNotFoundOnDomain", { id: mailboxId }) }, 404);
 	}
 
 	const to = Array.isArray(body.to) ? body.to : [body.to];
@@ -261,7 +288,7 @@ app.post("/api/v1/send", requireApiKeyGlobal, async (c) => {
 				disposition: a.disposition || "attachment",
 			})),
 			headers: body.headers,
-		}, undefined, db);
+		}, undefined, db, c.get("locale"));
 
 		await updateEmailSendStatus(db, mailboxId, emailId, "sent");
 
@@ -279,13 +306,13 @@ app.post("/api/v1/send", requireApiKeyGlobal, async (c) => {
 
 		return c.json({
 			id: emailId,
-			error: error.message || "Failed to send email",
+			error: error.message || t("api:failedToSendEmail"),
 			status: "failed",
 		}, 500);
 	}
 } catch (error: any) {
 	console.error("Failed to send via API key:", error);
-	return c.json({ error: error.message || "Failed to send email" }, 500);
+	return c.json({ error: error.message || t("api:failedToSendEmail") }, 500);
 }
 });
 
@@ -298,15 +325,16 @@ app.get("/api/v1/domains/:domainId", async (c) => {
 	try {
 		const db = c.env.DB;
 		const domainId = c.req.param("domainId")!;
+		const t = c.get("t");
 		const { getDomain } = await import("./db/index");
 		const domain = await getDomain(db, domainId);
 		if (!domain) {
-			return c.json({ error: "Domain not found" }, 404);
+			return c.json({ error: t("api:domainNotFound") }, 404);
 		}
 		return c.json(domain, 200);
 	} catch (error: any) {
 		console.error("Failed to get domain:", error);
-		return c.json({ error: error.message || "Failed to get domain" }, 500);
+		return c.json({ error: error.message || c.get("t")("api:failedToGetDomain") }, 500);
 	}
 });
 
@@ -314,12 +342,13 @@ app.post("/api/v1/domains/:domainId/api-keys", async (c) => {
 	const db = c.env.DB;
 	const domainId = c.req.param("domainId");
 	const decodedDomainId = decodeURIComponent(domainId);
+	const t = c.get("t");
 
 	// 验证 domain 是否存在
 	const { getDomain } = await import("./db/index");
 	const domain = await getDomain(db, decodedDomainId);
 	if (!domain) {
-		return c.json({ error: "Domain not found" }, 404);
+		return c.json({ error: t("api:domainNotFound") }, 404);
 	}
 
 	const body = await c.req.json<{ name?: string; scopes?: string }>();
@@ -334,7 +363,7 @@ app.post("/api/v1/domains/:domainId/api-keys", async (c) => {
 		prefix: result.prefix,
 		name: keyName,
 		scopes: scopes,
-		message: "Save this API key - it will not be shown again",
+		message: t("api:saveApiKeyOnce"),
 	}, 201);
 });
 
@@ -357,7 +386,7 @@ app.delete("/api/v1/domains/:domainId/api-keys/:keyId", async (c) => {
 	const deleted = await revokeApiKey(db, decodedDomainId, keyId);
 
 	if (!deleted) {
-		return c.json({ error: "API key not found" }, 404);
+		return c.json({ error: c.get("t")("api:apiKeyNotFound") }, 404);
 	}
 
 	return c.json({ success: true });
@@ -381,7 +410,7 @@ app.put("/api/v1/platform-settings/:key", async (c) => {
 	const key = c.req.param("key")!;
 	const { value } = (await c.req.json()) as { value: string };
 	if (typeof value !== "string") {
-		return c.json({ error: "value must be a string" }, 400);
+		return c.json({ error: c.get("t")("api:valueMustBeString") }, 400);
 	}
 	await db.setSetting(c.env.DB, key, value);
 	return c.json({ key, value });
@@ -433,10 +462,20 @@ app.get("/api/v1/mailboxes", async (c) => {
 });
 
 app.post("/api/v1/mailboxes", async (c) => {
-	const { name, settings, email: rawEmail } = CreateMailboxBody.parse(await c.req.json());
+	const t = c.get("t");
+	let parsed: z.infer<typeof CreateMailboxBody>;
+	try {
+		parsed = CreateMailboxBody.parse(await c.req.json());
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return c.json({ error: t("api:validationFailed"), details: error.errors }, 400);
+		}
+		throw error;
+	}
+	const { name, settings, email: rawEmail } = parsed;
 	const email = rawEmail.toLowerCase();
 	const key = `mailboxes/${email}.json`;
-	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
+	if (await c.env.BUCKET.head(key)) return c.json({ error: t("api:mailboxAlreadyExists") }, 409);
 	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" } };
 	const finalSettings = { ...defaultSettings, ...settings, created_at: new Date().toISOString() };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
@@ -447,7 +486,7 @@ app.post("/api/v1/mailboxes", async (c) => {
 app.get("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const obj = await c.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
-	if (!obj) return c.json({ error: "Not found" }, 404);
+	if (!obj) return c.json({ error: c.get("t")("api:notFound") }, 404);
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings: await obj.json() });
 });
 
@@ -471,8 +510,9 @@ interface ResendDomainRecord {
 app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => {
 	try {
 		const { apiKey } = (await c.req.json()) as { apiKey?: string };
+		const t = c.get("t");
 		if (!apiKey) {
-			return c.json({ valid: false, error: "Missing API key" }, 400);
+			return c.json({ valid: false, error: t("api:missingApiKey") }, 400);
 		}
 
 		// Call Resend GET /domains to verify the key is valid
@@ -485,12 +525,12 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 		});
 
 		if (res.status === 401 || res.status === 403) {
-			return c.json({ valid: false, error: "Invalid API key. Please check your Resend API key." }, 200);
+			return c.json({ valid: false, error: t("api:invalidResendApiKey") }, 200);
 		}
 
 		if (!res.ok) {
 			const errBody = await res.json().catch(() => ({})) as { message?: string };
-			return c.json({ valid: false, error: errBody.message || `Resend API error: ${res.status}` }, 200);
+			return c.json({ valid: false, error: errBody.message || t("api:resendApiError", { status: res.status }) }, 200);
 		}
 
 		const data = (await res.json()) as { data: ResendDomainRecord[] };
@@ -532,7 +572,7 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("verify-resend (mailbox) failed:", msg);
-		return c.json({ valid: false, error: "Verification failed" }, 200);
+		return c.json({ valid: false, error: c.get("t")("api:verificationFailed") }, 200);
 	}
 });
 
@@ -540,8 +580,9 @@ app.post("/api/v1/mailboxes/:mailboxId/verify-resend", async (c: AppContext) => 
 app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 	try {
 		const { apiKey } = (await c.req.json()) as { apiKey?: string };
+		const t = c.get("t");
 		if (!apiKey) {
-			return c.json({ valid: false, error: "Missing API key" }, 400);
+			return c.json({ valid: false, error: t("api:missingApiKey") }, 400);
 		}
 
 		// Call Resend GET /domains to verify the key is valid
@@ -554,12 +595,12 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 		});
 
 		if (res.status === 401 || res.status === 403) {
-			return c.json({ valid: false, error: "Invalid API key. Please check your Resend API key." }, 200);
+			return c.json({ valid: false, error: t("api:invalidResendApiKey") }, 200);
 		}
 
 		if (!res.ok) {
 			const errBody = await res.json().catch(() => ({})) as { message?: string };
-			return c.json({ valid: false, error: errBody.message || `Resend API error: ${res.status}` }, 200);
+			return c.json({ valid: false, error: errBody.message || t("api:resendApiError", { status: res.status }) }, 200);
 		}
 
 		const data = (await res.json()) as { data: ResendDomainRecord[] };
@@ -611,7 +652,7 @@ app.post("/api/v1/domains/:domainId/verify-resend", async (c: AppContext) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("verify-resend failed:", msg);
-		return c.json({ valid: false, error: "Verification failed" }, 200);
+		return c.json({ valid: false, error: c.get("t")("api:verificationFailed") }, 200);
 	}
 });
 
@@ -625,9 +666,10 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 
 		const { apiKey } = body;
 		let cfApiToken = body.cfApiToken;
+		const t = c.get("t");
 
 		if (!apiKey) {
-			return c.json({ success: false, error: "Missing API key" }, 400);
+			return c.json({ success: false, error: t("api:missingApiKey") }, 400);
 		}
 
 		// 1. Get domain from DB
@@ -643,7 +685,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 		}
 
 		if (!domain) {
-			return c.json({ success: false, error: "Domain not found" }, 404);
+			return c.json({ success: false, error: t("api:domainNotFound") }, 404);
 		}
 
 		// 2. Create Resend domain
@@ -660,7 +702,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 			const errBody = await resendRes.json().catch(() => ({})) as { message?: string };
 			return c.json({ 
 				success: false, 
-				error: `Failed to create Resend domain: ${errBody.message || `HTTP ${resendRes.status}`}` 
+				error: t("api:failedToCreateResendDomain", { message: errBody.message || `HTTP ${resendRes.status}` }) 
 			}, 200);
 		}
 
@@ -712,14 +754,14 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 					dnsResults.push({
 						name: record.name,
 						type: record.type,
-						status: `error: ${errBody?.errors?.[0]?.message || "unknown"}`,
+						status: t("api:dnsRecordError", { message: errBody?.errors?.[0]?.message || t("api:dnsRecordUnknownError") }),
 						value: record.value || "",
 					});
 				} else {
 					dnsResults.push({
 						name: record.name,
 						type: record.type,
-						status: "created",
+						status: t("api:dnsRecordCreated"),
 						value: record.value || "",
 					});
 				}
@@ -774,7 +816,7 @@ app.post("/api/v1/domains/:domainId/setup-resend-sending", async (c: AppContext)
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("setup-resend-sending failed:", msg);
-		return c.json({ success: false, error: "Setup failed" }, 200);
+		return c.json({ success: false, error: c.get("t")("api:setupFailed") }, 200);
 	}
 });
 
@@ -782,7 +824,7 @@ app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { settings } = (await c.req.json()) as { settings: Record<string, unknown> };
 	const key = `mailboxes/${mailboxId}.json`;
-	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
+	if (!(await c.env.BUCKET.head(key))) return c.json({ error: c.get("t")("api:notFound") }, 404);
 	await c.env.BUCKET.put(key, JSON.stringify(settings));
 	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings });
 });
@@ -850,7 +892,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 		let toStr: string, fromEmail: string, fromDomain: string;
 		try {
-			({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
+			({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId, c.get("locale")));
 		} catch (e) {
 			if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
 			throw e;
@@ -861,10 +903,10 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 		const rateLimit = await db.checkSendRateLimit(dbClient, mailboxId);
 		if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
-			return c.json({ error: `Hourly rate limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit})` }, 429);
+			return c.json({ error: c.get("t")("api:hourlyRateLimitExceeded", { count: rateLimit.hourlyCount, limit: rateLimit.hourlyLimit }) }, 429);
 		}
 		if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
-			return c.json({ error: `Daily rate limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit})` }, 429);
+			return c.json({ error: c.get("t")("api:dailyRateLimitExceeded", { count: rateLimit.dailyCount, limit: rateLimit.dailyLimit }) }, 429);
 		}
 
 		const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
@@ -894,20 +936,20 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 				to, cc, bcc, from, subject, html, text,
 				attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 				...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
-			}, undefined, c.env.DB);
+			}, undefined, c.env.DB, c.get("locale"));
 			await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "sent");
 			return c.json({ id: messageId, status: "sent" }, 200);
 		} catch (e) {
 			console.error("Email delivery failed:", (e as Error).message);
 			await db.updateEmailSendStatus(c.var.db, mailboxId, messageId, "failed").catch(() => {});
-			return c.json({ id: messageId, status: "failed", error: "Failed to send email." }, 500);
+			return c.json({ id: messageId, status: "failed", error: c.get("t")("api:failedToSendEmail") }, 500);
 		}
 	} catch (error: any) {
 		if (error instanceof z.ZodError) {
-			return c.json({ error: "Validation failed", details: error.errors }, 400);
+			return c.json({ error: c.get("t")("api:validationFailed"), details: error.errors }, 400);
 		}
 		console.error("Failed to send email:", error);
-		return c.json({ error: error.message || "Failed to send email" }, 500);
+		return c.json({ error: error.message || c.get("t")("api:failedToSendEmail") }, 500);
 	}
 });
 
@@ -929,17 +971,17 @@ app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 		return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);
 	} catch (error: any) {
 		if (error instanceof z.ZodError) {
-			return c.json({ error: "Validation failed", details: error.errors }, 400);
+			return c.json({ error: c.get("t")("api:validationFailed"), details: error.errors }, 400);
 		}
 		console.error("Failed to save draft:", error);
-		return c.json({ error: error.message || "Failed to save draft" }, 500);
+		return c.json({ error: error.message || c.get("t")("api:failedToSaveDraft") }, 500);
 	}
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId/drafts/:emailId", async (c: AppContext) => {
 	const emailId = c.req.param("emailId")!;
 	const attachments = await db.deleteEmail(c.var.db, c.var.mailboxId, emailId);
-	if (attachments === null) return c.json({ error: "Not found" }, 404);
+	if (attachments === null) return c.json({ error: c.get("t")("api:notFound") }, 404);
 	if (attachments.length > 0) {
 		await c.env.BUCKET.delete(attachments.map((att: { id: string; filename: string }) => `attachments/${emailId}/${att.id}/${att.filename}`));
 	}
@@ -948,7 +990,7 @@ app.delete("/api/v1/mailboxes/:mailboxId/drafts/:emailId", async (c: AppContext)
 
 app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	const email = await db.getEmail(c.var.db, c.var.mailboxId, c.req.param("id")!);
-	if (!email) return c.json({ error: "Email not found" }, 404);
+	if (!email) return c.json({ error: c.get("t")("api:emailNotFound") }, 404);
 	return new Response(JSON.stringify(email), {
 		headers: { "Content-Type": "application/json" },
 	});
@@ -957,13 +999,13 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	const { read, starred } = (await c.req.json()) as { read?: boolean; starred?: boolean };
 	const email = await db.updateEmail(c.var.db, c.var.mailboxId, c.req.param("id")!, { read, starred });
-	return email ? c.json(email) : c.json({ error: "Email not found" }, 404);
+	return email ? c.json(email) : c.json({ error: c.get("t")("api:emailNotFound") }, 404);
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	const id = c.req.param("id")!;
 	const attachments = await db.deleteEmail(c.var.db, c.var.mailboxId, id);
-	if (attachments === null) return c.json({ error: "Not found" }, 404);
+	if (attachments === null) return c.json({ error: c.get("t")("api:notFound") }, 404);
 	if (attachments.length > 0) {
 		await c.env.BUCKET.delete(attachments.map((att: { id: string; filename: string }) => `attachments/${id}/${att.id}/${att.filename}`));
 	}
@@ -973,7 +1015,7 @@ app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/move", async (c: AppContext) => {
 	const { folderId } = (await c.req.json()) as { folderId: string };
 	const success = await db.moveEmail(c.var.db, c.var.mailboxId, c.req.param("id")!, folderId);
-	return success ? c.json({ status: "moved" }) : c.json({ error: "Folder not found" }, 400);
+	return success ? c.json({ status: "moved" }) : c.json({ error: c.get("t")("api:folderNotFound") }, 400);
 });
 
 // -- Threads --------------------------------------------------------
@@ -1007,20 +1049,20 @@ app.get("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => c.json(
 app.post("/api/v1/mailboxes/:mailboxId/folders", async (c: AppContext) => {
 	const { name } = (await c.req.json()) as { name: string };
 	const slug = slugify(name);
-	if (!slug) return c.json({ error: "Folder name must contain alphanumeric characters" }, 400);
+	if (!slug) return c.json({ error: c.get("t")("api:folderNameMustBeAlphanumeric") }, 400);
 	const f = await db.createFolder(c.var.db, c.var.mailboxId, slug, name);
-	return f ? c.json(f, 201) : c.json({ error: "Folder with this name already exists" }, 409);
+	return f ? c.json(f, 201) : c.json({ error: c.get("t")("api:folderAlreadyExists") }, 409);
 });
 
 app.put("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => {
 	const { name } = (await c.req.json()) as { name: string };
 	const f = await db.updateFolder(c.var.db, c.var.mailboxId, c.req.param("id")!, name);
-	return f ? c.json(f) : c.json({ error: "Folder not found" }, 404);
+	return f ? c.json(f) : c.json({ error: c.get("t")("api:folderNotFound") }, 404);
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => {
 	const ok = await db.deleteFolder(c.var.db, c.var.mailboxId, c.req.param("id")!);
-	return ok ? c.body(null, 204) : c.json({ error: "Folder not found or cannot be deleted" }, 400);
+	return ok ? c.body(null, 204) : c.json({ error: c.get("t")("api:folderNotFoundOrCannotDelete") }, 400);
 });
 
 // -- Search ---------------------------------------------------------
@@ -1048,9 +1090,9 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 	const emailId = c.req.param("emailId")!;
 	const attachmentId = c.req.param("attachmentId")!;
 	const attachment = await db.getAttachment(c.var.db, c.var.mailboxId, attachmentId);
-	if (!attachment) return c.json({ error: "Attachment not found" }, 404);
+	if (!attachment) return c.json({ error: c.get("t")("api:attachmentNotFound") }, 404);
 	const obj = await c.env.BUCKET.get(`attachments/${emailId}/${attachmentId}/${attachment.filename}`);
-	if (!obj) return c.json({ error: "Attachment file not found" }, 404);
+	if (!obj) return c.json({ error: c.get("t")("api:attachmentFileNotFound") }, 404);
 	const headers = new Headers();
 	headers.set("Content-Type", attachment.mimetype);
 	const sanitized = attachment.filename.replace(/[\x00-\x1f"\\]/g, "_");
@@ -1061,6 +1103,9 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 // -- AI Chat (SSE streaming) -----------------------------------------
 
 function buildAiMessages(history: any[], emailContext?: any, email?: any, thread?: any[]): { role: string; content: string }[] {
+	// AI-facing: keep English. This prompt and the message templates below are
+	// instructions/context fed to the model, never rendered to the user, so they
+	// stay in English for consistent model behaviour regardless of UI locale.
 	const systemPrompt = `You are an email assistant integrated with the user's mailbox.
 
 ## Capabilities
@@ -1105,6 +1150,8 @@ Keep responses concise and helpful.`;
 }
 
 // ── Tool Definitions (OpenAI-compatible format) ──────────────────────
+// AI-facing: keep English. Every `description` here is part of the tool
+// schema handed to the model, not user-facing copy.
 
 const TOOL_DEFINITIONS = [
 	{
@@ -1293,6 +1340,7 @@ async function executeToolCall(
 	mailboxId: string,
 	ai: Ai,
 	bucket: R2Bucket,
+	locale: Locale = DEFAULT_LOCALE,
 ): Promise<any> {
 	const { name, arguments: argsStr } = toolCall.function;
 	const args = JSON.parse(argsStr);
@@ -1310,27 +1358,27 @@ async function executeToolCall(
 			case "list_emails":
 				return await toolListEmails(db, mailboxId, args);
 			case "get_email":
-				return await toolGetEmail(db, mailboxId, args.emailId);
+				return await toolGetEmail(db, mailboxId, args.emailId, locale);
 			case "get_thread":
 				return await toolGetThread(db, mailboxId, args.threadId);
 			case "draft_reply":
-				return await toolDraftReply(db, mailboxId, ai, args);
+				return await toolDraftReply(db, mailboxId, ai, args, locale);
 			case "draft_email":
-				return await toolDraftEmail(db, mailboxId, ai, args);
+				return await toolDraftEmail(db, mailboxId, ai, args, locale);
 			case "update_draft":
-				return await toolUpdateDraft(db, mailboxId, ai, args);
+				return await toolUpdateDraft(db, mailboxId, ai, args, locale);
 			case "mark_email_read":
 				return await toolMarkEmailRead(db, mailboxId, args.emailId, args.read);
 			case "move_email":
-				return await toolMoveEmail(db, mailboxId, args.emailId, args.folderId);
+				return await toolMoveEmail(db, mailboxId, args.emailId, args.folderId, locale);
 			case "delete_email":
-				return await toolDeleteEmail(db, mailboxId, args.emailId);
+				return await toolDeleteEmail(db, mailboxId, args.emailId, locale);
 			case "discard_draft":
-				return await toolDiscardDraft(db, mailboxId, args.draftId);
+				return await toolDiscardDraft(db, mailboxId, args.draftId, locale);
 			case "send_reply":
-				return await toolSendReply(db, mailboxId, ai, bucket, args);
+				return await toolSendReply(db, mailboxId, ai, bucket, args, locale);
 			case "send_email":
-				return await toolSendEmail(db, mailboxId, ai, bucket, args);
+				return await toolSendEmail(db, mailboxId, ai, bucket, args, locale);
 			case "list_mailboxes":
 				return await toolListMailboxes({ BUCKET: bucket, DB: db } as any);
 			default:
@@ -1429,11 +1477,11 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 	const bucket = c.env.BUCKET;
 
 	if (!message || typeof message !== "string") {
-		return c.json({ error: "message is required" }, 400);
+		return c.json({ error: c.get("t")("api:messageRequired") }, 400);
 	}
 
 	if (message.length > 10000) {
-		return c.json({ error: "message too long" }, 400);
+		return c.json({ error: c.get("t")("api:messageTooLong") }, 400);
 	}
 
 	// Save user message
@@ -1479,7 +1527,7 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 				// Step 1: First AI call with tools enabled
 				let output = await callAi(ai, bucket, mailboxId, msgs, MODEL, FALLBACK, true).catch(() => null);
 				if (!output) {
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI temporarily unavailable" })}\n\n`));
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: c.get("t")("api:aiTemporarilyUnavailable") })}\n\n`));
 					controller.close();
 					return;
 				}
@@ -1504,11 +1552,11 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 				if (toolCalls.length > 0) {
 					// Execute tools and notify frontend
 					const toolNames = toolCalls.map((tc) => tc.function.name).join(", ");
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: `[Using tool: ${toolNames}]`, type: "tool_call" })}\n\n`));
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: c.get("t")("api:usingTool", { tools: toolNames }), type: "tool_call" })}\n\n`));
 
 					const toolResults = await Promise.allSettled(
 						toolCalls.map((tc) =>
-							executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET).then((result) => ({
+							executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET, c.var.locale).then((result) => ({
 								role: "tool" as const,
 								tool_call_id: tc.id,
 								name: tc.function.name,
@@ -1547,8 +1595,11 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 				}
 
 				if (!fullReply) {
-					fullReply = "I checked your mailbox but couldn't find relevant information. Feel free to ask me to search for something specific!";
-					await streamTokens(fullReply);
+					// Immediate response keeps the localized text (current UX)…
+					await streamTokens(c.get("t")("api:aiNoRelevantInfo"));
+					// …but what we PERSIST is the stable sentinel, so replaying this
+					// message later renders it in whatever language is active then.
+					fullReply = AI_FALLBACK_SENTINEL;
 				}
 
 				const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply);
@@ -1572,7 +1623,7 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 
 		// Step 1: first call with tools
 		const output = await callAi(ai, bucket, mailboxId, msgs, MODEL, FALLBACK, true).catch(() => null);
-		if (!output) return c.json({ error: "AI temporarily unavailable" }, 503);
+		if (!output) return c.json({ error: c.get("t")("api:aiTemporarilyUnavailable") }, 503);
 
 		const msg0 = output.choices?.[0]?.message;
 		let content = msg0?.content || output.response || "";
@@ -1589,7 +1640,7 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 		if (toolCalls.length > 0) {
 			// Execute tools
 			const toolResults = await Promise.allSettled(toolCalls.map((tc) =>
-				executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET).then((r) => ({
+				executeToolCall(tc, d1, mailboxId, ai, c.env.BUCKET, c.var.locale).then((r) => ({
 					role: "tool" as const, tool_call_id: tc.id, name: tc.function.name, content: JSON.stringify(r),
 				}))
 			));
@@ -1615,11 +1666,13 @@ app.post("/api/v1/mailboxes/:mailboxId/ai/chat", async (c: AppContext) => {
 			fullReply = content;
 		}
 		if (!fullReply) {
-			fullReply = "I checked your mailbox but couldn't find relevant information. Feel free to ask me to search for something specific!";
+			// Immediate JSON response stays localized; D1 stores the sentinel
+			// (see the SSE branch above and shared/ai-fallback.ts).
+			fullReply = AI_FALLBACK_SENTINEL;
 		}
 
 		const saved = await db.saveAiMessage(d1, mailboxId, 'assistant', fullReply);
-		return c.json({ reply: fullReply, id: saved.id });
+		return c.json({ reply: fullReply === AI_FALLBACK_SENTINEL ? c.get("t")("api:aiNoRelevantInfo") : fullReply, id: saved.id });
 	}
 });
 

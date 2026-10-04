@@ -20,10 +20,42 @@ import { ReplyBodySchema, ForwardBodySchema } from "../lib/schemas";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import * as dbService from "../db";
+// [i18n apiSetup] Both handlers are mounted on the API app in ../index.ts
+// (`app.post(".../reply", handleReplyEmail)`), so the locale middleware there
+// applies and its `locale` variable is readable from the request context.
+import { DEFAULT_LOCALE, isLocale, resolveLocale } from "../../shared/i18n/config";
+import type { Locale } from "../../shared/i18n/types";
+import { getBackendT } from "../../shared/i18n/translate";
 
 type AppContext = Context<{ Bindings: Env }>;
 
+/**
+ * Resolve the request locale, preferring the value the API middleware in
+ * ../index.ts put on the shared request context and falling back to resolving
+ * it from the request itself when this handler is invoked without it.
+ */
+function requestLocale(c: AppContext): Locale {
+	const scoped = c.get("locale" as never) as string | undefined;
+	return isLocale(scoped) ? scoped : resolveLocale(c.req.raw) ?? DEFAULT_LOCALE;
+}
+
+/**
+ * Translator scoped to the `apiSetup` namespace for the request's locale.
+ *
+ * The API middleware in ../index.ts only exposes `t` bound to the default
+ * namespace, so we build a namespace-scoped translator here. Built lazily so
+ * the happy path allocates nothing extra.
+ */
+function replyT(c: AppContext) {
+	let t: ReturnType<typeof getBackendT> | undefined;
+	return ((key: string, options?: Record<string, unknown>) => {
+		t ??= getBackendT(requestLocale(c), "apiSetup");
+		return t(key, options);
+	}) as ReturnType<typeof getBackendT>;
+}
+
 export async function handleReplyEmail(c: AppContext) {
+	const t = replyT(c);
 	try {
 		const mailboxId = c.req.param("mailboxId") ?? "";
 		const id = c.req.param("id") ?? "";
@@ -32,7 +64,7 @@ export async function handleReplyEmail(c: AppContext) {
 		try {
 			rawBody = await c.req.json();
 		} catch {
-			return c.json({ error: "Invalid JSON in request body" }, 400);
+			return c.json({ error: t("invalidJsonBody") }, 400);
 		}
 
 		const body = ReplyBodySchema.parse(rawBody);
@@ -43,7 +75,7 @@ export async function handleReplyEmail(c: AppContext) {
 		const rawOriginal = await dbService.getEmail(c.env.DB, mailboxId, id);
 
 		if (!rawOriginal) {
-			return c.json({ error: "Original email not found" }, 404);
+			return c.json({ error: t("originalEmailNotFound") }, 404);
 		}
 
 		// Resolve original email (follow draft -> in_reply_to chain)
@@ -56,6 +88,9 @@ export async function handleReplyEmail(c: AppContext) {
 		// Derive reply fields from the original email
 		const to = originalEmail.sender ? [originalEmail.sender] : [];
 		const from = mailboxId;
+		// Subject prefixes are part of the outgoing RFC 5322 header, read in the
+		// recipient's mail client — not UI copy. They stay English ("Re:"/"Fwd:")
+		// so threading works across all mail clients and languages.
 		const subject = originalEmail.subject
 			? `Re: ${originalEmail.subject}`
 			: "Re: (no subject)";
@@ -64,7 +99,7 @@ export async function handleReplyEmail(c: AppContext) {
 
 		let toStr: string, fromEmail: string, fromDomain: string;
 		try {
-			({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
+			({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId, requestLocale(c)));
 		} catch (e) {
 			if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
 			throw e;
@@ -74,10 +109,10 @@ export async function handleReplyEmail(c: AppContext) {
 
 		const rateLimit = await dbService.checkSendRateLimit(c.env.DB, mailboxId);
 		if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
-			return c.json({ error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` }, 429);
+			return c.json({ error: t("hourlySendLimitExceeded", { count: rateLimit.hourlyCount, limit: rateLimit.hourlyLimit }) }, 429);
 		}
 		if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
-			return c.json({ error: `Daily send limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit}). Please try again later.` }, 429);
+			return c.json({ error: t("dailySendLimitExceeded", { count: rateLimit.dailyCount, limit: rateLimit.dailyLimit }) }, 429);
 		}
 
 		const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
@@ -129,24 +164,25 @@ export async function handleReplyEmail(c: AppContext) {
 					disposition: att.disposition ?? "attachment",
 				})),
 				headers: buildThreadingHeaders(originalMsgId, references),
-			}, undefined, c.env.DB);
+			}, undefined, c.env.DB, requestLocale(c));
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
 			return c.json({ id: messageId, status: "sent" }, 200);
 		} catch (e) {
 			console.error("Reply delivery failed:", (e as Error).message);
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "failed").catch(() => {});
-			return c.json({ id: messageId, status: "failed", error: (e as Error).message || "Failed to send reply." }, 500);
+			return c.json({ id: messageId, status: "failed", error: (e as Error).message || t("failedToSendReply") }, 500);
 		}
 	} catch (error: any) {
 		console.error("Reply email error:", error);
 		if (error instanceof z.ZodError) {
-			return c.json({ error: "Validation failed", details: error.errors }, 400);
+			return c.json({ error: t("validationFailed"), details: error.errors }, 400);
 		}
-		return c.json({ error: error.message || "Failed to reply" }, 500);
+		return c.json({ error: error.message || t("failedToReply") }, 500);
 	}
 }
 
 export async function handleForwardEmail(c: AppContext) {
+	const t = replyT(c);
 	try {
 		const mailboxId = c.req.param("mailboxId") ?? "";
 		const id = c.req.param("id") ?? "";
@@ -155,7 +191,7 @@ export async function handleForwardEmail(c: AppContext) {
 		try {
 			rawBody = await c.req.json();
 		} catch {
-			return c.json({ error: "Invalid JSON in request body" }, 400);
+			return c.json({ error: t("invalidJsonBody") }, 400);
 		}
 
 		const body = ForwardBodySchema.parse(rawBody);
@@ -166,11 +202,14 @@ export async function handleForwardEmail(c: AppContext) {
 		const rawOriginal = await dbService.getEmail(c.env.DB, mailboxId, id);
 
 		if (!rawOriginal) {
-			return c.json({ error: "Original email not found" }, 404);
+			return c.json({ error: t("originalEmailNotFound") }, 404);
 		}
 
 		// Derive forward fields from the original email
 		const from = mailboxId;
+		// Subject prefixes are part of the outgoing RFC 5322 header, read in the
+		// recipient's mail client — not UI copy. They stay English ("Fwd:")
+		// so threading works across all mail clients and languages.
 		const subject = rawOriginal.subject
 			? `Fwd: ${rawOriginal.subject}`
 			: "Fwd: (no subject)";
@@ -184,7 +223,7 @@ export async function handleForwardEmail(c: AppContext) {
 
 		let toStr: string, fromEmail: string, fromDomain: string;
 		try {
-			({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId));
+			({ toStr, fromEmail, fromDomain } = validateSender(to, from, mailboxId, requestLocale(c)));
 		} catch (e) {
 			if (e instanceof SenderValidationError) return c.json({ error: e.message }, 400);
 			throw e;
@@ -194,10 +233,10 @@ export async function handleForwardEmail(c: AppContext) {
 
 		const rateLimit = await dbService.checkSendRateLimit(c.env.DB, mailboxId);
 		if (rateLimit.hourlyCount >= rateLimit.hourlyLimit) {
-			return c.json({ error: `Hourly send limit exceeded (${rateLimit.hourlyCount}/${rateLimit.hourlyLimit}). Please try again later.` }, 429);
+			return c.json({ error: t("hourlySendLimitExceeded", { count: rateLimit.hourlyCount, limit: rateLimit.hourlyLimit }) }, 429);
 		}
 		if (rateLimit.dailyCount >= rateLimit.dailyLimit) {
-			return c.json({ error: `Daily send limit exceeded (${rateLimit.dailyCount}/${rateLimit.dailyLimit}). Please try again later.` }, 429);
+			return c.json({ error: t("dailySendLimitExceeded", { count: rateLimit.dailyCount, limit: rateLimit.dailyLimit }) }, 429);
 		}
 
 		const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
@@ -250,19 +289,19 @@ export async function handleForwardEmail(c: AppContext) {
 					type: att.type ?? "application/octet-stream",
 					disposition: att.disposition ?? "attachment",
 				})),
-			}, undefined, c.env.DB);
+			}, undefined, c.env.DB, requestLocale(c));
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
 			return c.json({ id: messageId, status: "sent" }, 200);
 		} catch (e) {
 			console.error("Forward delivery failed:", (e as Error).message);
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "failed").catch(() => {});
-			return c.json({ id: messageId, status: "failed", error: (e as Error).message || "Failed to forward email." }, 500);
+			return c.json({ id: messageId, status: "failed", error: (e as Error).message || t("failedToForwardEmail") }, 500);
 		}
 	} catch (error: any) {
 		console.error("Forward email error:", error);
 		if (error instanceof z.ZodError) {
-			return c.json({ error: "Validation failed", details: error.errors }, 400);
+			return c.json({ error: t("validationFailed"), details: error.errors }, 400);
 		}
-		return c.json({ error: error.message || "Failed to forward" }, 500);
+		return c.json({ error: error.message || t("failedToForward") }, 500);
 	}
 }

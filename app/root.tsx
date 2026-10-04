@@ -24,9 +24,13 @@ import {
 	Scripts,
 	ScrollRestoration,
 } from "react-router";
+import { useTranslation } from "react-i18next";
 import { ApiError } from "~/services/api";
 import api from "~/services/api";
 import { Navigate, useLocation } from "react-router";
+import LanguageSwitcher from "~/components/LanguageSwitcher";
+import { i18nextMiddleware, getLocale } from "~/middleware/i18next";
+import type { Route } from "./+types/root";
 import "./index.css";
 
 function makeQueryClient() {
@@ -66,6 +70,45 @@ function getQueryClient() {
 	if (!browserQueryClient) browserQueryClient = makeQueryClient();
 	return browserQueryClient;
 }
+// [i18n-foundation] Per-request i18next middleware. Lives on the root route so
+// every page — including the `*` not-found route — runs through it and can
+// resolve `context.get(i18nextContext)`. See app/middleware/i18next.ts.
+export const middleware = [i18nextMiddleware];
+
+/**
+ * Expose the request locale to the document shell. The `t` function itself is
+ * delivered via `<I18nextProvider>` in entry.{server,client}.tsx, so we only
+ * ship the small language tag as loader data here.
+ */
+export function loader({ context }: Route.LoaderArgs) {
+	return { locale: getLocale(context as never) };
+}
+
+/**
+ * [language-switcher-placement] Floating language switcher for every route
+ * that does NOT render the mailbox `<Header />` (which owns its own switcher,
+ * see app/components/Header.tsx).
+ *
+ * Rendered as a sibling of `AuthGate` *inside* `<Toasty>` so it
+ *   - is part of the SSR document (visible to `curl`), rather than appearing
+ *     only after the client-side auth probe resolves, and
+ *   - stays visible on `/login` + `/setup`, and through the AuthGate loading
+ *     splash, which are exactly the pre-auth pages that had no control before.
+ *
+ * `useLocation()` is safe here: `App` is the root route component and always
+ * renders inside the router context.
+ */
+function FloatingLanguageSwitcher() {
+	const location = useLocation();
+	// `/mailbox/*` already has the switcher inside `Header`.
+	if (location.pathname.startsWith("/mailbox/")) return null;
+	return (
+		<div className="fixed top-3 right-3 z-40">
+			<LanguageSwitcher />
+		</div>
+	);
+}
+
 const KumoLink = forwardRef<
 	HTMLAnchorElement,
 	React.AnchorHTMLAttributes<HTMLAnchorElement> & { href?: string }
@@ -79,8 +122,11 @@ const KumoLink = forwardRef<
 });
 
 export function Layout({ children }: { children: React.ReactNode }) {
+	// [i18n-foundation] `<html lang>` follows the live i18next language so it
+	// stays correct on the server (detected locale) and after an in-app switch.
+	const { i18n } = useTranslation();
 	return (
-		<html lang="en" data-theme="porcelain" data-mode="light">
+		<html lang={i18n.language} data-theme="porcelain" data-mode="light">
 			<head>
 				<script dangerouslySetInnerHTML={{
 					__html: [
@@ -195,9 +241,12 @@ export default function App() {
 			<LinkProvider component={KumoLink}>
 				<TooltipProvider>
 					<Toasty>
-						<AuthGate>
-							<Outlet />
-						</AuthGate>
+						<>
+							<FloatingLanguageSwitcher key="language-switcher" />
+							<AuthGate key="auth-gate">
+								<Outlet />
+							</AuthGate>
+						</>
 					</Toasty>
 				</TooltipProvider>
 			</LinkProvider>
@@ -206,18 +255,18 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: { error: unknown }) {
-	let title = "Something went wrong";
-	let description = "An unexpected error occurred. Please try again.";
+	const { t } = useTranslation("auth");
+	let title = t("errorGenericTitle");
+	let description = t("errorGenericDescription");
 	let status: number | null = null;
 
 	if (isRouteErrorResponse(error)) {
 		status = error.status;
 		if (error.status === 404) {
-			title = "Page not found";
-			description =
-				"The page you're looking for doesn't exist or has been moved.";
+			title = t("errorNotFoundTitle");
+			description = t("errorNotFoundDescription");
 		} else {
-			title = `Error ${error.status}`;
+			title = t("errorStatusTitle", { status: error.status });
 			description = error.statusText || description;
 		}
 	} else if (error instanceof Error && import.meta.env.DEV) {
@@ -228,7 +277,7 @@ export function ErrorBoundary({ error }: { error: unknown }) {
 		<div className="flex items-center justify-center min-h-screen p-8">
 			<Empty
 				icon={<TriangleAlert size={48} className="text-kumo-inactive" />}
-				title={status === 404 ? "404 — Page not found" : title}
+				title={status === 404 ? t("error404Title") : title}
 				description={description}
 				contents={
 					<Button
@@ -237,7 +286,7 @@ export function ErrorBoundary({ error }: { error: unknown }) {
 							window.location.href = "/";
 						}}
 					>
-						Go Home
+						{t("common:goHome")}
 					</Button>
 				}
 			/>

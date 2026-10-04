@@ -6,12 +6,14 @@
 
 import { Banner, Button, Dialog, Input, Text } from "@cloudflare/kumo";
 import { Save, Send } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
 import { useUIStore } from "~/hooks/useUIStore";
 
 export default function ComposeEmail() {
+	const { t } = useTranslation("compose");
 	const { mailboxId, folder } = useParams<{
 		mailboxId: string;
 		folder: string;
@@ -54,9 +56,9 @@ export default function ComposeEmail() {
 					<div className="flex items-center gap-2">
 						<div className="flex-1">
 							<Input
-								label="To"
+								label={t("fields.to")}
 								type="text"
-								placeholder="recipient@example.com, another@example.com"
+								placeholder={t("placeholder.recipientMultiple")}
 								size="sm"
 								value={to}
 								onChange={(e) => setTo(e.target.value)}
@@ -69,34 +71,34 @@ export default function ComposeEmail() {
 								onClick={() => setShowCcBcc(true)}
 								className="shrink-0 text-xs text-kumo-link hover:text-kumo-link-hover font-medium mt-5"
 							>
-								CC / BCC
+								{t("showCcBcc")}
 							</button>
 						)}
 					</div>
 					{showCcBcc && (
 						<Input
-							label="CC"
+							label={t("fields.cc")}
 							type="text"
 							size="sm"
 							value={cc}
 							onChange={(e) => setCc(e.target.value)}
-							placeholder="Separate multiple addresses with commas"
+							placeholder={t("placeholder.separateAddresses")}
 						/>
 					)}
 					{showCcBcc && (
 						<Input
-							label="BCC"
+							label={t("fields.bcc")}
 							type="text"
 							size="sm"
 							value={bcc}
 							onChange={(e) => setBcc(e.target.value)}
-							placeholder="Separate multiple addresses with commas"
+							placeholder={t("placeholder.separateAddresses")}
 						/>
 					)}
 					<Input
-						label="Subject"
+						label={t("fields.subject")}
 						type="text"
-						placeholder="Email subject"
+						placeholder={t("placeholder.subject")}
 						size="sm"
 						value={subject}
 						onChange={(e) => setSubject(e.target.value)}
@@ -104,7 +106,7 @@ export default function ComposeEmail() {
 					/>
 					<div>
 						<Text size="sm" DANGEROUS_className="font-medium mb-1.5 block">
-							Message
+							{t("fields.message")}
 						</Text>
 						<RichTextEditor value={body} onChange={setBody} />
 					</div>
@@ -116,7 +118,7 @@ export default function ComposeEmail() {
 							onClick={closeComposeModal}
 							disabled={isSending}
 						>
-							Discard
+							{t("actions.discard")}
 						</Button>
 						<div className="flex items-center gap-2">
 							<Button
@@ -128,7 +130,7 @@ export default function ComposeEmail() {
 								icon={<Save size={14} />}
 								onClick={handleSaveDraft}
 							>
-								{isSavingDraft ? "Saving..." : "Save as Draft"}
+								{isSavingDraft ? t("actions.saving") : t("actions.saveAsDraft")}
 							</Button>
 							<Button
 								type="submit"
@@ -138,7 +140,7 @@ export default function ComposeEmail() {
 								disabled={isSavingDraft || isSending}
 								icon={<Send size={14} />}
 							>
-								{isSending ? "Sending..." : "Send"}
+								{isSending ? t("actions.sending") : t("actions.send")}
 							</Button>
 						</div>
 					</div>

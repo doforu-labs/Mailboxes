@@ -3,6 +3,7 @@
 //     See the LICENSE file or https://www.gnu.org/licenses/agpl-3.0.txt
 
 import { Hono } from "hono";
+import type { Context } from "hono";
 import dns from "node:dns";
 // NOTE: dns.promises.resolveMx is kept for detect-dns-provider;
 // verify-mx uses DoH directly to avoid Workers polyfill issues.
@@ -10,8 +11,37 @@ import { listMailboxes } from "./lib/email-helpers";
 import type { Env } from "./types";
 import { fetchWithTimeout } from "./lib/fetch-with-timeout";
 import * as dbService from "./db";
+// [i18n apiSetup] Every `[API]` error string returned to the frontend is
+// localized via the `apiSetup` namespace. The locale middleware lives in
+// ./index.ts, mounted on the SAME Hono app (`index.ts` does `app.route("/",
+// setup)`), so `c.get("locale")` is available here. See `setupT` below for the
+// scoped translator factory and its fallback when the middleware did not run.
+import { DEFAULT_LOCALE, isLocale, resolveLocale } from "../shared/i18n/config";
+import type { Locale } from "../shared/i18n/types";
+import { getBackendT } from "../shared/i18n/translate";
 
-const setup = new Hono<{ Bindings: Env }>();
+/**
+ * Resolve the request locale, preferring the value the API middleware in
+ * ./index.ts put on the shared request context and falling back to resolving
+ * it from the request itself (unit tests, direct `setup.fetch()` calls, or a
+ * future mount on a separate Hono instance).
+ */
+function requestLocale(c: Context): Locale {
+	const scoped = c.get("locale" as never) as string | undefined;
+	return isLocale(scoped) ? scoped : resolveLocale(c.req.raw) ?? DEFAULT_LOCALE;
+}
+
+/**
+ * Translator scoped to the `apiSetup` namespace for the request's locale,
+ * built lazily so the success path allocates nothing extra.
+ */
+function setupT(c: Context) {
+	let t: ReturnType<typeof getBackendT> | undefined;
+	return ((key: string, options?: Record<string, unknown>) => {
+		t ??= getBackendT(requestLocale(c), "apiSetup");
+		return t(key, options);
+	}) as ReturnType<typeof getBackendT>;
+}
 
 // Normalize Resend domain status to our standard values.
 // Resend may return statuses like "not_started", "dns_verification_in_progress",
@@ -25,9 +55,12 @@ function normalizeDomainStatus(status: string | undefined): string {
 	return "pending";
 }
 
+const setup = new Hono<{ Bindings: Env }>();
+
 // ── POST /api/v1/setup/detect-cf-domains ───────────────────────────
 // Given a CF API Token + Account ID, return all zones in the account.
 setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
+	const t = setupT(c);
 	try {
 		const body = await c.req.json<{
 			cfApiToken: string;
@@ -52,7 +85,7 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 
 		if (!cfApiToken || !cfAccountId) {
 			return c.json(
-				{ error: "Missing required fields: cfApiToken, cfAccountId" },
+				{ error: t("missingCfCredentials") },
 				400,
 			);
 		}
@@ -79,7 +112,7 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 				const errBody = await res.json().catch(() => ({}));
 				const msg =
 					(errBody as any)?.errors?.[0]?.message ||
-					`Cloudflare API error: ${res.status}`;
+					t("cfApiError", { status: res.status });
 				return c.json({ error: msg }, 400);
 			}
 
@@ -91,7 +124,7 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 			};
 
 			if (!data.success) {
-				const msg = data.errors?.[0]?.message || "Cloudflare API returned an error";
+				const msg = data.errors?.[0]?.message || t("cfApiGenericError");
 				return c.json({ error: msg }, 400);
 			}
 
@@ -110,15 +143,16 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("detectCfDomains failed:", msg);
-		return c.json({ error: "Failed to detect Cloudflare domains" }, 500);
+		return c.json({ error: t("failedToDetectCfDomains") }, 500);
 	}
 });
 
 // ── Verify MX Records ────────────────────────────────────────────
 setup.post("/api/v1/setup/verify-mx", async (c) => {
+	const t = setupT(c);
 	const { domain } = await c.req.json<{ domain: string }>();
 	if (!domain) {
-		return c.json({ error: "Domain is required" }, 400);
+		return c.json({ error: t("domainRequired") }, 400);
 	}
 
 	try {
@@ -157,7 +191,7 @@ setup.post("/api/v1/setup/verify-mx", async (c) => {
 		// DNS query failed — domain may not have MX records yet
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("verifyMx failed:", msg);
-		return c.json({ verified: false, error: "DNS lookup failed", records: [] });
+		return c.json({ verified: false, error: t("dnsLookupFailed"), records: [] });
 	}
 });
 
@@ -196,12 +230,13 @@ function detectProviderFromNameservers(nameservers: string[]): string {
 // ── POST /api/v1/setup/detect-dns-provider ────────────────────────
 // Query NS records for a domain and detect the DNS provider.
 setup.post("/api/v1/setup/detect-dns-provider", async (c) => {
+	const t = setupT(c);
 	try {
 		const body = await c.req.json<{ domain: string }>();
 		const { domain } = body;
 
 		if (!domain) {
-			return c.json({ error: "Missing required field: domain" }, 400);
+			return c.json({ error: t("missingDomainField") }, 400);
 		}
 
 		let nameservers: string[] = [];
@@ -217,7 +252,7 @@ setup.post("/api/v1/setup/detect-dns-provider", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("detectDnsProvider failed:", msg);
-		return c.json({ error: "DNS provider detection failed" }, 500);
+		return c.json({ error: t("dnsProviderDetectionFailed") }, 500);
 	}
 });
 
@@ -255,6 +290,7 @@ setup.get("/api/v1/setup/status", async (c) => {
 // ── POST /api/v1/setup/verify-domain ───────────────────────────────
 // Create a Resend domain, add DNS records via CF API, and verify.
 setup.post("/api/v1/setup/verify-domain", async (c) => {
+	const t = setupT(c);
 	try {
 		const body = await c.req.json<{
 			domain: string;
@@ -277,7 +313,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 
 		if (!domain || !resendApiKey || !cfApiToken || !cfAccountId) {
 			return c.json(
-				{ error: "Missing required fields: domain, resendApiKey, cfApiToken, cfAccountId" },
+				{ error: t("missingVerifyDomainCredentials") },
 				400,
 			);
 		}
@@ -296,8 +332,8 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			const errBody = await resendRes.json().catch(() => ({}));
 			const msg =
 				(errBody as any).message ||
-				`Resend API error: ${resendRes.status}`;
-			return c.json({ error: `Failed to create Resend domain: ${msg}` }, 400);
+				t("resendApiError", { status: resendRes.status });
+			return c.json({ error: t("failedToCreateResendDomainReason", { reason: msg }) }, 400);
 		}
 
 		const resendData = (await resendRes.json()) as {
@@ -374,8 +410,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 		if (!zoneId) {
 			return c.json(
 				{
-					error:
-						`Zone "${domain}" not found in Cloudflare. Make sure the domain is added and active.`,
+					error: t("zoneNotFoundVerify", { domain }),
 				},
 				400,
 			);
@@ -414,18 +449,18 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 				const errBody = await dnsRes.json().catch(() => ({}));
 				const errMsg =
 					(errBody as any)?.errors?.[0]?.message ||
-					`DNS record creation failed: ${dnsRes.status}`;
+					t("dnsRecordCreationFailed", { status: dnsRes.status });
 				dnsResults.push({
 					name: record.name,
 					type: record.type,
-					status: `error: ${errMsg}`,
+					status: t("dnsRecordStatusError", { message: errMsg }),
 					value: record.value || "",
 				});
 			} else {
 				dnsResults.push({
 					name: record.name,
 					type: record.type,
-					status: "created",
+					status: t("dnsRecordStatusCreated"),
 					value: record.value || "",
 				});
 			}
@@ -471,7 +506,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 			}
 		} catch (dbErr) {
 			console.error("Failed to persist domain to DB:", dbErr);
-			return c.json({ error: "Failed to save domain configuration" }, 500);
+			return c.json({ error: t("failedToSaveDomainConfig") }, 500);
 		}
 
 		return c.json({
@@ -482,7 +517,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("verifyDomain failed:", msg);
-		return c.json({ error: "Domain verification setup failed" }, 500);
+		return c.json({ error: t("domainVerificationSetupFailed") }, 500);
 	}
 });
 
@@ -490,6 +525,7 @@ setup.post("/api/v1/setup/verify-domain", async (c) => {
 // Enable Cloudflare Email Routing with a catch-all rule pointing to
 // the "mailboxes" Worker.
 setup.post("/api/v1/setup/email-routing", async (c) => {
+	const t = setupT(c);
 	try {
 		const body = await c.req.json<{
 			domain: string;
@@ -511,7 +547,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 
 		if (!domain || !cfApiToken) {
 			return c.json(
-				{ error: "Missing required fields: domain, cfApiToken" },
+				{ error: t("missingEmailRoutingFields") },
 				400,
 			);
 		}
@@ -574,7 +610,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 
 		if (!zoneId) {
 			return c.json(
-				{ error: `Zone for "${domain}" not found in Cloudflare.` },
+				{ error: t("zoneNotFoundRouting", { domain }) },
 				400,
 			);
 		}
@@ -595,7 +631,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			const errBody = await enableRes.json().catch(() => ({}));
 			const msg =
 				(errBody as any)?.errors?.[0]?.message ||
-				`Failed to enable Email Routing: ${enableRes.status}`;
+				t("failedToEnableEmailRouting", { status: enableRes.status });
 			return c.json({ error: msg }, 400);
 		}
 
@@ -630,7 +666,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 			const errBody = await catchAllRes.json().catch(() => ({}));
 			const msg =
 				(errBody as any)?.errors?.[0]?.message ||
-				`Failed to set catch-all rule: ${catchAllRes.status}`;
+				t("failedToSetCatchAll", { status: catchAllRes.status });
 			return c.json({ error: msg }, 400);
 		}
 
@@ -661,7 +697,7 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("emailRouting failed:", msg);
-		return c.json({ error: "Failed to setup email routing" }, 500);
+		return c.json({ error: t("failedToSetupEmailRouting") }, 500);
 	}
 });
 
@@ -669,18 +705,20 @@ setup.post("/api/v1/setup/email-routing", async (c) => {
 
 // GET /api/v1/domains — list all domains
 setup.get("/api/v1/domains", async (c) => {
+	const t = setupT(c);
 	try {
 		const domains = await dbService.listDomains(c.env.DB);
 		return c.json(domains);
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("listDomains failed:", msg);
-		return c.json({ error: "Failed to list domains" }, 500);
+		return c.json({ error: t("failedToListDomains") }, 500);
 	}
 });
 
 // POST /api/v1/domains — add a new domain (triggers Resend + CF DNS setup)
 setup.post("/api/v1/domains", async (c) => {
+	const t = setupT(c);
 	try {
 		const body = await c.req.json<{
 			domain: string;
@@ -703,7 +741,7 @@ setup.post("/api/v1/domains", async (c) => {
 		}
 
 		if (!domain) {
-			return c.json({ error: "Missing required field: domain" }, 400);
+			return c.json({ error: t("missingDomainField") }, 400);
 		}
 
 		// Check if domain already exists
@@ -719,7 +757,7 @@ setup.post("/api/v1/domains", async (c) => {
 		if (existingDomain) {
 			// If domain already has sending configured via Resend, it's a real duplicate
 			if (existingDomain.resend_domain_id) {
-				return c.json({ error: "Domain already exists", domain: existingDomain }, 409);
+				return c.json({ error: t("domainAlreadyExists"), domain: existingDomain }, 409);
 			}
 			// Domain was created by the receiving step (email-routing) — reuse it
 			// and upgrade with sending configuration
@@ -840,7 +878,7 @@ setup.post("/api/v1/domains", async (c) => {
 				}
 
 				if (!zoneId) {
-					warnings.push("Could not find Cloudflare zone for this domain — DNS records must be added manually");
+					warnings.push(t("warningNoCloudflareZone"));
 				}
 
 				// 3. Add DNS records
@@ -873,11 +911,13 @@ setup.post("/api/v1/domains", async (c) => {
 							dnsResults.push({
 								name: record.name,
 								type: record.type,
-								status: `error: ${(errBody as any)?.errors?.[0]?.message || "unknown"}`,
+								status: t("dnsRecordStatusError", {
+									message: (errBody as any)?.errors?.[0]?.message || t("dnsRecordStatusUnknown"),
+								}),
 								value: record.value || "",
 							});
 						} else {
-							dnsResults.push({ name: record.name, type: record.type, status: "created", value: record.value || "" });
+							dnsResults.push({ name: record.name, type: record.type, status: t("dnsRecordStatusCreated"), value: record.value || "" });
 						}
 					}
 
@@ -894,7 +934,7 @@ setup.post("/api/v1/domains", async (c) => {
 					);
 
 					if (!emailRoutingRes.ok) {
-						warnings.push("Email Routing setup failed — manual configuration may be needed");
+						warnings.push(t("warningEmailRoutingSetupFailed"));
 					}
 
 					const catchAllRes = await fetchWithTimeout(
@@ -915,7 +955,7 @@ setup.post("/api/v1/domains", async (c) => {
 					);
 
 					if (!catchAllRes.ok) {
-						warnings.push("Catch-all routing setup failed");
+						warnings.push(t("warningCatchAllSetupFailed"));
 					}
 
 					// Update domain with CF info
@@ -957,7 +997,9 @@ setup.post("/api/v1/domains", async (c) => {
 					await dbService.deleteDomain(c.env.DB, domainId);
 				}
 				return c.json({
-					error: `Failed to create domain on Resend: ${(errBody as any)?.message || resendRes.statusText || resendRes.status}`,
+					error: t("failedToCreateDomainOnResend", {
+						reason: (errBody as any)?.message || resendRes.statusText || resendRes.status,
+					}),
 				}, 400);
 			}
 	} else if (resendApiKey) {
@@ -1005,7 +1047,7 @@ setup.post("/api/v1/domains", async (c) => {
 			});
 		} else {
 			const errBody = await resendRes.json().catch(() => ({}));
-			const msg = (errBody as any).message || `Resend API error: ${resendRes.status}`;
+			const msg = (errBody as any).message || t("resendApiError", { status: resendRes.status });
 			// Resend API failed — roll back the D1 record or revert to original status
 			if (domainWasReused) {
 				await dbService.updateDomain(c.env.DB, domainId, {
@@ -1015,7 +1057,7 @@ setup.post("/api/v1/domains", async (c) => {
 			} else {
 				await dbService.deleteDomain(c.env.DB, domainId);
 			}
-			return c.json({ error: `Failed to create Resend domain: ${msg}` }, 400);
+			return c.json({ error: t("failedToCreateResendDomainReason", { reason: msg }) }, 400);
 		}
 	}
 
@@ -1024,17 +1066,18 @@ setup.post("/api/v1/domains", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("addDomain failed:", msg);
-		return c.json({ error: "Failed to add domain" }, 500);
+		return c.json({ error: t("failedToAddDomain") }, 500);
 	}
 });
 
 // DELETE /api/v1/domains/:id — remove a domain and clean up all resources
 setup.delete("/api/v1/domains/:id", async (c) => {
+	const t = setupT(c);
 	try {
 		const id = c.req.param("id");
 		const domain = await dbService.getDomain(c.env.DB, id);
 		if (!domain) {
-			return c.json({ error: "Domain not found" }, 404);
+			return c.json({ error: t("domainNotFound") }, 404);
 		}
 
 		const errors: string[] = [];
@@ -1067,7 +1110,7 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 			} catch (e) {
 				const mailboxMsg = e instanceof Error ? e.message : "unknown";
 				console.error(`Failed to delete mailbox ${mailbox.id}:`, mailboxMsg);
-				errors.push(`Failed to delete mailbox ${mailbox.id}`);
+				errors.push(t("failedToDeleteMailbox", { mailbox: mailbox.id }));
 			}
 		}
 
@@ -1084,12 +1127,12 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 					},
 				);
 				if (!resendRes.ok) {
-					errors.push(`Resend domain deletion returned ${resendRes.status}`);
+					errors.push(t("resendDomainDeleteFailed", { status: resendRes.status }));
 				}
 			} catch (e) {
 				const resendMsg = e instanceof Error ? e.message : "unknown";
 				console.error("Resend cleanup failed:", resendMsg);
-				errors.push("Resend cleanup failed");
+				errors.push(t("resendCleanupFailed"));
 			}
 		}
 
@@ -1099,9 +1142,7 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 		// cf_account_id, we attempt to remove the catch-all rule.
 		if (domain.cf_zone_id && domain.cf_account_id) {
 			// We cannot call CF API without a token. Log for manual cleanup.
-			errors.push(
-				`Cloudflare Email Routing for zone ${domain.cf_zone_id} could not be auto-disabled (API token not stored). Please disable manually in Cloudflare dashboard.`,
-			);
+			errors.push(t("cfEmailRoutingManualDisable", { zoneId: domain.cf_zone_id }));
 		}
 
 		// ── 4. Delete domain record from D1 ──
@@ -1115,19 +1156,20 @@ setup.delete("/api/v1/domains/:id", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("deleteDomain failed:", msg);
-		return c.json({ error: "Failed to delete domain" }, 500);
+		return c.json({ error: t("failedToDeleteDomain") }, 500);
 	}
 });
 
 // PUT /api/v1/domains/:id/catch-all — set or clear the catch-all mailbox
 setup.put("/api/v1/domains/:id/catch-all", async (c) => {
+	const t = setupT(c);
 	try {
 		const id = c.req.param("id");
 		const body = await c.req.json<{ catch_all_mailbox: string | null }>();
 
 		const domain = await dbService.getDomain(c.env.DB, id);
 		if (!domain) {
-			return c.json({ error: "Domain not found" }, 404);
+			return c.json({ error: t("domainNotFound") }, 404);
 		}
 
 		const { catch_all_mailbox } = body;
@@ -1139,7 +1181,7 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 			if (catch_all_mailbox.startsWith("*@")) {
 				const inputDomain = catch_all_mailbox.slice(2); // strip "*"
 				if (inputDomain.toLowerCase() !== domain.name) {
-					return c.json({ error: `Domain mismatch: ${inputDomain} != ${domain.name}` }, 400);
+					return c.json({ error: t("domainMismatch", { inputDomain, domain: domain.name }) }, 400);
 				}
 				resolvedMailbox = `*@${domain.name}`;
 
@@ -1173,12 +1215,12 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 				resolvedMailbox = catch_all_mailbox;
 				const mailboxKey = `mailboxes/${resolvedMailbox}.json`;
 				if (!(await c.env.BUCKET.head(mailboxKey))) {
-					return c.json({ error: `Mailbox "${resolvedMailbox}" does not exist` }, 400);
+					return c.json({ error: t("mailboxDoesNotExist", { mailbox: resolvedMailbox }) }, 400);
 				}
 				// Verify the mailbox belongs to this domain
 				const mailboxDomain = resolvedMailbox.split("@")[1]?.toLowerCase();
 				if (mailboxDomain !== domain.name) {
-					return c.json({ error: `Mailbox must belong to domain ${domain.name}` }, 400);
+					return c.json({ error: t("mailboxMustBelongToDomain", { domain: domain.name }) }, 400);
 				}
 			}
 
@@ -1197,19 +1239,20 @@ setup.put("/api/v1/domains/:id/catch-all", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("updateCatchAll failed:", msg);
-		return c.json({ error: "Failed to update catch-all" }, 500);
+		return c.json({ error: t("failedToUpdateCatchAll") }, 500);
 	}
 });
 
 // PUT /api/v1/domains/:id/api-key — update domain-level Resend API key
 setup.put("/api/v1/domains/:id/api-key", async (c) => {
+	const t = setupT(c);
 	try {
 		const id = c.req.param("id");
 		const body = await c.req.json<{ resend_api_key: string | null }>();
 
 		const domain = await dbService.getDomain(c.env.DB, id);
 		if (!domain) {
-			return c.json({ error: "Domain not found" }, 404);
+			return c.json({ error: t("domainNotFound") }, 404);
 		}
 
 		const { resend_api_key } = body;
@@ -1223,18 +1266,19 @@ setup.put("/api/v1/domains/:id/api-key", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("updateApiKey failed:", msg);
-		return c.json({ error: "Failed to update API key" }, 500);
+		return c.json({ error: t("failedToUpdateApiKey") }, 500);
 	}
 });
 
 // GET /api/v1/setup/verify-domain/:domainId — Poll domain verification status
 setup.get("/api/v1/setup/verify-domain/:domainId", async (c) => {
+	const t = setupT(c);
 	try {
 		const domainId = c.req.param("domainId");
 		const domain = await dbService.getDomain(c.env.DB, domainId);
 
 		if (!domain) {
-			return c.json({ error: "Domain not found" }, 404);
+			return c.json({ error: t("domainNotFound") }, 404);
 		}
 
 		// If already verified or failed, just return current status
@@ -1288,7 +1332,7 @@ setup.get("/api/v1/setup/verify-domain/:domainId", async (c) => {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : "Unknown error";
 		console.error("verifyDomainPoll failed:", msg);
-		return c.json({ error: "Failed to verify domain" }, 500);
+		return c.json({ error: t("failedToVerifyDomain") }, 500);
 	}
 });
 

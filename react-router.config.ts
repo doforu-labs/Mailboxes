@@ -9,5 +9,8 @@ export default {
   ssr: true,
   future: {
     v8_viteEnvironmentApi: true,
+    // Route middleware: powers the per-request i18next instance in
+    // app/middleware/i18next.ts (see app/root.tsx `middleware` export).
+    v8_middleware: true,
   },
 } satisfies Config;

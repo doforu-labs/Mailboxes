@@ -1,0 +1,18 @@
+{
+	"cancel": "取消",
+	"save": "保存",
+	"close": "关闭",
+	"back": "返回",
+	"continue": "继续",
+	"delete": "删除",
+	"retry": "重试",
+	"sending": "发送中…",
+	"send": "发送",
+	"goHome": "返回首页",
+	"signIn": "登录",
+	"settings": "设置",
+	"create": "创建",
+	"verify": "验证",
+	"notFoundTitle": "404 — 页面未找到",
+	"notFoundDescription": "您要访问的页面不存在。"
+}

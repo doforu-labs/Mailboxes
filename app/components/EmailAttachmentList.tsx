@@ -5,6 +5,7 @@
 // Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
 import { Paperclip, File, Image } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { formatBytes, getAttachmentUrl, getNonInlineAttachments } from "~/lib/utils";
 import type { Attachment } from "~/types";
 
@@ -25,6 +26,7 @@ export default function EmailAttachmentList({
 	className,
 	showHeading = false,
 }: EmailAttachmentListProps) {
+	const { t } = useTranslation("mailPanel");
 	if (!mailboxId) return null;
 
 	const files = getNonInlineAttachments(attachments);
@@ -36,7 +38,7 @@ export default function EmailAttachmentList({
 				<div className="flex items-center gap-2 mb-2">
 					<Paperclip size={14} className="text-kumo-subtle" />
 					<span className="text-sm font-medium text-kumo-default">
-						{files.length} attachment{files.length !== 1 ? "s" : ""}
+						{t("attachment.count", { count: files.length })}
 					</span>
 				</div>
 			)}
