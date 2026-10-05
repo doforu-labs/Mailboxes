@@ -288,6 +288,10 @@ export default function HomeRoute() {
 	};
 
 	const isEmpty = groupedMailboxes.length === 0;
+	// Both queries must have settled before we know whether the account is empty.
+	// While either is still in flight we show the loader and must NOT render the
+	// empty state (otherwise the spinner and "no mailboxes yet" flash together).
+	const isLoading = !mailboxesFetched || !domainsFetched;
 
 	return (
 		<div className="min-h-screen bg-kumo-recessed">
@@ -344,15 +348,14 @@ export default function HomeRoute() {
 					</div>
 				</div>
 
-				{/* Loading state */}
-				{(!mailboxesFetched || !domainsFetched) && (
+				{/* Loading / content / empty — single mutually exclusive branch */}
+				{isLoading ? (
+					/* Loading state */
 					<div className="flex items-center justify-center py-24">
 						<Loader size="lg" />
 					</div>
-				)}
-
-				{/* Content */}
-				{mailboxesFetched && domainsFetched && !isEmpty ? (
+				) : !isEmpty ? (
+					/* Content */
 					<div className="space-y-4">
 						{groupedMailboxes.map(({ domain, mailboxes: groupMailboxes }) => {
 							const domainId = domain?.id ?? "__other__";
