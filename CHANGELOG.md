@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **First deploy no longer fails on the Vite redirect.** `scripts/setup.mjs` used to
+  append `--config <root>/wrangler.jsonc` to *every* wrangler call, including `deploy`.
+  That bypasses the redirect the Cloudflare Vite plugin writes after each build
+  (`.wrangler/deploy/config.json` → `build/server/wrangler.json`), so wrangler
+  re-bundled the raw `workers/app.ts` on the spot and died on the build-time virtual
+  module `virtual:react-router/server-build`. The `deploy` call (and its `--dry-run`
+  rehearsal) now omits `--config` and follows the redirect instead.
+
+### Changed
+
+- **Remote migrations are opt-in by default.** `npm run setup` no longer applies
+  production migrations automatically: it runs a read-only
+  `wrangler d1 migrations list <db> --remote`, and if anything is pending it stops,
+  lists the migration filenames, and asks you to re-run with `--migrate`. The one
+  exception is a D1 database created by the same run — an empty database has nothing
+  to damage, so it is treated as first-time initialization and migrated on the spot.
+  `--migrate` keeps the old explicit behaviour.
+
+### Documentation
+
+- **Both READMEs now warn against a bare `wrangler deploy`.** Because the Vite plugin
+  redirects wrangler to `build/server/wrangler.json`, running `wrangler deploy` directly
+  uploads whatever is already in `build/` without building anything — it ships a stale
+  artifact silently, with no error and no warning. The docs point at the supported
+  entries (`npm run deploy`, `npm run setup` / `bash deploy.sh`, `npm run deploy:full`)
+  and note that `build.command` in `wrangler.jsonc` is not a safeguard here: the
+  Cloudflare Vite plugin deletes that field when it generates the config.
+
 ## [0.2.0] - 2026-10-06
 
 ### Added

@@ -6,16 +6,19 @@
 // One-command setup for Mailboxes. It is idempotent, so it doubles as a
 // redeploy: it creates the R2 bucket and the D1 database when they are
 // missing, writes the resulting database_id back into the wrangler config,
-// applies the remote migrations, builds, deploys, and prints the URL.
+// checks for pending remote migrations (and applies them only when asked or on
+// a freshly created database), builds, deploys, and prints the URL.
 //
 //   npm run setup
 //   npm run setup -- --dry-run       report only, change nothing
 //   npm run setup -- --skip-deploy   everything except the deploy
+//   npm run setup -- --migrate       explicitly apply pending remote migrations
 //   npm run setup -- --config FILE   use FILE instead of wrangler.jsonc
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,16 +36,24 @@ const optionOf = (name) => {
 if (hasFlag("--help") || hasFlag("-h")) {
 	console.log(`Mailboxes setup — deploy this app to your own Cloudflare account.
 
-  npm run setup                   Create missing resources, migrate, build, deploy
-  npm run setup -- --skip-deploy  Everything except the deploy
+  npm run setup                   Create missing resources, build, deploy
   npm run setup -- --dry-run      Report what would happen, then exit
+  npm run setup -- --skip-deploy  Everything except the deploy
+  npm run setup -- --migrate      Apply pending remote D1 migrations
   npm run setup -- --config FILE  Read/write FILE instead of wrangler.jsonc
+
+By default remote migrations are NOT applied automatically: setup only lists
+pending migrations and, if any are found, stops and asks you to re-run with
+--migrate (so a production database is never changed without consent).
+The one exception is a freshly created D1 database, which is migrated on the
+spot since an empty database has nothing to lose.
 
 Needs Node.js ${MIN_NODE_MAJOR}+. Cloudflare login is run on demand.`);
 	process.exit(0);
 }
 
 const DRY_RUN = hasFlag("--dry-run");
+const MIGRATE = hasFlag("--migrate");
 const SKIP_DEPLOY = DRY_RUN || hasFlag("--skip-deploy");
 
 // ── output ─────────────────────────────────────────────────────────────────
@@ -96,10 +107,19 @@ const WRANGLER_BIN = resolve(
 	process.platform === "win32" ? "wrangler.cmd" : "wrangler",
 );
 
-const wrangler = (args, opts) =>
-	existsSync(WRANGLER_BIN)
-		? sh(WRANGLER_BIN, [...args, "--config", CONFIG_PATH], opts)
-		: sh("npx", ["wrangler", ...args, "--config", CONFIG_PATH], opts);
+// Resource/migration commands run *before* the build, so they must point at the
+// real config explicitly (`--config`). The deploy command is the exception: the
+// vite plugin rewrites `.wrangler/deploy/config.json` after each build to
+// redirect wrangler to `build/server/wrangler.json`. Passing `--config` there
+// sets `redirected: false` and makes wrangler bundle the raw `workers/app.ts`,
+// which fails on the build-time virtual module `virtual:react-router/server-build`.
+// So `deploy` opts out with `withConfig: false` and lets the redirect happen.
+const wrangler = (args, { withConfig = true, ...opts } = {}) => {
+	const full = withConfig ? [...args, "--config", CONFIG_PATH] : args;
+	return existsSync(WRANGLER_BIN)
+		? sh(WRANGLER_BIN, full, opts)
+		: sh("npx", ["wrangler", ...full], opts);
+};
 
 /** Replace an existing `database_id` value, or insert the key after `database_name`. */
 function withDatabaseId(text, databaseId) {
@@ -206,6 +226,11 @@ function listDatabases() {
 const findDatabase = (rows) => rows?.find((row) => row && row.name === databaseName);
 
 let record = findDatabase(listDatabases());
+// Tracks whether *this* run created the database. A brand-new, empty D1 has no
+// data to damage, so we treat it as first-time initialization and apply the
+// migrations right away (see the migrations section) without requiring
+// --migrate. Any pre-existing database is left alone unless --migrate is given.
+let dbJustCreated = false;
 
 if (!record && DRY_RUN) {
 	note(`${databaseName} 不存在（正式运行时会创建）`);
@@ -217,6 +242,7 @@ if (!record && DRY_RUN) {
 		if (uuid) record = { uuid };
 	}
 	if (!record) abort(`创建 D1 数据库 ${databaseName} 失败`, asBlock(res.out));
+	dbJustCreated = true;
 	done(`${databaseName} 已创建`);
 } else {
 	done(`${databaseName} 已存在`);
@@ -243,14 +269,78 @@ if (!databaseId) {
 
 // ── 7. migrations ──────────────────────────────────────────────────────────
 
-heading("应用数据库迁移");
+heading("数据库迁移");
+
+/**
+ * Read-only probe: asks wrangler which migrations are still pending.
+ *
+ * Real `wrangler d1 migrations list <db> --remote` output is one of:
+ *
+ *   ✅ No migrations to apply!                     (nothing pending)
+ *
+ * or a box-drawn table introduced by a header line:
+ *
+ *   Migrations to be applied:
+ *   ┌────────────┐
+ *   │ Name       │
+ *   ├────────────┤
+ *   │ 0001_a.sql │
+ *   └────────────┘
+ *
+ * Both exit 0. We only trust "zero pending" from an exit 0 run that actually
+ * says so; a non-zero exit is always a failure, never "no migrations".
+ */
+function listPendingMigrations() {
+	const res = wrangler(["d1", "migrations", "list", databaseName, "--remote"], { capture: true });
+	if (res.status !== 0) return { ok: false, out: res.out, pending: [] };
+
+	const pending = [];
+	const marker = res.out.indexOf("Migrations to be applied");
+	if (marker !== -1) {
+		for (const raw of res.out.slice(marker).split("\n")) {
+			const cell = /^\s*│\s*(.+?)\s*│\s*$/.exec(raw)?.[1];
+			// Skip the table header and any decorative/blank rows.
+			if (!cell || /^[-─\s]*$/.test(cell) || cell.toLowerCase() === "name") continue;
+			pending.push(cell);
+		}
+	}
+	return { ok: true, out: res.out, pending };
+}
+
+const applyMigrationArgs = ["d1", "migrations", "apply", databaseName, "--remote"];
 
 if (DRY_RUN) {
-	note(`会执行：wrangler d1 migrations apply ${databaseName} --remote`);
-} else if (wrangler(["d1", "migrations", "apply", databaseName, "--remote"]).status !== 0) {
-	abort("应用迁移失败");
-} else {
+	if (dbJustCreated) note("本次会新建数据库，届时会自动应用迁移");
+	const listed = listPendingMigrations();
+	if (!listed.ok) {
+		note("无法读取待应用迁移（尚未登录或数据库不存在），正式运行时再判断");
+	} else if (listed.pending.length > 0) {
+		note(`检测到 ${listed.pending.length} 条待应用迁移：${listed.pending.join("、")}`);
+		note("正式运行时会在此停下并要求 --migrate");
+	} else {
+		note("无待应用迁移");
+	}
+	note(`不会执行：wrangler ${applyMigrationArgs.join(" ")}（只读演练）`);
+} else if (dbJustCreated) {
+	// Exception to the opt-in rule: the database was created moments ago in
+	// this same run, so it is empty and there is nothing to damage. Applying
+	// the schema here is just first-time initialization.
+	note(`${databaseName} 是本次新建的空库，直接初始化 schema`);
+	if (wrangler(applyMigrationArgs).status !== 0) abort("应用迁移失败");
 	done("迁移已应用");
+} else if (MIGRATE) {
+	if (wrangler(applyMigrationArgs).status !== 0) abort("应用迁移失败");
+	done("迁移已应用（--migrate）");
+} else {
+	const listed = listPendingMigrations();
+	if (!listed.ok) abort("读取待应用迁移失败", asBlock(listed.out));
+	if (listed.pending.length > 0) {
+		abort(
+			`检测到 ${listed.pending.length} 条待应用迁移：${listed.pending.join("、")}`,
+			`默认不会自动把迁移打到生产库；确认后加 --migrate 重跑：npm run setup -- --migrate`,
+		);
+	}
+	done("无待应用迁移");
 }
 
 // ── 8. build ───────────────────────────────────────────────────────────────
@@ -272,9 +362,29 @@ heading("部署");
 let url;
 
 if (SKIP_DEPLOY) {
-	note(`已跳过部署（${DRY_RUN ? "--dry-run" : "--skip-deploy"}）`);
+	if (DRY_RUN) {
+		// `wrangler deploy` relies on the post-build redirect in
+		// `.wrangler/deploy/config.json`, which only exists once `npm run build`
+		// has run. A clean checkout has no build/ yet, so skip the rehearsal.
+		if (!existsSync(resolve(ROOT, "build", "server", "index.js"))) {
+			note("build/ 不存在，跳过部署演练");
+		} else {
+			const outdir = mkdtempSync(join(tmpdir(), "mailboxes-deploy-"));
+			try {
+				line("  演练：wrangler deploy --dry-run（不会上传）…");
+				// No `--config` here on purpose — deploy must follow the redirect.
+				const res = wrangler(["deploy", "--dry-run", "--outdir", outdir], { withConfig: false });
+				if (res.status !== 0) abort("部署演练失败", "wrangler deploy --dry-run 返回非零退出码");
+				done("部署演练通过（配置重定向可用、资源与模块均可解析）");
+			} finally {
+				rmSync(outdir, { recursive: true, force: true });
+			}
+		}
+	} else {
+		note("已跳过部署（--skip-deploy）");
+	}
 } else {
-	const res = wrangler(["deploy"], { capture: true });
+	const res = wrangler(["deploy"], { capture: true, withConfig: false });
 	if (res.status !== 0) abort("部署失败", asBlock(res.out));
 	url = /https:\/\/[^\s"']+\.workers\.dev[^\s"']*/i.exec(res.out)?.[0];
 	done(url ? `已部署：${url}` : "已部署");

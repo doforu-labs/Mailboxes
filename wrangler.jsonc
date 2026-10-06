@@ -1,5 +1,27 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
+
+	// 🚫 DO NOT run `npx wrangler deploy` / `wrangler deploy` by hand.
+	//
+	// This project uses @cloudflare/vite-plugin. `npm run build` writes
+	// .wrangler/deploy/config.json, which redirects wrangler to
+	// build/server/wrangler.json (`main: index.js`, `assets.directory: ../client`,
+	// `no_bundle: true`). A bare `wrangler deploy` therefore follows that redirect
+	// and uploads whatever is already sitting in build/ WITHOUT running a build —
+	// it silently ships a stale artifact: no error, no warning. This has really
+	// happened once.
+	//
+	// ✅ Use one of the supported entry points instead:
+	//   npm run deploy                 everyday redeploy (build + deploy)
+	//   npm run setup / bash deploy.sh first-time deploy + resource creation
+	//   npm run deploy:full            build + deploy + apply remote migrations
+	//
+	// ⚠️ Do not add a `build.command` here hoping to catch the mistake above.
+	//    Under the Cloudflare Vite plugin that field is ignored — the plugin
+	//    deletes `config["build"]` when it generates the config. The official
+	//    Custom builds docs mark it "Not applicable if you're using the
+	//    Cloudflare Vite plugin".
+
 	"name": "mailboxes",
 	"compatibility_date": "2025-11-28",
 	"main": "./workers/app.ts",

@@ -78,14 +78,16 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 ## Quick start
 
-**One command does the whole deploy.** It creates the bucket and database you need (R2 and D1), puts the database ID into the config file, sets up the data tables, then builds and deploys — and prints your URL:
+**`npm run setup` is the first-time deploy.** It creates the bucket and database you need (R2 and D1), puts the database ID into the config file, builds, and deploys — and prints your URL. If the database is the one this run just created (an empty database), it also applies the schema; migrations against a pre-existing production database are **not** applied automatically (see [Production deploy](#production-deploy)):
 
 ```bash
 npm install
 npm run setup
 ```
 
-The script is **safe to re-run**, so just run it again for every later deploy (anything that already exists is skipped; add `-- --dry-run` to see what it would do first).
+For everyday redeploys once the resources exist, use `npm run deploy` (see [Production deploy](#production-deploy)).
+
+The script is **safe to re-run**, so it doubles as a redeploy (anything that already exists is skipped; add `-- --dry-run` to see what it would do first).
 
 > The **Deploy to Cloudflare** button at the top of this README works too, but it only creates the Worker — the bucket, the database and the database ID are on you. See the note at the end of this section.
 
@@ -175,25 +177,37 @@ Much less work: run `npm run setup` as above.
 
 ### Production deploy
 
-For the first deploy, just run `npm run setup` (see Quick start): it creates the missing resources, writes `database_id` back into the config, applies migrations, builds and deploys. For everyday redeploys once the resources exist:
+**First deploy — `npm run setup`.** It creates the missing resources (R2 bucket, D1 database), writes `database_id` back into the config, builds, and deploys. By default it does **not** apply remote migrations to your production database: it runs a read-only `wrangler d1 migrations list <db> --remote`, and if anything is pending it **stops**, lists the migration filenames, and asks you to re-run with `--migrate`. The one exception is a database created by that same run — an empty database has nothing to lose, so it is initialized right away. `bash deploy.sh` is the same as `npm run setup`.
+
+**Everyday redeploy — `npm run deploy`.** It builds and deploys only: it does not touch migrations and does not create resources.
 
 ```bash
 npm run deploy
 ```
 
-Then apply migrations in production:
+**Apply migrations to production.** `npm run setup -- --migrate` applies pending remote migrations as part of setup; to apply them on their own:
 
 ```bash
 npm run db:migrate
 ```
 
-Or use the full command that builds, deploys, and migrates in one step:
+**Everything in one step.** `npm run deploy:full` builds, deploys and applies remote migrations:
 
 ```bash
 npm run deploy:full
 ```
 
-`bash deploy.sh` is the same as `npm run setup`.
+**Preview a run without writing anything.** `npm run setup -- --dry-run` performs the read-only cloud queries, a deploy rehearsal (`wrangler deploy --dry-run`, which uploads nothing) and a report — it changes nothing.
+
+### Do not run wrangler deploy directly
+
+Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you will silently ship a stale build.
+
+**Why.** This project uses `@cloudflare/vite-plugin`. `npm run build` writes `.wrangler/deploy/config.json`, which redirects wrangler to `build/server/wrangler.json` (`main: index.js`, `assets.directory: ../client`, `no_bundle: true`, and no `build` key). A bare `wrangler deploy` follows that redirect and uploads whatever already sits in `build/` — it runs **no build at all**. There is no error and no warning: you just publish an outdated artifact. This has already happened for real once.
+
+**What to run instead:** `npm run deploy` (everyday), `npm run setup` or `bash deploy.sh` (first time and resource creation), `npm run deploy:full` (deploy plus migrations).
+
+> Adding a `build.command` to `wrangler.jsonc` is **not** a safeguard here. Under the Cloudflare Vite plugin that field is ignored — the plugin deletes `config["build"]` when it generates the config, and the official Custom builds documentation marks it "Not applicable if you're using the Cloudflare Vite plugin".
 
 ## Stack
 
@@ -262,7 +276,7 @@ Mailboxes is a fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/
 - **Configuration lives in the database and the UI.** Domains, mailboxes and keys are managed in D1 and edited on screen rather than through `wrangler.jsonc` environment variables.
 - **Multiple domains.** One instance can serve several domains, each with its own routing and sending settings.
 - **New pages:** first-run setup, login, platform settings (Cloudflare credentials), domain details, add-domain wizard, catch-all settings, and the AI panel.
-- **Tooling:** `migrations/` (12 SQL files), one-command deploy via `npm run setup`, e2e tests and CI.
+- **Tooling:** `migrations/` (12 SQL files), guided first-time deploy via `npm run setup`, e2e tests and CI.
 
 ### Why it can stay at $0 a month
 
@@ -309,7 +323,7 @@ See: [Resend — Claim Domain](https://resend.com/docs/api-reference/domains/cla
 
 ### Done ✅
 
-- ✅ **One-command deploy** — `npm run setup` creates the R2 bucket and D1 database, applies migrations, builds and deploys, with no hand-editing of `database_id`
+- ✅ **Guided first-time deploy** — `npm run setup` creates the R2 bucket and D1 database, writes `database_id` for you, builds and deploys, and initializes the schema when it has just created an empty database; later migrations stay opt-in (`--migrate`)
 - ✅ **Automatic inbound setup** — save a Cloudflare API Token and Account ID in Platform Settings, and adding a domain turns on Email Routing and writes the catch-all rule (`*@your-domain` → Worker) for you, with no dashboard clicking. Fully automatic only for domains whose DNS is on Cloudflare; other DNS providers get a step-by-step guide instead
 - ✅ **Automatic outbound setup** — save a per-domain Resend API Key and the app creates the domain on Resend, writes the required MX/TXT/CNAME records into your Cloudflare DNS, and triggers a verification pass, so you never copy records by hand. Without Cloudflare credentials it falls back to listing the records for you to add manually
 - ✅ **Setup wizard with no default password** — salted PBKDF2-SHA256 hash stored in D1

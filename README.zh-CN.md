@@ -78,14 +78,16 @@
 
 ## 快速开始
 
-**一条命令搞定部署。** 它会自动创建需要的存储桶和数据库（R2 与 D1）、把数据库 ID 填进配置文件、建好数据表，然后构建并部署，最后打印你的访问地址：
+**`npm run setup` 是首次部署入口。** 它会自动创建需要的存储桶和数据库（R2 与 D1）、把数据库 ID 填进配置文件，然后构建并部署，最后打印你的访问地址。若数据库是本次运行刚新建的（空库），它还会初始化 schema；对已存在的生产库，默认**不会**自动打迁移（见[生产部署](#生产部署)）：
 
 ```bash
 npm install
 npm run setup
 ```
 
-脚本可以**反复运行**：以后每次重新部署，再跑一遍就行（已经建好的资源会自动跳过；加 `-- --dry-run` 可以先看它打算做什么）。
+资源就绪后的日常重新部署，用 `npm run deploy`（见[生产部署](#生产部署)）。
+
+脚本可以**反复运行**，因此它也能当重新部署用（已经建好的资源会自动跳过；加 `-- --dry-run` 可以先看它打算做什么）。
 
 > 也可以用 README 顶部的 **Deploy to Cloudflare** 按钮，但它只会创建 Worker —— 存储桶、数据库和数据库 ID 都得你自己补，详见本节末尾的说明。
 
@@ -175,25 +177,37 @@ npm run setup
 
 ### 生产部署
 
-首次部署请直接跑 `npm run setup`（见「快速开始」）：它会创建缺失的资源、把 `database_id` 写回配置、应用迁移、构建并部署。资源就绪之后的日常重新部署：
+**首次部署 —— `npm run setup`。** 它会创建缺失的资源（R2 桶、D1 数据库）、把 `database_id` 写回配置、构建并部署。默认**不会**自动把迁移打到你的生产库上：它只跑一次只读的 `wrangler d1 migrations list <db> --remote`；若检测到待应用迁移就会**停下**，列出迁移文件名，要求你加 `--migrate` 重跑。唯一例外是本次运行刚新建的数据库 —— 空库没有什么可损坏的，会直接完成初始化。`bash deploy.sh` 与 `npm run setup` 等价。
+
+**日常重新部署 —— `npm run deploy`。** 它只做构建和部署：不碰迁移，也不创建资源。
 
 ```bash
 npm run deploy
 ```
 
-然后在生产环境应用迁移：
+**在生产库上打迁移。** `npm run setup -- --migrate` 会在 setup 流程里显式应用待处理的远程迁移；如果只想单独打迁移：
 
 ```bash
 npm run db:migrate
 ```
 
-或者用一条命令完成构建、部署和迁移：
+**一步到位。** `npm run deploy:full` 会依次构建、部署并应用远程迁移：
 
 ```bash
 npm run deploy:full
 ```
 
-`bash deploy.sh` 与 `npm run setup` 完全等价。
+**只想要演练、不写任何东西。** `npm run setup -- --dry-run` 会执行只读的云端查询、一次部署演练（`wrangler deploy --dry-run`，不上传）和一份报告 —— 不会改动任何东西。
+
+### 不要裸跑 wrangler deploy
+
+手动执行 `wrangler deploy`（或 `npx wrangler deploy`），你会静默发出一个过期的构建产物。
+
+**为什么。** 本项目使用 `@cloudflare/vite-plugin`。`npm run build` 会生成 `.wrangler/deploy/config.json`，把 wrangler 重定向到 `build/server/wrangler.json`（`main: index.js`、`assets.directory: ../client`、`no_bundle: true`，且没有 `build` 键）。裸跑 `wrangler deploy` 会沿着这个重定向，直接上传 `build/` 里已有的文件 —— 完全**不执行构建**。没有报错、没有警告，你只是发出了旧产物。这件事已经真实发生过一次。
+
+**正确的入口：** 日常用 `npm run deploy`，首次部署与「建资源」用 `npm run setup` 或 `bash deploy.sh`，部署加迁移用 `npm run deploy:full`。
+
+> 在这里给 `wrangler.jsonc` 加 `build.command` **不能**防住上面的问题。在 Cloudflare Vite 插件下该字段会被忽略 —— 插件生成配置时会删除 `config["build"]`，官方 Custom builds 文档也明确标注它「Not applicable if you're using the Cloudflare Vite plugin」。
 
 ## 技术栈
 
@@ -261,7 +275,7 @@ Mailboxes 从 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-i
 - **配置搬进数据库和界面。** 域名、邮箱、密钥都由 D1 管理并在页面上编辑，不再靠 `wrangler.jsonc` 的环境变量。
 - **多域名。** 一个实例可同时接入多个域名，各自的转发规则与发信配置互不影响。
 - **新增页面：** 首次运行向导、登录、平台设置（Cloudflare 凭据）、域名详情、添加域名向导、Catch-all 设置、AI 面板。
-- **工程配套：** `migrations/`（12 个 SQL 文件）、`npm run setup` 一键部署、e2e 测试与 CI。
+- **工程配套：** `migrations/`（12 个 SQL 文件）、`npm run setup` 引导式首次部署、e2e 测试与 CI。
 
 ### 为什么能保持每月 $0
 
@@ -308,7 +322,7 @@ Mailboxes 从 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-i
 
 ### 已完成 ✅
 
-- ✅ **一键部署** —— `npm run setup` 自动创建 R2 桶与 D1 数据库、执行迁移、构建并部署，无需手工填 `database_id`
+- ✅ **引导式首次部署** —— `npm run setup` 自动创建 R2 桶与 D1 数据库、替你写入 `database_id`、构建并部署；当它刚建出一个空库时会顺带初始化 schema，后续迁移仍保持显式（`--migrate`）
 - ✅ **收件自动配置** —— 在 Platform Settings 填入 Cloudflare API Token 与 Account ID 后，添加域名时会自动开启 Email Routing 并写入 catch-all 规则（`*@你的域名` → Worker），不必打开 Cloudflare 面板。仅对 DNS 托管在 Cloudflare 的域名全自动，其它 DNS 服务商会给出对应的手工指引
 - ✅ **发件自动配置** —— 按域名填入 Resend API Key 后，系统会自动在 Resend 创建域名、把所需的 MX/TXT/CNAME 记录写进你的 Cloudflare DNS，并自动触发一次域名验证，无需手工复制记录。若未填写 Cloudflare 凭据，则退化为列出记录清单由你手工添加
 - ✅ **无默认密码的首次运行向导** —— 密码以加盐 PBKDF2-SHA256 哈希存于 D1
