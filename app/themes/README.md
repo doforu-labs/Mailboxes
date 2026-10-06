@@ -64,4 +64,3 @@ bg-kumo-brand  !text-white  hover:bg-kumo-brand-hover …
 
 - 4 主题 × 明暗 = 8 组，主按钮文字对比度**全部 ≥ 4.5:1**（WCAG AA）。
 - `npm run build` 通过。
-- 回归脚本：`.tmp-verify/contrast.mjs`（对比度）、`.tmp-verify/harness.mjs`（截图）。
