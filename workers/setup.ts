@@ -148,6 +148,47 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 });
 
 // ── Verify MX Records ────────────────────────────────────────────
+//
+// Inbound MX targets this fork accepts as "the domain is wired up correctly".
+//
+// Why a SET and not the single literal this used to be: the original handler
+// compared every domain's MX against the upstream agentic-inbox deployment
+// host (`mailboxes.pages.dev`). That is the wrong expectation for this fork for
+// two reasons:
+//
+//   1. This fork does not deploy on pages.dev (it runs on
+//      `mailboxes.<account>.workers.dev`), so the old literal could never match.
+//   2. Inbound mail for a real domain here is delivered through Cloudflare
+//      Email Routing, whose MX records are ALWAYS the three cloudflare.net
+//      hosts below (priorities 2 / 68 / 70). Deploying elsewhere does not
+//      change what a correctly-configured zone looks like.
+//
+// Consequence of the old literal: every correctly configured domain — e.g.
+// `doforu.app` and `doforu.ai`, whose MX are exactly route1/2/3.mx.cloudflare.net
+// — was reported as `verified: false`, i.e. the check failed 100% of the time.
+//
+// `mailboxes.pages.dev` is kept for backward compatibility: a zone that still
+// points at the upstream deployment must not regress from pass to fail.
+// Add future inbound targets here (a single named list keeps the set easy to
+// extend and to audit); comparison ignores case and a trailing root dot.
+const ACCEPTED_INBOUND_MX_TARGETS: readonly string[] = [
+	// Cloudflare Email Routing (the real inbound path for this deployment).
+	// https://developers.cloudflare.com/email-routing/
+	"route1.mx.cloudflare.net",
+	"route2.mx.cloudflare.net",
+	"route3.mx.cloudflare.net",
+	// Legacy upstream agentic-inbox deployment host — compatibility only.
+	"mailboxes.pages.dev",
+];
+
+/**
+ * Normalize an MX exchange for comparison: lower-case and drop the trailing
+ * root dot the DoH JSON answer carries (`route1.mx.cloudflare.net.`).
+ */
+function normalizeMxTarget(value: string): string {
+	return value.toLowerCase().replace(/\.$/, "");
+}
+
 setup.post("/api/v1/setup/verify-mx", async (c) => {
 	const t = setupT(c);
 	const { domain } = await c.req.json<{ domain: string }>();
@@ -177,9 +218,8 @@ setup.post("/api/v1/setup/verify-mx", async (c) => {
 				};
 		});
 
-		const expectedTarget = "mailboxes.pages.dev";
-		const matched = mxRecords.find(
-			(r) => r.exchange.toLowerCase() === expectedTarget,
+		const matched = mxRecords.find((r) =>
+			ACCEPTED_INBOUND_MX_TARGETS.includes(normalizeMxTarget(r.exchange)),
 		);
 
 		return c.json({
@@ -196,6 +236,15 @@ setup.post("/api/v1/setup/verify-mx", async (c) => {
 });
 
 // ── DNS Provider Detection ───────────────────────────────────────
+// Ordered table: the FIRST pattern that matches any nameserver wins, so put
+// broader / higher-priority providers first. `detectProviderFromNameservers`
+// tests each pattern UNANCHORED (`RegExp.test` = substring match), which is
+// load-bearing for the Cloudflare row: `ns\d*\.cloudflare\.com` has `\d*`
+// (zero-or-more), so it matches the letter-prefixed hosts Cloudflare actually
+// hands out — `walt.ns.cloudflare.com` / `ziggy.ns.cloudflare.com` — on the
+// `ns.cloudflare.com` substring, while still matching `ns1.cloudflare.com`.
+// Verified against those samples; do NOT “tighten” this to `ns\d+\.` or anchor
+// it with `^`, which would silently regress the common case to "Other".
 const DNS_PROVIDERS: Array<{ pattern: RegExp; name: string }> = [
 	{ pattern: /ns\d*\.cloudflare\.com/i, name: "Cloudflare" },
 	{ pattern: /awsdns-\d+\.(com|net|org|co\.uk)$/i, name: "AWS Route 53" },
