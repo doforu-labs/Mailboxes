@@ -193,8 +193,11 @@ app.get("/api/v1/domains/:domainId", async (c) => {
 		}
 		return c.json(domain, 200);
 	} catch (error: any) {
+		// [error-redaction] Never echo `error.message` to the client: a D1/drizzle
+		// failure carries the failing SQL, bound parameters and column names.
+		// Answer with the stable i18n copy and keep the exception server-side.
 		console.error("Failed to get domain:", error);
-		return c.json({ error: error.message || c.get("t")("api:failedToGetDomain") }, 500);
+		return c.json({ error: c.get("t")("api:failedToGetDomain") }, 500);
 	}
 });
 
@@ -754,8 +757,10 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 		if (error instanceof z.ZodError) {
 			return c.json({ error: c.get("t")("api:validationFailed"), details: error.errors }, 400);
 		}
+		// [error-redaction] Fixed i18n copy only — the raw exception stays in the
+		// server log (with its stack), never in the response body.
 		console.error("Failed to send email:", error);
-		return c.json({ error: error.message || c.get("t")("api:failedToSendEmail") }, 500);
+		return c.json({ error: c.get("t")("api:failedToSendEmail") }, 500);
 	}
 });
 
@@ -779,8 +784,9 @@ app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 		if (error instanceof z.ZodError) {
 			return c.json({ error: c.get("t")("api:validationFailed"), details: error.errors }, 400);
 		}
+		// [error-redaction] Fixed i18n copy only — see the note on the send route.
 		console.error("Failed to save draft:", error);
-		return c.json({ error: error.message || c.get("t")("api:failedToSaveDraft") }, 500);
+		return c.json({ error: c.get("t")("api:failedToSaveDraft") }, 500);
 	}
 });
 

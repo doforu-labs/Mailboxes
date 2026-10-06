@@ -168,16 +168,20 @@ export async function handleReplyEmail(c: AppContext) {
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
 			return c.json({ id: messageId, status: "sent" }, 200);
 		} catch (e) {
-			console.error("Reply delivery failed:", (e as Error).message);
+			// [error-redaction] Log the WHOLE error object so the stack survives,
+			// and answer with the fixed i18n copy — `(e as Error).message` on a
+			// send failure can carry upstream/DB internals.
+			console.error("Reply delivery failed:", e);
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "failed").catch(() => {});
-			return c.json({ id: messageId, status: "failed", error: (e as Error).message || t("failedToSendReply") }, 500);
+			return c.json({ id: messageId, status: "failed", error: t("failedToSendReply") }, 500);
 		}
 	} catch (error: any) {
 		console.error("Reply email error:", error);
 		if (error instanceof z.ZodError) {
 			return c.json({ error: t("validationFailed"), details: error.errors }, 400);
 		}
-		return c.json({ error: error.message || t("failedToReply") }, 500);
+		// [error-redaction] Fixed i18n copy; the exception itself is logged above.
+		return c.json({ error: t("failedToReply") }, 500);
 	}
 }
 
@@ -293,15 +297,19 @@ export async function handleForwardEmail(c: AppContext) {
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "sent");
 			return c.json({ id: messageId, status: "sent" }, 200);
 		} catch (e) {
-			console.error("Forward delivery failed:", (e as Error).message);
+			// [error-redaction] Log the WHOLE error object so the stack survives,
+			// and answer with the fixed i18n copy — `(e as Error).message` on a
+			// send failure can carry upstream/DB internals.
+			console.error("Forward delivery failed:", e);
 			await dbService.updateEmailSendStatus(c.env.DB, mailboxId, messageId, "failed").catch(() => {});
-			return c.json({ id: messageId, status: "failed", error: (e as Error).message || t("failedToForwardEmail") }, 500);
+			return c.json({ id: messageId, status: "failed", error: t("failedToForwardEmail") }, 500);
 		}
 	} catch (error: any) {
 		console.error("Forward email error:", error);
 		if (error instanceof z.ZodError) {
 			return c.json({ error: t("validationFailed"), details: error.errors }, 400);
 		}
-		return c.json({ error: error.message || t("failedToForward") }, 500);
+		// [error-redaction] Fixed i18n copy; the exception itself is logged above.
+		return c.json({ error: t("failedToForward") }, 500);
 	}
 }
