@@ -207,6 +207,8 @@ npm run deploy:full
 
 **正确的入口：** 日常用 `npm run deploy`，首次部署与「建资源」用 `npm run setup` 或 `bash deploy.sh`，部署加迁移用 `npm run deploy:full`。
 
+**现在有守卫了。** `npm run build` 会把一段新鲜度断言注入生成的 `build/server/wrangler.json`（见 `scripts/deploy-freshness-guard.mjs`）：当 `build/` 比源码旧时，裸跑 `wrangler deploy` 会直接失败并告诉你该跑什么（确实需要时可用 `ALLOW_STALE_DEPLOY=1` 绕过）。唯一入口仍然是 `npm run deploy` / `bash deploy.sh`。
+
 > 在这里给 `wrangler.jsonc` 加 `build.command` **不能**防住上面的问题。在 Cloudflare Vite 插件下该字段会被忽略 —— 插件生成配置时会删除 `config["build"]`，官方 Custom builds 文档也明确标注它「Not applicable if you're using the Cloudflare Vite plugin」。
 
 ## 技术栈

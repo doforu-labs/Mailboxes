@@ -21,6 +21,12 @@
 	//    deletes `config["build"]` when it generates the config. The official
 	//    Custom builds docs mark it "Not applicable if you're using the
 	//    Cloudflare Vite plugin".
+	//
+	// ✅ The line of defence lives in the generated config instead: every
+	//    `npm run build` injects a freshness assertion into
+	//    build/server/wrangler.json, so a stale bare `wrangler deploy` fails
+	//    loudly. See scripts/deploy-freshness-guard.mjs (and the injector in
+	//    scripts/inject-deploy-guard.mjs).
 
 	"name": "mailboxes",
 	"compatibility_date": "2025-11-28",

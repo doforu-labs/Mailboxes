@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Deploy freshness guard for a bare `wrangler deploy`.** A bare `wrangler deploy`
+  follows the Vite plugin's config redirect and uploads whatever already sits in
+  `build/` without building, which silently ships a stale artifact (it has happened
+  once). Since `build.command` is deleted from the hand-written `wrangler.jsonc` by
+  the plugin, the assertion is injected into the *generated* config instead:
+  `scripts/inject-deploy-guard.mjs` runs at the end of every `npm run build` and adds
+  `build.command` to `build/server/wrangler.json`, which runs
+  `scripts/deploy-freshness-guard.mjs`. That guard asserts the build is fresh only for
+  `deploy` / `versions upload` (decided from `WRANGLER_COMMAND`, which wrangler exports
+  to the custom-build process); every other command — including `wrangler types`, used
+  by `npm run typecheck` — passes through untouched. When `build/` is older than the
+  sources the deploy fails with the newest source, the oldest artifact, and the two
+  ways to fix it. Escape hatch: `ALLOW_STALE_DEPLOY=1`.
+
 ### Fixed
 
 - **First deploy no longer fails on the Vite redirect.** `scripts/setup.mjs` used to

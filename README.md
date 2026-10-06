@@ -207,6 +207,8 @@ Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you will silently s
 
 **What to run instead:** `npm run deploy` (everyday), `npm run setup` or `bash deploy.sh` (first time and resource creation), `npm run deploy:full` (deploy plus migrations).
 
+**There is now a guard.** `npm run build` injects a freshness assertion into the generated `build/server/wrangler.json` (see `scripts/deploy-freshness-guard.mjs`), so when `build/` is older than the sources a bare `wrangler deploy` fails loudly and tells you exactly what to run instead (override with `ALLOW_STALE_DEPLOY=1` if you really mean it). `npm run deploy` / `bash deploy.sh` remain the only supported entry points.
+
 > Adding a `build.command` to `wrangler.jsonc` is **not** a safeguard here. Under the Cloudflare Vite plugin that field is ignored — the plugin deletes `config["build"]` when it generates the config, and the official Custom builds documentation marks it "Not applicable if you're using the Cloudflare Vite plugin".
 
 ## Stack

@@ -37,7 +37,7 @@
 		]
 	},
 	"scripts": {
-		"build": "react-router build",
+		"build": "react-router build && node scripts/inject-deploy-guard.mjs",
 		"cf-typegen": "wrangler types",
 		"db:create": "wrangler d1 create mailboxes-db",
 		"db:migrate": "wrangler d1 migrations apply mailboxes-db --remote",
