@@ -1,9 +1,12 @@
 {
 	"unauthorized": "未授权",
+	"unauthorizedHint": "请发送 `Authorization: Bearer agk_<64 位 hex>`（或 `X-API-Key`）。可用工具列表见 GET /tools。",
+	"sessionRequiredHint": "请用浏览器在 /login 登录，并在后续请求中带上取得的会话 cookie；或调用 POST /api/v1/auth/login 获取。",
 	"usernameRequired": "请输入用户名",
 	"usernameTooLong": "用户名最多 {{max}} 个字符",
 	"usernameInvalidChars": "用户名包含无效字符",
 	"invalidCredentials": "用户名或密码不正确",
+	"invalidCredentialsHint": "请核对用户名与密码，然后重试 POST /api/v1/auth/login。",
 	"setupRequired": "需要先完成初始化设置",
 	"alreadyInitialised": "已经初始化过了",
 	"databaseNotReady": "数据库尚未就绪——请先运行 D1 迁移，然后重试",

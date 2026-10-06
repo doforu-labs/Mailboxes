@@ -31,6 +31,7 @@ import {
 } from "./tools";
 import { DEFAULT_LOCALE } from "../../shared/i18n/config";
 import type { Locale } from "../../shared/i18n/types";
+import { Folders } from "../../shared/folders";
 
 // Local type for AI text generation output (available in CF Workers runtime)
 // Mirrors the exported `AiToolCall` in `workers/index.ts` (kept in sync
@@ -49,10 +50,66 @@ export interface AiToolCall {
 // AI-facing: keep English. Every `description` here is part of the tool
 // schema handed to the model, not user-facing copy.
 
+/**
+ * The canonical `folder` values, i.e. the system folder IDs every mailbox is
+ * seeded with.
+ *
+ * NOT a guess and NOT derived from the display-name table: this is exactly the
+ * set of `folders.id` rows existence is guaranteed for. `initMailboxFolders`
+ * (`workers/db/index.ts`) is the only place system folders are created, and it
+ * inserts `inbox` / `sent` / `draft` / `archive` / `trash` / `spam` — the same
+ * six `Folders.*` constants from `shared/folders.ts` that `toolDraftReply`,
+ * `toolDraftEmail`, `toolUpdateDraft`, `toolSendReply` and `toolSendEmail`
+ * write through. The constants are reused rather than re-spelled as literals so
+ * a renamed id cannot leave the schema advertising a folder that no longer
+ * exists (and vice versa).
+ *
+ * The display names (`Inbox`, `Drafts`, …) are deliberately NOT listed: they
+ * are presentation, not stable identifiers, and `FOLDER_DISPLAY_NAMES` is an
+ * open `Record<string, string>` — not a closed set — so it cannot anchor an
+ * `enum`.
+ *
+ * Serialized inline (a `[...]` spread of a frozen array, not the `Folders`
+ * object itself) so each definition stays a JSON literal fit for `as const`.
+ * An `enum` is emitted as the FIRST key of every `folder` property — see
+ * {@link folderSchema}.
+ */
+export const FOLDER_ENUM_VALUES = [
+	Folders.INBOX,
+	Folders.SENT,
+	Folders.DRAFT,
+	Folders.ARCHIVE,
+	Folders.TRASH,
+	Folders.SPAM,
+] as const;
+
+/**
+ * Build a `folder` property: the canonical id set as a JSON-Schema `enum`,
+ * plus the `type` / `description` the model reads.
+ *
+ * `enum` is emitted FIRST on purpose. In a copied object literal TypeScript
+ * only re-checks a NON-final property against its contextual type when that
+ * property is an `enum`; a property whose type is not the last member of the
+ * literal before optional members widens by one — here to
+ * `"string" | undefined` — which makes the whole `TOOL_DEFINITIONS` literal
+ * stop matching its own inferred shape. Leading with `enum` is what keeps the
+ * `as const` tree intact (and what fixes the key order for a reviewer).
+ *
+ * A `type`-only `list_emails.folder` still serializes identically to the old
+ * shape (`{ type: "string", description }`), so the description keeps saying
+ * what the enum already says in machine-readable form rather than repeating
+ * the value list as prose — the exact redundancy this change removes.
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function folderSchema(description: string) {
+	return { enum: [...FOLDER_ENUM_VALUES], type: "string", description } as const;
+}
+
 export const TOOL_DEFINITIONS = [
 	{
 		name: "list_mailboxes",
-		description: "List all available mailboxes/email accounts",
+		description:
+			"List all available mailboxes/email accounts. Call this first to obtain a valid `mailboxId` before calling any other tool that requires it.",
 		parameters: { type: "object", properties: {}, required: [] },
 	},
 	{
@@ -61,7 +118,16 @@ export const TOOL_DEFINITIONS = [
 		parameters: {
 			type: "object",
 			properties: {
-				folder: { type: "string", description: "Folder to list: inbox, sent, draft, archive, trash" },
+				folder: {
+					// `enum` leads for the reason spelled out in `folderSchema`:
+					// TypeScript only re-checks a non-final property against its
+					// contextual type when it is an `enum`, so a `type`-first
+					// object here widens to `"string" | undefined` and the whole
+					// `TOOL_DEFINITIONS` literal stops matching.
+					enum: [...FOLDER_ENUM_VALUES],
+					type: "string",
+					description: "Folder to list. One of the mailbox's folders (see `enum`).",
+				},
 				limit: { type: "number", description: "Max emails to return (default 25)" },
 				page: { type: "number", description: "Page number (default 1)" },
 			},
@@ -75,7 +141,7 @@ export const TOOL_DEFINITIONS = [
 			type: "object",
 			properties: {
 				query: { type: "string", description: "Search query keywords" },
-				folder: { type: "string", description: "Optional folder to narrow search" },
+				folder: folderSchema("Optional folder to narrow the search (see `enum`); omit to search every folder"),
 			},
 			required: ["query"],
 		},
@@ -182,11 +248,9 @@ export const TOOL_DEFINITIONS = [
 					description:
 						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result.",
 				},
-				folder: {
-					type: "string",
-				description:
-						"Target folder, as returned in the `folder` field of list_emails / search_emails: a folder name (inbox, sent, draft, archive, trash) or a folder id.",
-				},
+				folder: folderSchema(
+					"Target folder, as returned in the `folder` field of list_emails / search_emails. One of the mailbox's folders (see `enum`).",
+				),
 			},
 			required: ["id", "folder"],
 		},

@@ -512,6 +512,15 @@ describe("AI Chat SSE endpoint", async () => {
 // still in place, so the rest of the file cannot be made green by dropping the
 // cookie — or by weakening the middleware.
 
+/**
+ * The `hint` that `requireAuth`'s 401 now carries, spelled out here as a
+ * literal (not imported from the module under test) and asserted alongside the
+ * unchanged `error`. This is what the browser-session 401 sends to a caller
+ * that presented no usable session cookie.
+ */
+const UNAUTHORIZED_HINT =
+	"Sign in at /login in your browser and send the session cookie with the request, or call POST /api/v1/auth/login to obtain one.";
+
 describe("AI Chat endpoint authentication", () => {
 	it("rejects a request without a session cookie", async () => {
 		resetMockCalls();
@@ -524,7 +533,10 @@ describe("AI Chat endpoint authentication", () => {
 
 		assert.strictEqual(res.status, 401);
 		assert.strictEqual(sessionDbQueries(), 0, "an anonymous request must not query the session store");
-		assert.deepStrictEqual(await res.json(), { error: "Unauthorized" });
+		assert.deepStrictEqual(await res.json(), {
+			error: "Unauthorized",
+			hint: UNAUTHORIZED_HINT,
+		});
 	});
 
 	it("rejects a session token that is not in the store", async () => {

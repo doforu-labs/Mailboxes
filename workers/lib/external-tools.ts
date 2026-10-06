@@ -113,25 +113,162 @@ function buildParameters(toolName: string, parameters: unknown): ToolParameters 
 	};
 }
 
+// ── MCP tool annotations ───────────────────────────────────────────
+
+/**
+ * The MCP `annotations` object attached to one tool in `tools/list`.
+ *
+ * MCP defines the defaults as "assume the worst": `readOnlyHint: false`,
+ * `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: true`.
+ * Every field is therefore always written out explicitly — a tool whose
+ * mapping omitted a key would inherit a default that contradicts the code it
+ * describes, and the omission would be invisible in the payload.
+ */
+export interface McpToolAnnotations {
+	/** The tool does not modify its environment. */
+	readOnlyHint: boolean;
+	/** The tool may perform DESTRUCTIVE updates to its environment. */
+	destructiveHint: boolean;
+	/** Repeat calls with the same arguments have no additional effect. */
+	idempotentHint: boolean;
+	/** The tool interacts with entities OUTSIDE its closed domain. */
+	openWorldHint: boolean;
+}
+
+/**
+ * The complete, closed annotation table for the 14 exposed tools.
+ *
+ * Read straight off the implementations in `workers/lib/tools.ts` /
+ * `workers/lib/tool-dispatch.ts`; nothing here is inferred from a tool's name.
+ *
+ *   • `readOnlyHint: true` (5) — `list_mailboxes`, `list_emails`,
+ *     `search_emails`, `get_email`, `get_thread`. Each is a pure `SELECT`
+ *     path (`toolListMailboxes` reads R2 metadata; the rest read D1) and
+ *     writes nothing. `toolListEmails` / `toolSearchEmails` do run the
+ *     folder-resolution query and `executeToolCall` seeds the mailbox's
+ *     folders before them (`ensureFoldersExist`) — folder seeding is
+ *     `INSERT OR IGNORE` of rows the mailbox must already own for any tool to
+ *     work at all, so it does not move these tools out of "read only".
+ *
+ *   • `readOnlyHint: false, destructiveHint: true` (3) — `delete_email`
+ *     (a permanent hard delete: `toolDeleteEmail` calls `dbService.deleteEmail`
+ *     with no trash step), `discard_draft` (same hard delete, guarded to the
+ *     Drafts folder) and `update_draft` (delete-then-insert: `toolUpdateDraft`
+ *     deletes the old draft row and `createEmail`s a NEW id, so the previous
+ *     draft handle is gone for good).
+ *
+ *   • `readOnlyHint: false, destructiveHint: false` (6) — `mark_email_read`,
+ *     `move_email`, `send_email`, `send_reply`, `draft_email`, `draft_reply`.
+ *     They write, but no existing content is destroyed: flags and folder
+ *     columns are overwritten in place (reversible), a send only appends a new
+ *     Sent row, and a draft only appends a new Drafts row. A caller can undo
+ *     any of them with another tool call.
+ *
+ *   • `idempotentHint: true` (2) — the tools whose RESULT and environment
+ *     state converge on the second identical call: `list_*` / `search_*` /
+ *     `get_*` (reads), `delete_email` and `discard_draft` (the row is already
+ *     gone, so the delete is a no-op — note the SECOND call now reports
+ *     "not found", which is the honest answer and not a new side effect), and
+ *     `mark_email_read` (writing the same flag twice). Everything else is
+ *     `false`: `draft_email` and `draft_reply` mint a new `crypto.randomUUID()`
+ *     per call, `update_draft` mints a new draft id per call, `move_email`
+ *     reports the destination it was given (a second identical call is a true
+ *     no-op only if the first one moved the row), and the two send tools
+ *     deliver real outbound mail — a repeat is a SECOND email, which is the
+ *     opposite of idempotent. `idempotentHint` is only meaningful for
+ *     non-read-only tools; the read-only entries state `true` for the truth of
+ *     the statement rather than the default.
+ *
+ *   • `openWorldHint: true` (6) — `send_email`, `send_reply` (both hand a
+ *     message to an external SMTP provider — see `sendEmailFromMailbox` —
+ *     addressed to arbitrary recipients outside the mailbox), `get_email`,
+ *     `get_thread` (their payload is author-controlled remote content:
+ *     arbitrary senders' bodies, attachment metadata, headers) and
+ *     `list_mailboxes` (its result is the set of mailboxes that exist on the
+ *     deployment, not a closed set known up front).
+ *
+ *   • `openWorldHint: false` (8) — every tool that only ever touches THIS
+ *     mailbox's own closed storage with arguments the caller supplies:
+ *     `list_emails`, `search_emails`, `mark_email_read`, `move_email`,
+ *     `delete_email`, `discard_draft`, `draft_email`, `draft_reply`,
+ *     `update_draft`. (That is 9 names — `draft_reply`'s quoted original is
+ *     internal storage too, so it stays closed as well; the count is spelled
+ *     out in the test, not here.)
+ *
+ * ── Why this table is NOT merged into `TOOL_DEFINITIONS` ──
+ * `annotations` is an MCP-only key. `TOOL_DEFINITIONS` is the OpenAI
+ * `functions` shape, shared with the internal agent loop, and the OpenAI
+ * schema has no such field: adding it there would put an unknown key on every
+ * tool sent to an OpenAI-compatible endpoint and change the internal agent
+ * payload. Keeping the table here means only the MCP serialization (see
+ * `listMcpTools`) carries it.
+ */
+const MCP_TOOL_ANNOTATIONS: Record<string, McpToolAnnotations> = {
+	list_mailboxes: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+	list_emails: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	search_emails: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	get_email: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+	get_thread: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+	draft_reply: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	draft_email: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	update_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+	mark_email_read: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+	move_email: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+	delete_email: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	discard_draft: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+	send_reply: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+	send_email: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+};
+
+/**
+ * The annotation table, exported for tests and for any other MCP surface.
+ *
+ * Read-only view: callers must not be able to re-tag a tool for one request.
+ */
+export function mcpToolAnnotations(toolName: string): McpToolAnnotations {
+	const found = MCP_TOOL_ANNOTATIONS[toolName];
+	if (found) return found;
+	// Unreachable for the shipped 14 (see the completeness test), and the
+	// deliberately WORST case if a 15th is ever added without a decision: MCP's
+	// own defaults, so an unclassified tool is never advertised as safe.
+	return {
+		readOnlyHint: false,
+		destructiveHint: true,
+		idempotentHint: false,
+		openWorldHint: true,
+	};
+}
+
 /**
  * MCP `tools/list` compatible tools array.
- * Each entry carries the (mailboxId-injected) schema on `inputSchema`.
+ * Each entry carries the (mailboxId-injected) schema on `inputSchema`, plus
+ * the MCP-only `annotations` object.
+ *
+ * `annotations` is added HERE and only here — `listOpenAiTools`, which feeds
+ * `GET /tools`, deliberately omits it (see `MCP_TOOL_ANNOTATIONS`).
  */
 export function listMcpTools(): Array<{
 	name: string;
 	description: string;
 	inputSchema: any;
+	annotations: McpToolAnnotations;
 }> {
 	return TOOL_DEFINITIONS.map((tool) => ({
 		name: tool.name,
 		description: tool.description,
 		inputSchema: buildParameters(tool.name, tool.parameters),
+		annotations: mcpToolAnnotations(tool.name),
 	}));
 }
 
 /**
  * OpenAI function-calling compatible tools array.
  * Each entry carries the (mailboxId-injected) schema on `function.parameters`.
+ *
+ * NO `annotations`: that key is MCP-only (`listMcpTools`), and this payload is
+ * the `GET /tools` body an OpenAI-compatible caller reads. The two lists share
+ * `TOOL_DEFINITIONS` and `buildParameters`, so the schemas cannot drift — only
+ * the MCP-exclusive extras differ.
  */
 export function listOpenAiTools(): Array<{
 	type: "function";
@@ -154,8 +291,10 @@ export function listOpenAiTools(): Array<{
  *
  * Decision path:
  *   1. Unknown tool name                         → `{ ok:false, error:"Unknown tool: <name>" }`
- *   2. Missing mailboxId (non list_mailboxes)     → `{ ok:false, error:"mailboxId is required" }`
- *   3. Mailbox metadata object absent in R2       → `{ ok:false, error:"mailbox not found" }`
+ *   2. Missing mailboxId (non list_mailboxes)     → `{ ok:false, error: MAILBOX_ID_REQUIRED_ERROR }`
+ *      (names the fix: call `list_mailboxes` first)
+ *   3. Mailbox metadata object absent in R2       → `{ ok:false, error: mailboxNotFoundError(id) }`
+ *      (echoes the rejected id back and names the fix)
  *   4. Missing schema-required arguments          → `{ ok:false, error:"missing required
  *      parameter: <name>[, <name>]" }`
  *   5. Delegates to `executeToolCall`; if the result is an object carrying an
@@ -177,7 +316,10 @@ export function listOpenAiTools(): Array<{
  * A missing required parameter is answered *before* execution, because the
  * alternative — letting `undefined` reach D1 — produces a generic failure the
  * calling model cannot act on. The message names the parameter(s) so the next
- * attempt can be correct.
+ * attempt can be correct. The two `mailboxId` failures go further and name the
+ * CALL that produces a valid value (see {@link MAILBOX_ID_REQUIRED_ERROR} /
+ * {@link mailboxNotFoundError}): a wrong mailboxId is the most common way a
+ * chained tool call fails, and the caller cannot derive the right one itself.
  *
  * Every failure path returns `error` and nothing else. The internal `detail`
  * from `executeToolCall` is read but never forwarded: it is diagnostic text
@@ -238,7 +380,7 @@ export async function dispatchExternalTool(
 
 		const needsMailbox = !MAILBOX_OPTIONAL_TOOLS.has(toolName);
 		if (needsMailbox && !mailboxId) {
-			return { ok: false, error: "mailboxId is required" };
+			return { ok: false, error: MAILBOX_ID_REQUIRED_ERROR };
 		}
 
 		if (scope && needsMailbox && mailboxId && !scope.includes(mailboxId)) {
@@ -249,7 +391,7 @@ export async function dispatchExternalTool(
 		if (needsMailbox && mailboxId) {
 			const head = await env.BUCKET.head(`mailboxes/${mailboxId}.json`);
 			if (!head) {
-				return { ok: false, error: "mailbox not found" };
+				return { ok: false, error: mailboxNotFoundError(mailboxId) };
 			}
 		}
 
@@ -349,6 +491,46 @@ function hasArgument(args: Record<string, unknown>, name: string): boolean {
  * Stable string: callers assert on it and clients may surface it verbatim.
  */
 const FORBIDDEN_MAILBOX_ERROR = "forbidden: mailbox not allowed by this key";
+
+/**
+ * The `mailboxId` errors, rewritten as self-correcting instructions.
+ *
+ * Both used to be bare statements of fact ("mailboxId is required" /
+ * "mailbox not found"). The parameter is the ONE thing every non-list tool
+ * needs, and it cannot be guessed: it is a specific mailbox address that only
+ * `list_mailboxes` reports. A caller told only that its value was wrong has no
+ * next move, and a model chaining tool calls will retry the same guess.
+ *
+ * Each message now carries the three things a caller needs to fix itself —
+ * what went wrong, what a valid value looks like, and the exact call that
+ * produces one — while keeping the ORIGINAL leading sentence and the exact
+ * `mailboxId` field name, so existing substring assertions and any client that
+ * pattern-matched the old prefix keep working.
+ *
+ * `mailbox not found` names the rejected id back (`: <id>`) — the caller sent
+ * an arbitrary string and needs to see which one — and then redirects to
+ * `list_mailboxes` rather than restating the value set, which this layer
+ * cannot enumerate cheaply (it would mean scanning R2) and which can change
+ * between calls.
+ *
+ * These are wire-facing English strings, not i18n keys: they are the copy of
+ * an API surface for machines (see the MCP/OpenAI payloads in
+ * `workers/routes/agent-api.ts`), unlike the tool bodies' user-visible
+ * messages which do go through the `apiTool` catalog. The locale-aware tool
+ * errors (`emailNotFound`, `unknownFolder`, …) are unaffected.
+ */
+export const MAILBOX_ID_REQUIRED_ERROR =
+	"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@doforu.ai'), then retry.";
+
+/**
+ * Build the "unknown mailbox" error.
+ *
+ * Exported (not just a literal at the call site) so the message is testable
+ * without an R2 fixture and so the id is always interpolated the same way.
+ */
+export function mailboxNotFoundError(mailboxId: string): string {
+	return `mailbox not found: ${mailboxId}. mailboxId must be one of the ids returned by list_mailboxes. Call list_mailboxes first, then retry.`;
+}
 
 /**
  * Normalize a caller-supplied allow-list into `string[] | null`.

@@ -31,11 +31,46 @@
  *  Failure policy
  * ─────────────────────────────────────────────────────────────────────
  * Every rejection — malformed header, unknown key, expired key, revoked key
- * — returns the *same* `401 { error: t("unauthorized") }`. Distinguishing
- * "no such key" from "revoked key" would confirm to an attacker that a guess
- * once named a real key, so the cases are collapsed. The distinction is still
+ * — returns the *same* `401 { error, hint }` body. Distinguishing "no such
+ * key" from "revoked key" would confirm to an attacker that a guess once
+ * named a real key, so the cases are collapsed. The distinction is still
  * available internally (the DB layer returns expired/revoked rows rather than
  * filtering them out) for callers that want richer diagnostics later.
+ *
+ * The one difference the body *does* carry is machine-readable and comes from
+ * RFC 6750 §3.1, not from our key store: whether the request presented *any*
+ * credentials at all.
+ *
+ * ─────────────────────────────────────────────────────────────────────
+ *  A 401 must explain itself (RFC 7235 §4.1)
+ * ─────────────────────────────────────────────────────────────────────
+ * `WWW-Authenticate` is mandatory on a 401 — "A server generating a 401
+ * (Unauthorized) response MUST send a WWW-Authenticate header field" — and
+ * without it an external agent that guesses the path cannot discover how to
+ * authenticate. Every 401 produced here therefore carries
+ * `WWW-Authenticate: Bearer realm="mailboxes"`, split per RFC 6750 §3.1:
+ *
+ *   • no credentials presented  → bare `Bearer realm="mailboxes"`. The
+ *                                 `error` parameter is deliberately absent:
+ *                                 §3.1 says a challenge for a request that
+ *                                 carried no credentials SHOULD NOT include
+ *                                 one (the official example is
+ *                                 `Bearer realm="example"`).
+ *   • credentials presented but
+ *     not valid                 → `Bearer realm="mailboxes",
+ *                                 error="invalid_token"` (the §3.1 code that
+ *                                 covers "expired, revoked, malformed, or
+ *                                 invalid for other reasons").
+ *
+ * We are a static API key, not OAuth, so this is the whole story: no
+ * `resource_metadata`, no `/.well-known/oauth-protected-resource`, nothing
+ * that would pretend a resource server exists behind us.
+ *
+ * The JSON body carries the same distinction as prose, plus a one-line `hint`
+ * that names the exact credential shape and the tool-listing endpoint — the
+ * piece a header cannot fit. `Cache-Control: no-store` keeps an intermediary
+ * from answering a later caller with a challenge meant for this one.
+ * The `error` field name and value are unchanged; `hint` is additive.
  *
  * Auditing is best-effort and MUST NOT be able to reject a request that was
  * otherwise valid: `touchAgentApiKeyLastUsed` swallows its own errors, and
@@ -57,6 +92,39 @@ import { getBackendT } from "../../shared/i18n/translate";
  * de-facto convention for them).
  */
 const API_KEY_HEADER = "X-API-Key";
+
+/**
+ * The `realm` in our challenge. A realm names the protection space a
+ * credential is valid for; we have exactly one, so it is a constant.
+ */
+const AUTH_REALM = "mailboxes";
+
+/**
+ * RFC 6750 §3.1 — the error code for a presented-but-unusable token.
+ *
+ * "The `invalid_token` error code is used when the request is valid but ...
+ * the access token is expired, revoked, malformed, or invalid for other
+ * reasons." All four of our rejections-after-credentials cases (bad shape,
+ * unknown, revoked, expired) are exactly that, so all four use it. The code
+ * is a constant, not derived from the failure, precisely because the failure
+ * policy above collapses those cases on purpose.
+ */
+const INVALID_TOKEN = "invalid_token";
+
+/**
+ * The `WWW-Authenticate` value for a request that presented *no* credentials.
+ *
+ * No `error` parameter: RFC 6750 §3.1 says a challenge ought not name an
+ * error when the client simply omitted its credentials, so the honest
+ * challenge here is the bare realm.
+ */
+const CHALLENGE_NO_CREDENTIALS = `Bearer realm="${AUTH_REALM}"`;
+
+/**
+ * The `WWW-Authenticate` value for a request that presented credentials which
+ * did not survive verification (malformed, unknown, revoked or expired).
+ */
+const CHALLENGE_INVALID_TOKEN = `Bearer realm="${AUTH_REALM}", error="${INVALID_TOKEN}"`;
 
 /** The authenticated key, as seen by downstream handlers. */
 export interface ApiKeyInfo {
@@ -129,6 +197,56 @@ function readApiKey(c: Context<ApiKeyContext>): string | null {
 }
 
 /**
+ * Did the request *try* to authenticate, even though `readApiKey` rejected it?
+ *
+ * This is what separates the two RFC 6750 §3.1 challenges. `readApiKey`
+ * returns null both for "no header at all" and for "a header whose value
+ * failed the `agk_` + 64-hex shape check", and those deserve different
+ * answers: the first is a client that has not been told how to authenticate
+ * (`Bearer realm="mailboxes"`), the second is a client that *tried* and got
+ * it wrong (`…, error="invalid_token"`).
+ *
+ * Presence of the header is checked, not its content, so the check stays out
+ * of the parser's way: a client sending a future scheme we do not yet
+ * understand still counts as having tried.
+ */
+function presentedCredentials(c: Context<ApiKeyContext>): boolean {
+	const header = c.req.header("Authorization") ?? c.req.header(API_KEY_HEADER);
+	return typeof header === "string" && header.trim().length > 0;
+}
+
+/**
+ * The single 401 every rejection funnels through.
+ *
+ * Centralising it is what makes the gateway self-describing: a new failure
+ * branch added later cannot accidentally ship a 401 without the mandatory
+ * challenge, because the headers and the body shape are produced here and
+ * nowhere else.
+ *
+ * `hint` is a new, additive field. It repeats the credential shape in one
+ * line — the exact prefix and length a client must produce — and names
+ * `GET /tools` so an agent that guessed a guarded path has somewhere concrete
+ * to go next. `error` keeps its existing name and value.
+ */
+function unauthorized(c: Context<ApiKeyContext>, withCredentials: boolean) {
+	const t = apiKeyT(c);
+	const challenge = withCredentials
+		? CHALLENGE_INVALID_TOKEN
+		: CHALLENGE_NO_CREDENTIALS;
+
+	return c.json(
+		{ error: t("unauthorized"), hint: t("unauthorizedHint") },
+		401,
+		{
+			"WWW-Authenticate": challenge,
+			// A challenge is per-request and must not be replayed to another
+			// caller by a cache or CDN sitting in front of the Worker.
+			"Cache-Control": "no-store",
+		},
+	);
+}
+
+/**
  * Parse `allowed_mailboxes`, which the DB stores as a JSON string or NULL.
  *
  * Tolerant by design: a NULL column, invalid JSON, a bare string, or an array
@@ -164,32 +282,38 @@ function isExpired(expiresAt: string | null): boolean {
  * Middleware: require a valid global `agk_…` API key.
  *
  * On success sets `c.get("apiKeyInfo")` to `{ id, name, scopes,
- * allowedMailboxes }` and calls `next()`. On any failure returns
- * `401 { error }`.
+ * allowedMailboxes }` and calls `next()`. On any failure returns a
+ * self-describing `401 { error, hint }` carrying a `WWW-Authenticate`
+ * challenge — see {@link unauthorized}.
  */
 export const requireGlobalApiKey = createMiddleware<ApiKeyContext>(
 	async (c, next) => {
-		const t = apiKeyT(c);
+		// Read once, up front: the two failure shapes below differ only in
+		// whether the client presented *something*, and that has to be known
+		// before `readApiKey` throws the information away.
+		const withCredentials = presentedCredentials(c);
 
 		const key = readApiKey(c);
 		if (!key) {
-			return c.json({ error: t("unauthorized") }, 401);
+			return unauthorized(c, withCredentials);
 		}
 
 		// Hash first, then look up by digest: the plaintext stops here.
 		const hash = await hashApiKey(key);
 		const row = await db.getAgentApiKeyByHash(c.env.DB, hash);
 
+		// Reaching here means a well-shaped key was presented, so every
+		// branch below is the `invalid_token` challenge.
 		if (!row) {
-			return c.json({ error: t("unauthorized") }, 401);
+			return unauthorized(c, true);
 		}
 		// Revoked and expired collapse into the same response as "unknown" —
 		// see the failure policy in the file header.
 		if (row.revoked_at) {
-			return c.json({ error: t("unauthorized") }, 401);
+			return unauthorized(c, true);
 		}
 		if (isExpired(row.expires_at)) {
-			return c.json({ error: t("unauthorized") }, 401);
+			return unauthorized(c, true);
 		}
 
 		c.set("apiKeyInfo", {

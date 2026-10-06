@@ -93,6 +93,42 @@ export function createSessionToken(): string {
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ── The 401 challenge for the cookie-session surface ───────────────
+//
+// RFC 9110 §15.5.2 / §11.6.1 require a WWW-Authenticate header on any 401, and
+// §11.1 defines `auth-scheme = token`, so an unregistered-but-syntactically-valid
+// scheme is allowed here ("ought to be registered", not MUST).
+//
+// We deliberately do NOT use `Bearer`: it tells clients to go fetch an OAuth
+// access token, which is not how this surface authenticates. There is no standard
+// challenge for cookie sessions either — RFC 6265 defines no scheme, and the only
+// draft (`draft-broyer-http-cookie-auth-00`, scheme `Cookie`) expired in 2009 and
+// was never revived. `Session` describes what this surface actually wants: a
+// session cookie obtained from POST /api/v1/auth/login.
+const AUTH_CHALLENGE = 'Session realm="mailboxes"';
+
+/** 401 for the cookie-session surface: a semantically honest challenge (see
+ *  AUTH_CHALLENGE) plus a hint, and no-store so no cache/CDN replays one
+ *  caller's challenge to another.
+ *
+ *  NOTE on the i18n keys: the `apiAuth` namespace is shared between this
+ *  cookie-session surface and the agent gateway (see
+ *  ./api-key-middleware.ts, which reads `unauthorized` + `unauthorizedHint`
+ *  through the very same namespace). This surface therefore deliberately uses
+ *  its OWN keys — `sessionRequiredHint` / `invalidCredentialsHint` — so that
+ *  neither surface's copy can overwrite the other's. Do not point the hints
+ *  below back at `unauthorizedHint`. */
+function jsonUnauthorized(
+	c: Context<D1MailboxContext>,
+	error: string,
+	hint: string,
+) {
+	return c.json({ error, hint }, 401, {
+		"WWW-Authenticate": AUTH_CHALLENGE,
+		"Cache-Control": "no-store",
+	});
+}
+
 /** Middleware: require a valid admin session for /api/v1/* (with exemptions). */
 export const requireAuth = createMiddleware<D1MailboxContext>(async (c, next) => {
 	if (isExemptPath(c.req.path)) {
@@ -101,15 +137,15 @@ export const requireAuth = createMiddleware<D1MailboxContext>(async (c, next) =>
 	const t = authT(c);
 	const token = getCookie(c, AUTH_COOKIE);
 	if (!token) {
-		return c.json({ error: t("unauthorized") }, 401);
+		return jsonUnauthorized(c, t("unauthorized"), t("sessionRequiredHint"));
 	}
 	const session = await db.getSession(c.env.DB, token);
 	if (!session) {
-		return c.json({ error: t("unauthorized") }, 401);
+		return jsonUnauthorized(c, t("unauthorized"), t("sessionRequiredHint"));
 	}
 	if (new Date(session.expires_at).getTime() < Date.now()) {
 		await db.deleteSession(c.env.DB, token);
-		return c.json({ error: t("unauthorized") }, 401);
+		return jsonUnauthorized(c, t("unauthorized"), t("sessionRequiredHint"));
 	}
 	await next();
 });
@@ -228,7 +264,7 @@ export async function handleLogin(c: Context<D1MailboxContext>) {
 	const password = readString(body, "password");
 
 	if (username === null || password === null) {
-		return c.json({ error: t("invalidCredentials") }, 401);
+		return jsonUnauthorized(c, t("invalidCredentials"), t("invalidCredentialsHint"));
 	}
 
 	// No admin account yet — the client should run the setup wizard instead.
@@ -243,7 +279,7 @@ export async function handleLogin(c: Context<D1MailboxContext>) {
 	const ok = await verifyPassword(password, stored);
 
 	if (!admin || !ok) {
-		return c.json({ error: t("invalidCredentials") }, 401);
+		return jsonUnauthorized(c, t("invalidCredentials"), t("invalidCredentialsHint"));
 	}
 
 	await issueSession(c);
@@ -264,16 +300,16 @@ export async function handleMe(c: Context<D1MailboxContext>) {
 	const t = authT(c);
 	const token = getCookie(c, AUTH_COOKIE);
 	if (!token) {
-		return c.json({ error: t("unauthorized") }, 401);
+		return jsonUnauthorized(c, t("unauthorized"), t("sessionRequiredHint"));
 	}
 	const session = await db.getSession(c.env.DB, token);
 	if (!session || new Date(session.expires_at).getTime() < Date.now()) {
-		return c.json({ error: t("unauthorized") }, 401);
+		return jsonUnauthorized(c, t("unauthorized"), t("sessionRequiredHint"));
 	}
 	const admin = await db.getFirstAdmin(c.env.DB);
 	if (!admin) {
 		// The admin account was removed — treat the session as invalid.
-		return c.json({ error: t("unauthorized") }, 401);
+		return jsonUnauthorized(c, t("unauthorized"), t("sessionRequiredHint"));
 	}
 	return c.json({ authenticated: true, username: admin.username });
 }

@@ -1,9 +1,12 @@
 {
 	"unauthorized": "Unauthorized",
+	"unauthorizedHint": "Send `Authorization: Bearer agk_<64 hex>` (or `X-API-Key`). List tools at GET /tools.",
+	"sessionRequiredHint": "Sign in at /login in your browser and send the session cookie with the request, or call POST /api/v1/auth/login to obtain one.",
 	"usernameRequired": "Username is required",
 	"usernameTooLong": "Username must be at most {{max}} characters",
 	"usernameInvalidChars": "Username contains invalid characters",
 	"invalidCredentials": "Invalid username or password",
+	"invalidCredentialsHint": "Check the username and password, then retry POST /api/v1/auth/login.",
 	"setupRequired": "Setup required",
 	"alreadyInitialised": "Already initialised",
 	"databaseNotReady": "Database not ready — run the D1 migrations, then try again",

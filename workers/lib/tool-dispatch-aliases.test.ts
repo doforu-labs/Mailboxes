@@ -36,7 +36,7 @@ import {
 	TOOL_ARG_ALIASES,
 	type AiToolCall,
 } from "./tool-dispatch";
-import { dispatchExternalTool } from "./external-tools";
+import { dispatchExternalTool, MAILBOX_ID_REQUIRED_ERROR } from "./external-tools";
 
 // ── Recording db binding ───────────────────────────────────────────
 
@@ -709,7 +709,16 @@ describe("dispatchExternalTool required-parameter gate", () => {
 			name: "get_email",
 			arguments: { id: "e1" },
 		});
-		assert.strictEqual(noMailbox.error, "mailboxId is required");
+		// The message is now self-correcting (it names the call that produces a
+		// valid id) but its LEADING SENTENCE and field name are unchanged, so a
+		// client matching the old prefix — or asserting on the stable `mailboxId`
+		// spelling — still works. Asserted on the exported constant rather than a
+		// re-typed literal so the copy has exactly one definition.
+		assert.strictEqual(noMailbox.error, MAILBOX_ID_REQUIRED_ERROR);
+		assert.ok(
+			noMailbox.error?.startsWith("mailboxId is required"),
+			"the stable leading sentence must survive the richer copy",
+		);
 
 		const unknown = await dispatchExternalTool(env(), {
 			name: "nope",

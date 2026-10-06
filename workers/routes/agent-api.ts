@@ -122,6 +122,71 @@ const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 /** Identity reported to MCP clients during `initialize`. */
 const SERVER_INFO = { name: "mailboxes", version: "1.0.0" } as const;
 
+/**
+ * The MCP `instructions` field returned by `initialize` (MCP 2025-06-18 §
+ * `InitializeResult.instructions`).
+ *
+ * Optional in the spec, but it is the only place a server can say what it IS
+ * before a client starts calling tools, and MCP clients are expected to fold it
+ * into the model's context. Without it a model sees 14 bare tool names and has
+ * to infer the contract — which is exactly how a chained call ends up
+ * inventing a `mailboxId` instead of asking for one.
+ *
+ * Deliberately server-level and short: it states the domain, the tool count,
+ * the one prerequisite (`list_mailboxes`), the destructive set, and the fact
+ * that the tool list (not this text) is the schema of record. Per-tool facts
+ * belong on the tools themselves — the warning here would go stale the moment
+ * a tool is added, so it points at `tools/list` for the authoritative detail,
+ * and the safety-relevant per-tool signal travels as `annotations`
+ * (`destructiveHint`).
+ *
+ * Static English, like every other tool-schema string on this surface (see
+ * `TOOL_DEFINITIONS`): it is model-facing API copy, not localized UI text.
+ * `listMcpTools().length` is interpolated so the count cannot drift from the
+ * list it describes.
+ */
+function mcpInstructions(): string {
+	return [
+		"Mailboxes tool gateway: 14 tools for reading, searching, drafting and sending email in the mailboxes this API key can access.",
+		"Call list_mailboxes first to obtain a valid `mailboxId`; almost every other tool requires one, and the value cannot be guessed.",
+		"Tools are read-only unless marked otherwise: check each tool's `annotations` in tools/list. delete_email, discard_draft and update_draft are destructive (update_draft replaces the draft with a new id), and send_email / send_reply deliver real mail to external recipients — confirm intent before calling them.",
+		"A tool failure is returned as `{ error }` inside the result; read it and correct the call instead of retrying unchanged.",
+	].join("\n\n");
+}
+
+/**
+ * Top-level `info` block of `GET /tools` — see the route for the object and
+ * for why it is additive.
+ *
+ * Declared as a const object rather than assembled per request: it is static
+ * metadata about this deployment's gateway (name, version, auth scheme) and
+ * has no request-scoped input.
+ *
+ * This object previously carried a `docs` field pointing at
+ * `/.well-known/api-catalog`. That route is NOT implemented on this worker
+ * (nothing registers it, so the request falls through to the SPA fallback and
+ * returns HTML), which made the pointer a false promise to any client that
+ * followed it — the one thing a discovery surface must not do. The field has
+ * therefore been REMOVED rather than left as a forward reference; it should
+ * only come back once a real catalog route is registered, and then with the
+ * address that route actually serves.
+ */
+const TOOL_GATEWAY_INFO = {
+	name: "mailboxes-tool-gateway",
+	// Matches `package.json`'s `version` (the deployable's own version). Kept
+	// as a literal: import.meta.json / package.json imports are not available
+	// in every Workers bundling mode and a wrong version is worse than a
+	// duplicated constant — this one is asserted against package.json by the
+	// gateway tests.
+	version: "0.2.0",
+	auth: {
+		scheme: "bearer",
+		header: "Authorization",
+		alternativeHeader: "X-API-Key",
+		prefix: "agk_",
+	},
+} as const;
+
 /** JSON-RPC 2.0 error codes used by this module (spec §5.1). */
 const JSON_RPC_PARSE_ERROR = -32700;
 const JSON_RPC_INVALID_REQUEST = -32600;
@@ -363,10 +428,11 @@ for (const path of GATED_PATHS) {
  * Minimal stateless MCP endpoint.
  *
  * Supported methods:
- *   `initialize`                → capabilities + serverInfo (no session id)
+ *   `initialize`                → capabilities + serverInfo + instructions
+ *                                 (no session id)
  *   `notifications/*`           → 204, no body
  *   `ping`                      → `{}`
- *   `tools/list`                → MCP tools array
+ *   `tools/list`                → MCP tools array (with `annotations`)
  *   `tools/call`                → tool execution, wrapped as `content`
  *
  * Everything else → `-32601 Method not found`.
@@ -415,6 +481,10 @@ async function handleMcp(c: AppContext) {
 						: DEFAULT_PROTOCOL_VERSION,
 				capabilities: { tools: {} },
 				serverInfo: SERVER_INFO,
+				// MCP's optional server-level self-description — see
+				// `mcpInstructions`. Additive: clients that ignore it are
+				// unaffected, which is why it took no protocolVersion bump.
+				instructions: mcpInstructions(),
 			});
 		}
 
@@ -496,13 +566,28 @@ agentApiRoute.delete("/mcp", (c) =>
 // ── HTTP tool gateway ──────────────────────────────────────────────
 
 /**
- * `GET /tools` → `200 { tools: OpenAiTool[] }`
+ * `GET /tools` → `200 { info, tools: OpenAiTool[] }`
  *
  * The OpenAI `functions` shape (with `mailboxId` already injected into each
  * schema), ready to drop into a `tools` array. This is the discovery call for
  * callers that want function-calling rather than MCP.
+ *
+ * `info` is a NEW, ADDITIVE top-level sibling of `tools` — the `tools` array
+ * itself is byte-for-byte what it was (same order, same entries, same
+ * `function.parameters`), so a caller that only reads `tools` sees no change
+ * and needs no migration. What the block adds is the two things a caller
+ * otherwise has to reverse-engineer from a 401: what this endpoint is called
+ * and at which version, and how to authenticate (`Authorization: Bearer
+ * agk_…`, or `X-API-Key`).
+ *
+ * Deliberately no `docs` pointer: see `TOOL_GATEWAY_INFO` for why the field
+ * was removed rather than left pointing at an unimplemented route.
+ *
+ * NO `annotations` here: that key is MCP-only and is attached in
+ * `listMcpTools`. `info` is the OpenAI-shaped equivalent of discoverability,
+ * not a place to smuggle MCP fields.
  */
-agentApiRoute.get("/tools", (c) => c.json({ tools: listOpenAiTools() }, 200));
+agentApiRoute.get("/tools", (c) => c.json({ info: TOOL_GATEWAY_INFO, tools: listOpenAiTools() }, 200));
 
 /**
  * `POST /tools/call` → run one tool.

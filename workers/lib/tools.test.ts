@@ -86,10 +86,19 @@ import * as actualAi from "./ai";
 import {
 	executeToolCall,
 	TOOL_DEFINITIONS,
+	FOLDER_ENUM_VALUES,
 	normalizeToolArguments,
 	type AiToolCall,
 } from "./tool-dispatch";
-import { dispatchExternalTool, EXTERNAL_RESULT_PUBLIC_FIELDS } from "./external-tools";
+import {
+	dispatchExternalTool,
+	EXTERNAL_RESULT_PUBLIC_FIELDS,
+	listMcpTools,
+	listOpenAiTools,
+	mcpToolAnnotations,
+	MAILBOX_ID_REQUIRED_ERROR,
+	mailboxNotFoundError,
+} from "./external-tools";
 import {
 	toolDraftReply,
 	toolDraftEmail,
@@ -369,6 +378,18 @@ function toolCall(name: string, args: unknown): AiToolCall {
 
 const NOOP_AI = {} as unknown as Ai;
 const NOOP_BUCKET = {} as unknown as R2Bucket;
+
+/**
+ * A bucket whose `head()` answers `null` for every key — the "this mailbox does
+ * not exist" world the gateway's step-3 probe reads.
+ *
+ * Separate from {@link NOOP_BUCKET} on purpose: that one is an empty object, so
+ * calling `head()` on it THROWS ("is not a function"), which the dispatcher
+ * catches and flattens to the generic `tool execution failed`. The distinction
+ * matters — a thrown `TypeError` and an honest "not found" are different
+ * outcomes, and only this fixture produces the latter.
+ */
+const MISSING_MAILBOX_BUCKET = { head: async () => null } as unknown as R2Bucket;
 
 /**
  * A mailbox configured to send, with the HTTPS call stubbed at the `fetch`
@@ -2110,5 +2131,423 @@ describe("the tool schema matches the code that runs it", () => {
 			type: "boolean",
 			description: "true = mark as read, false = mark as unread",
 		});
+	});
+});
+
+// ── 11. The `folder` argument is a closed set (JSON-Schema `enum`) ──
+//
+// Every folder-taking tool used to spell the value set as PROSE in
+// `description` ("inbox, sent, draft, archive, trash") and leave `type:
+// "string"` as the only machine-readable information — so a model could pass
+// any string, the schema endorsed it, and the tool answered `Unknown folder`.
+// The value set is now an `enum`, which is the form every consumer of these
+// schemas (OpenAI, Anthropic, Gemini, MCP) understands as "choose one of
+// these".
+//
+// The values are NOT a guess: they are `FOLDER_ENUM_VALUES`, sourced from the
+// `Folders` constants in `shared/folders.ts`, which are also the six ids
+// `initMailboxFolders` inserts for every mailbox (the read tools' folder
+// resolution hard-requires such a row). The first case below pins that source
+// directly, so the schema cannot drift from the folders that actually exist.
+
+describe("`folder` carries a JSON-Schema enum", () => {
+	/** Every tool that takes a `folder` argument, by canonical name. */
+	const FOLDER_TOOLS = ["list_emails", "search_emails", "move_email"] as const;
+
+	/**
+	 * The `folder` property of a folder-taking tool, read through one widening
+	 * cast.
+	 *
+	 * `TOOL_DEFINITIONS` is an `as const` tuple, so `tool.parameters.properties`
+	 * is a UNION over every tool's shape — `{}` for `list_mailboxes` included —
+	 * and indexing it directly does not type-check. Narrowing once here keeps
+	 * that noise out of each case.
+	 */
+	function folderProperty(name: (typeof FOLDER_TOOLS)[number]) {
+		const tool = TOOL_DEFINITIONS.find((t) => t.name === name)!;
+		const properties = tool.parameters.properties as Record<
+			string,
+			{ type?: string; enum?: readonly string[]; description?: string }
+		>;
+		return properties.folder;
+	}
+
+	it("the enum lists exactly the ids `initMailboxFolders` seeds", async () => {
+		// `FOLDER_ENUM_VALUES` is derived from the `Folders` constants. The
+		// seeded list is spelled out here ONCE, independently, because this is
+		// the assertion that makes "derived" mean something: if the two ever
+		// disagree, either the schema advertises a folder that does not exist
+		// or it hides one that does.
+		assert.deepStrictEqual([...FOLDER_ENUM_VALUES], [
+			"inbox",
+			"sent",
+			"draft",
+			"archive",
+			"trash",
+			"spam",
+		]);
+	});
+
+	it("every folder-taking tool declares the same enum", async () => {
+		for (const name of FOLDER_TOOLS) {
+			const folder = folderProperty(name);
+			assert.ok(folder, `${name} must still declare \`folder\``);
+			assert.strictEqual(folder.type, "string", `${name}.folder stays a string`);
+			assert.deepStrictEqual(
+				[...(folder.enum ?? [])],
+				[...FOLDER_ENUM_VALUES],
+				`${name}.folder.enum must be the canonical id set`,
+			);
+		}
+	});
+
+	it("the enum is declared before `type` on each folder property", async () => {
+		// Key order is not cosmetic here: an `enum` that follows `type` in a
+		// copied object literal is what made `TOOL_DEFINITIONS` fail to match
+		// its own inferred `as const` shape (see `folderSchema`). Pinning it
+		// keeps the next editor from "tidying" the order back and breaking the
+		// build with an error that points somewhere else entirely.
+		for (const name of FOLDER_TOOLS) {
+			const keys = Object.keys(folderProperty(name) ?? {});
+			assert.strictEqual(
+				keys[0],
+				"enum",
+				`${name}.folder must lead with \`enum\` (got ${keys.join(", ")})`,
+			);
+		}
+	});
+
+	it("no folder description still spells the value list as prose", async () => {
+		// The redundancy the change removes. Left in place it would be a second
+		// copy of the set that can disagree with the `enum` — and a description
+		// that contradicts the schema is worse than a terse one.
+		for (const name of FOLDER_TOOLS) {
+			const description = folderProperty(name)?.description ?? "";
+			assert.ok(
+				!description.includes("inbox"),
+				`${name}.folder description must not re-list the values: ${description}`,
+			);
+		}
+	});
+
+	/**
+	 * The mailbox probe in `dispatchExternalTool` step 3 reads
+	 * `env.BUCKET.head("mailboxes/<id>.json")` and refuses the call when it
+	 * answers `null`. The accept/reject cases below must get PAST that probe to
+	 * reach the folder lookup in `toolListEmails`, so they cannot reuse
+	 * {@link NOOP_BUCKET}: an empty object makes `head()` throw
+	 * (`env.BUCKET.head is not a function`), the dispatcher's `catch` flattens
+	 * that to `{ ok:false, error:"tool execution failed" }`, and every spelling
+	 * — valid or not — would then look like it "was not rejected as an unknown
+	 * folder". That is the vacuous pass this fixture exists to remove: an
+	 * object whose `head()` resolves (i.e. "this mailbox exists") lets the call
+	 * run on to the folder resolution under test.
+	 */
+	const EXISTING_MAILBOX_BUCKET = { head: async () => ({}) } as unknown as R2Bucket;
+
+	/**
+	 * Dispatch `list_emails` through the REAL gateway against the REAL engine,
+	 * with a mailbox that exists. Returns what the caller observes.
+	 *
+	 * Not a shortcut around the folder check: the probe, the required-parameter
+	 * gate, `executeToolCall`, `toolListEmails`'s `resolveUnknownFolder` and the
+	 * `getEmails` query all run. `FULL_SEED` seeds the six `folders` rows
+	 * `initMailboxFolders` writes, so the resolution has real rows to match.
+	 */
+	async function listEmailsOutcome(folder: string) {
+		const { db } = createSqliteD1(FULL_SEED);
+		const outcome = await dispatchExternalTool(
+			{ DB: db, BUCKET: EXISTING_MAILBOX_BUCKET, AI: NOOP_AI },
+			{
+				name: "list_emails",
+				arguments: { folder, mailboxId: MAILBOX },
+				mailboxId: MAILBOX,
+			},
+		);
+		const error = typeof outcome.error === "string" ? outcome.error : null;
+		return { error, unknownFolder: error?.startsWith("Unknown folder") ?? false };
+	}
+
+	it("every enum value is accepted by the server (not just advertised)", { skip: sqliteSkip }, async () => {
+		// The `enum` is the form a model reads; this is the other half of the
+		// contract — each of the six ids the schema advertises actually resolves
+		// when the real tool runs. Spelled out as literals (NOT read back from
+		// `FOLDER_ENUM_VALUES`) so the assertion cannot pass by quoting the
+		// value set against itself.
+		for (const folder of ["inbox", "sent", "draft", "archive", "trash", "spam"]) {
+			const { error, unknownFolder } = await listEmailsOutcome(folder);
+			assert.ok(
+				!unknownFolder,
+				`\`${folder}\` is in the enum, so the server must accept it: ${error}`,
+			);
+			// Reaching the success branch (no error at all) is the proof the call
+			// got past the mailbox probe AND the folder lookup, not merely that it
+			// avoided one particular error string.
+			assert.strictEqual(error, null, `\`${folder}\` must resolve, not error`);
+		}
+	});
+
+	it("the display-name spellings the folder rows carry are accepted too", { skip: sqliteSkip }, async () => {
+		// The value set is an enum now, but the server still matches a folder by
+		// `name = ? OR id = ?` (see `resolveUnknownFolder`) — case-sensitively.
+		// The six seeded rows' `name` column is the capitalized display label,
+		// so `Inbox` / `Archive` / `Drafts` resolve just like their ids. This is
+		// the off-enum spelling a model may echo back from a listing; accepting
+		// it is deliberate, and the enum merely does not advertise it.
+		for (const folder of ["Inbox", "Archive", "Drafts"]) {
+			const { error, unknownFolder } = await listEmailsOutcome(folder);
+			assert.ok(!unknownFolder, `\`${folder}\` must not be an unknown folder: ${error}`);
+			assert.strictEqual(error, null, `\`${folder}\` must resolve, not error`);
+		}
+	});
+
+	it("an all-caps spelling is still rejected — an existing fact, not a regression", { skip: sqliteSkip }, async () => {
+		// RECORDED, NOT ENDORSED. The folder match is case-SENSITIVE
+		// (`name = ?2 OR id = ?2`), so `ARCHIVE` / `INBOX` match neither the
+		// lowercase id nor the capitalized display name and are refused with
+		// `Unknown folder`. That has been true of `tools.ts` throughout — the
+		// enum change neither introduced nor removed it — so this case pins the
+		// CURRENT behavior. If a future change makes matching case-insensitive
+		// and this fails, that is a behavior change with its own tests to write;
+		// it is not this suite quietly going green.
+		for (const folder of ["ARCHIVE", "INBOX"]) {
+			const { error, unknownFolder } = await listEmailsOutcome(folder);
+			assert.ok(
+				unknownFolder,
+				`\`${folder}\` is not a folder id or display name, so the server rejects it: ${error}`,
+			);
+			// The rejection names the value and the accepted set, exactly as the
+			// unknown-folder error always has.
+			assert.ok(error!.startsWith(`Unknown folder: ${folder}.`), error!);
+		}
+	});
+
+	it("the enum's value set is a subset of what the server accepts", { skip: sqliteSkip }, async () => {
+		// The end-to-end guarantee the three cases above build up to: nothing the
+		// schema advertises is a value the server would refuse. This is what
+		// makes the `enum` safe to publish — every id it lists is one the tool
+		// actually accepts when called. (The reverse does not hold: the display
+		// names are accepted but not advertised, which is the by-design
+		// looseness pinned above.)
+		for (const folder of ["inbox", "sent", "draft", "archive", "trash", "spam"]) {
+			const { error } = await listEmailsOutcome(folder);
+			assert.strictEqual(
+				error,
+				null,
+				`the enum lists \`${folder}\`; the server must accept it: ${error}`,
+			);
+		}
+	});
+});
+
+// ── 12. MCP annotations are MCP-only ──────────────────────────────
+//
+// MCP's `annotations` object tells a client whether a tool is read-only,
+// destructive, idempotent and open to the outside world — the exact facts a
+// client needs before it auto-approves a call. The SAME tool list is published
+// on two surfaces (`tools/list` for MCP, `GET /tools` for OpenAI functions)
+// and `annotations` is an MCP key: sending it on the OpenAI surface would put
+// an unknown field on every tool of the payload the internal agent loop also
+// consumes.
+
+describe("MCP tool annotations", () => {
+	/** The three fixed MCP defaults, restated here as the "assume the worst" contract. */
+	const WORST_CASE = {
+		readOnlyHint: false,
+		destructiveHint: true,
+		idempotentHint: false,
+		openWorldHint: true,
+	};
+
+	it("every shipped tool carries all four hints", async () => {
+		const tools = listMcpTools();
+		assert.strictEqual(tools.length, TOOL_DEFINITIONS.length);
+		for (const tool of tools) {
+			assert.deepStrictEqual(
+				Object.keys(tool.annotations).sort(),
+				["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"],
+				`${tool.name} must carry all four hints, never a partial set`,
+			);
+			for (const [key, value] of Object.entries(tool.annotations)) {
+				assert.strictEqual(typeof value, "boolean", `${tool.name}.${key}`);
+			}
+		}
+	});
+
+	it("the read-only tools are exactly the five read paths", async () => {
+		const readOnly = listMcpTools()
+			.filter((t) => t.annotations.readOnlyHint)
+			.map((t) => t.name)
+			.sort();
+		assert.deepStrictEqual(readOnly, [
+			"get_email",
+			"get_thread",
+			"list_emails",
+			"list_mailboxes",
+			"search_emails",
+		]);
+	});
+
+	it("the destructive tools are exactly the three that lose data", async () => {
+		// `delete_email` is a PERMANENT hard delete (no trash step),
+		// `discard_draft` deletes a draft row, and `update_draft` is
+		// delete-then-insert so the old draft id is gone. Marking any of them
+		// non-destructive would invite a client to auto-approve data loss.
+		const destructive = listMcpTools()
+			.filter((t) => t.annotations.destructiveHint)
+			.map((t) => t.name)
+			.sort();
+		assert.deepStrictEqual(destructive, ["delete_email", "discard_draft", "update_draft"]);
+	});
+
+	it("a destructive tool is never advertised as read-only", async () => {
+		// The two flags are independent in MCP, so "destructive AND read-only"
+		// is expressible — and nonsense. This guards the whole table rather than
+		// one row.
+		for (const tool of listMcpTools()) {
+			assert.ok(
+				!(tool.annotations.readOnlyHint && tool.annotations.destructiveHint),
+				`${tool.name} cannot be both read-only and destructive`,
+			);
+		}
+	});
+
+	it("the send tools are the only openWorld senders, and are not idempotent", async () => {
+		// A send hands a message to an external provider and is addressed to a
+		// recipient outside the mailbox: open world, and a repeat is a SECOND
+		// email rather than a no-op.
+		for (const name of ["send_email", "send_reply"]) {
+			const a = mcpToolAnnotations(name);
+			assert.strictEqual(a.openWorldHint, true, `${name}.openWorldHint`);
+			assert.strictEqual(a.idempotentHint, false, `${name}.idempotentHint`);
+			assert.strictEqual(a.readOnlyHint, false, `${name}.readOnlyHint`);
+			assert.strictEqual(a.destructiveHint, false, `${name}.destructiveHint`);
+		}
+	});
+
+	it("an unclassified tool falls back to the worst case, never to safe", async () => {
+		// `mcpToolAnnotations` is exported so other MCP surfaces can reuse the
+		// table; its fallback must not make an unknown tool look harmless.
+		assert.deepStrictEqual(mcpToolAnnotations("no_such_tool"), WORST_CASE);
+	});
+
+	it("`annotations` appears on MCP tools/list and NEVER on /tools", async () => {
+		// The whole reason the table lives beside `listMcpTools` instead of
+		// inside `TOOL_DEFINITIONS`: the OpenAI payload must stay clean.
+		for (const tool of listMcpTools()) {
+			assert.ok("annotations" in tool, `${tool.name} must carry annotations over MCP`);
+		}
+		for (const tool of listOpenAiTools()) {
+			assert.ok(
+				!("annotations" in tool),
+				`${tool.function.name} must NOT carry annotations on the OpenAI surface`,
+			);
+			assert.ok(!("annotations" in tool.function));
+		}
+		// Nor inside the shared definitions, which both surfaces read.
+		for (const tool of TOOL_DEFINITIONS) {
+			assert.ok(!("annotations" in tool), `${tool.name} must not embed annotations`);
+		}
+	});
+
+	it("the two surfaces still publish the same tools and schemas", async () => {
+		// Adding a key to one side must not fork the surface: same names, same
+		// order, same JSON schema on both.
+		const mcp = listMcpTools();
+		const openai = listOpenAiTools();
+		assert.deepStrictEqual(
+			mcp.map((t) => t.name),
+			openai.map((t) => t.function.name),
+		);
+		for (let i = 0; i < mcp.length; i += 1) {
+			assert.deepStrictEqual(mcp[i]!.inputSchema, openai[i]!.function.parameters);
+			assert.strictEqual(mcp[i]!.description, openai[i]!.function.description);
+		}
+	});
+});
+
+// ── 13. The `mailboxId` errors name their own fix ──────────────────
+//
+// Both messages used to state a fact and stop ("mailboxId is required" /
+// "mailbox not found"). A caller cannot derive a valid `mailboxId` — it is a
+// specific mailbox address that only `list_mailboxes` reports — so the message
+// has to name that call. The assertions below pin the three parts (what is
+// wrong, what a valid value looks like, the call that produces one) while
+// keeping the original leading sentence and the `mailboxId` field name intact.
+
+describe("mailboxId errors are self-correcting", () => {
+	it("the required-error names `list_mailboxes`, an example, and retry", async () => {
+		assert.strictEqual(
+			MAILBOX_ID_REQUIRED_ERROR,
+			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@doforu.ai'), then retry.",
+		);
+		assert.ok(MAILBOX_ID_REQUIRED_ERROR.startsWith("mailboxId is required"));
+		assert.ok(MAILBOX_ID_REQUIRED_ERROR.includes("list_mailboxes"));
+		assert.ok(MAILBOX_ID_REQUIRED_ERROR.includes("hello@doforu.ai"));
+	});
+
+	it("the not-found error echoes the rejected id and names the fix", async () => {
+		assert.strictEqual(
+			mailboxNotFoundError("nope@example.com"),
+			"mailbox not found: nope@example.com. mailboxId must be one of the ids returned by " +
+				"list_mailboxes. Call list_mailboxes first, then retry.",
+		);
+		assert.ok(mailboxNotFoundError("a@b.c").includes("mailbox not found: a@b.c"));
+	});
+
+	it("the gateway returns the required-error verbatim when mailboxId is absent", async () => {
+		const outcome = await dispatchExternalTool(
+			{ DB: {} as D1Database, BUCKET: NOOP_BUCKET, AI: NOOP_AI },
+			{ name: "get_email", arguments: { id: "e1" } },
+		);
+		assert.deepStrictEqual(outcome, { ok: false, error: MAILBOX_ID_REQUIRED_ERROR });
+		// Still exactly the two public fields — the richer copy must not have
+		// opened a diagnostic channel.
+		assert.deepStrictEqual(Object.keys(outcome).sort(), ["error", "ok"]);
+	});
+
+	it("the gateway returns the not-found error with the id the caller sent", async () => {
+		// `NOOP_BUCKET.head` answers `null` for everything, i.e. no mailbox
+		// metadata object exists — the honest "this mailbox is not here" world.
+		const outcome = await dispatchExternalTool(
+			{ DB: {} as D1Database, BUCKET: MISSING_MAILBOX_BUCKET, AI: NOOP_AI },
+			{ name: "get_email", arguments: { id: "e1" }, mailboxId: "ghost@example.com" },
+		);
+		assert.deepStrictEqual(outcome, {
+			ok: false,
+			error: mailboxNotFoundError("ghost@example.com"),
+		});
+		assert.ok(outcome.error?.includes("ghost@example.com"));
+		// Field name and semantics unchanged — only the copy grew.
+		assert.ok(outcome.error?.startsWith("mailbox not found"));
+	});
+
+	it("a mailbox that DOES exist still passes the probe", async () => {
+		// The richer message must not have been bolted onto a stricter check: a
+		// bucket that serves the metadata object still gets through.
+		const { db } = createSqliteD1(FULL_SEED);
+		const outcome = await dispatchExternalTool(
+			{ DB: db, BUCKET: CONFIGURED_BUCKET, AI: NOOP_AI },
+			{ name: "get_email", arguments: { id: "orig-1" }, mailboxId: MAILBOX },
+		);
+		assert.notStrictEqual(outcome.error, mailboxNotFoundError(MAILBOX));
+	});
+
+	it("`list_mailboxes` says to call it first, and needs no mailboxId", async () => {
+		// The counterpart of the error copy: the tool the error points at must
+		// advertise itself as the entry point.
+		const tool = TOOL_DEFINITIONS.find((t) => t.name === "list_mailboxes")!;
+		assert.ok(
+			tool.description.includes(
+				"Call this first to obtain a valid `mailboxId` before calling any other tool that requires it.",
+			),
+			`unexpected description: ${tool.description}`,
+		);
+		assert.ok(
+			!listOpenAiTools()
+				.find((t) => t.function.name === "list_mailboxes")!
+				.function.parameters.required.includes("mailboxId"),
+			"list_mailboxes must stay callable without a mailboxId",
+		);
 	});
 });
