@@ -1,5 +1,6 @@
 {
 	"emailNotFound": "Email not found",
+	"invalidReadParameter": "Invalid `read` parameter: expected true or false",
 	"draftVerificationFailedBody": "Draft verification failed — body could not be verified. Please try again.",
 	"draftVerificationFailedKeeping": "Draft verification failed — keeping existing draft unchanged. Please try again.",
 	"draftVerificationFailedSend": "Draft verification failed — refusing to send unverified content. Please try again.",
@@ -8,12 +9,16 @@
 	"draftNotFound": "Draft not found",
 	"moveFailed": "Failed to move email",
 	"cannotDiscardNotDraft": "Cannot discard: email is not a draft",
+	"cannotUpdateNotDraft": "Cannot update: email is not a draft",
 	"hourlySendLimitExceeded": "Hourly send limit exceeded ({{count}}/{{limit}}). Please try again later.",
 	"dailySendLimitExceeded": "Daily send limit exceeded ({{count}}/{{limit}}). Please try again later.",
 	"originalEmailNotFound": "Original email not found",
+	"unknownFolder": "Unknown folder: {{folder}}. Valid folders: {{folders}}.",
+	"unknownFolderNoList": "Unknown folder: {{folder}}.",
+	"threadNotFound": "Thread not found",
 	"invalidMailboxAddress": "Invalid mailbox email address",
-	"sendReplyFailed": "Failed to send reply: {{message}}",
-	"sendEmailFailed": "Failed to send email: {{message}}",
+	"sendReplyFailed": "Failed to send reply. Please try again later.",
+	"sendEmailFailed": "Failed to send email. Please try again later.",
 	"replySent": "Reply sent to {{to}}",
 	"emailSent": "Email sent to {{to}}"
 }

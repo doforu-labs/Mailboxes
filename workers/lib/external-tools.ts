@@ -24,6 +24,7 @@
 import {
 	TOOL_DEFINITIONS,
 	executeToolCall,
+	normalizeToolArguments,
 	type AiToolCall,
 } from "./tool-dispatch";
 import { stripHtmlToText } from "./email-helpers";
@@ -44,6 +45,18 @@ export interface ExternalToolResult {
 	result?: unknown;
 	error?: string;
 }
+
+/**
+ * The `result` type of a successful call is whatever the tool produced; the
+ * failure shape is intentionally narrow (`error` only). Internal diagnostics
+ * — `executeToolCall`'s `detail` (exception messages, and therefore possibly
+ * SQL fragments, internal ids and paths), the raw argument bag, stack traces
+ * — must never appear on this interface, because every field here is
+ * forwarded verbatim to an external caller. Widening this type is the first
+ * step towards leaking internals: keep `error` (plus `ok` / `result`) and
+ * add a *new* deliberately-public field instead of widening `error`.
+ */
+export const EXTERNAL_RESULT_PUBLIC_FIELDS = ["ok", "result", "error"] as const;
 
 /** Internal-only parameter names that must never leak into a public schema. */
 const INTERNAL_PARAMS = new Set([
@@ -143,13 +156,33 @@ export function listOpenAiTools(): Array<{
  *   1. Unknown tool name                         → `{ ok:false, error:"Unknown tool: <name>" }`
  *   2. Missing mailboxId (non list_mailboxes)     → `{ ok:false, error:"mailboxId is required" }`
  *   3. Mailbox metadata object absent in R2       → `{ ok:false, error:"mailbox not found" }`
- *   4. Delegates to `executeToolCall`; if the result is an object carrying an
+ *   4. Missing schema-required arguments          → `{ ok:false, error:"missing required
+ *      parameter: <name>[, <name>]" }`
+ *   5. Delegates to `executeToolCall`; if the result is an object carrying an
  *      `error` key (either a tool-level error branch or the dispatcher's own
- *      swallowed-exception `{ error }`) → `{ ok:false, error:String(result.error) }`
- *   5. Otherwise → `{ ok:true, result: reshapeToolOutput(name, result) }`
+ *      swallowed-exception `{ error, detail }`) → `{ ok:false, error:String(result.error) }`
+ *   6. Otherwise → `{ ok:true, result: reshapeToolOutput(name, result) }`
  *
  * Any thrown exception is caught and flattened to
- * `{ ok:false, error:"tool execution failed" }`.
+ * `{ ok:false, error:"tool execution failed" }` (or the dedicated message for
+ * unparseable JSON).
+ *
+ * ── Argument handling ──
+ * `arguments` are normalized through `normalizeToolArguments` **before** both
+ * the required-parameter check and execution, so the two can never disagree:
+ * `{"id":X}` and the legacy `{"emailId":X}` both satisfy `required:["id"]`
+ * and both reach `executeToolCall` in canonical form.
+ *
+ * ── Error hygiene ──
+ * A missing required parameter is answered *before* execution, because the
+ * alternative — letting `undefined` reach D1 — produces a generic failure the
+ * calling model cannot act on. The message names the parameter(s) so the next
+ * attempt can be correct.
+ *
+ * Every failure path returns `error` and nothing else. The internal `detail`
+ * from `executeToolCall` is read but never forwarded: it is diagnostic text
+ * aimed at the in-process agent loop and may embed SQL, internal ids or file
+ * paths.
  *
  * ── Mailbox authorization (`allowedMailboxes`) ─────────────────────
  * The optional 4th parameter carries the caller's mailbox allow-list, exactly
@@ -184,13 +217,18 @@ export async function dispatchExternalTool(
 		}
 
 		const rawArgs = call.arguments ?? {};
+		// Canonicalize legacy parameter names once, up front. Everything below —
+		// mailboxId resolution, the required check, execution — sees the same
+		// canonical bag, so a legacy caller cannot pass validation and then fail
+		// inside the tool (or vice versa).
+		const normalizedArgs = normalizeToolArguments(toolName, rawArgs);
 
 		// 2) Resolve mailboxId (explicit call field wins over the argument bag).
 		const mailboxId =
 			typeof call.mailboxId === "string" && call.mailboxId.length > 0
 				? call.mailboxId
-				: typeof rawArgs.mailboxId === "string"
-					? (rawArgs.mailboxId as string)
+				: typeof normalizedArgs.mailboxId === "string"
+					? (normalizedArgs.mailboxId as string)
 					: undefined;
 
 		// Authorization: a non-empty allow-list restricts which mailbox the key
@@ -215,9 +253,25 @@ export async function dispatchExternalTool(
 			}
 		}
 
-		// 4) Build the internal toolCall: strip mailboxId (it is positional for
+		// 4) Required-parameter gate. Checked against the canonical schema, on the
+		//    normalized bag, before the tool is executed: a missing argument is a
+		//    request the caller can fix, so it must be named rather than allowed
+		//    to surface as an opaque downstream failure.
+		const schema =
+			TOOL_DEFINITIONS.find((tool) => tool.name === toolName)?.parameters;
+		const missing = (schema?.required ?? []).filter(
+			(name) => !hasArgument(normalizedArgs, name),
+		);
+		if (missing.length > 0) {
+			return {
+				ok: false,
+				error: `missing required parameter: ${missing.join(", ")}`,
+			};
+		}
+
+		// 5) Build the internal toolCall: strip mailboxId (it is positional for
 		//    the dispatcher) and force skipVerifyDraft for deterministic output.
-		const toolArgs: Record<string, unknown> = { ...rawArgs };
+		const toolArgs: Record<string, unknown> = { ...normalizedArgs };
 		delete toolArgs.mailboxId;
 		toolArgs.skipVerifyDraft = true;
 
@@ -230,7 +284,7 @@ export async function dispatchExternalTool(
 			},
 		};
 
-		// 5) Delegate execution. `mailboxId` defaults to "" for list_mailboxes
+		// 6) Delegate execution. `mailboxId` defaults to "" for list_mailboxes
 		//    (which ignores it) to satisfy the non-optional positioning.
 		const result = await executeToolCall(
 			toolCall,
@@ -241,7 +295,9 @@ export async function dispatchExternalTool(
 			locale,
 		);
 
-		// 6) Normalise: any object with an `error` key is a failure.
+		// 7) Normalise: any object with an `error` key is a failure. Only the
+		//    public `error` string crosses the boundary — `detail` (internal
+		//    diagnostics) stays inside on purpose.
 		if (isErrorResult(result)) {
 			return { ok: false, error: String(result.error) };
 		}
@@ -259,8 +315,33 @@ export async function dispatchExternalTool(
 		};
 	} catch (e: any) {
 		console.error("dispatchExternalTool failed:", e?.message ?? e);
+		// A tool call whose `arguments` could not be parsed as JSON is caller
+		// error with a well-defined fix, so it gets its own message instead of
+		// the generic one. Both branches stay 200 + `ok:false`: the round trip
+		// succeeded, the tool did not run.
+		if (e instanceof SyntaxError) {
+			return {
+				ok: false,
+				error: "invalid tool arguments: could not parse JSON",
+			};
+		}
 		return { ok: false, error: "tool execution failed" };
 	}
+}
+
+/**
+ * True when a canonical parameter was actually supplied.
+ *
+ * Mirrors the alias-normalization notion of "present": an absent key, `null`
+ * and a blank string are all missing; `false` and `0` are legitimate values
+ * (e.g. `mark_email_read.read: false`).
+ */
+function hasArgument(args: Record<string, unknown>, name: string): boolean {
+	if (!(name in args)) return false;
+	const value = args[name];
+	if (value == null) return false;
+	if (typeof value === "string") return value.trim().length > 0;
+	return true;
 }
 
 /**

@@ -462,10 +462,11 @@ async function handleMcp(c: AppContext) {
 				c.var.apiKeyInfo.allowedMailboxes,
 			);
 
-			if (!outcome.ok) {
-				// Tool-level failure → 200 with `isError: true` content.
-				return rpcOk(c, request.id ?? null, toolContent(outcome));
-			}
+			// Tool-level failure → 200 with `isError: true` content; success →
+			// 200 with the tool's payload. Both are plain JSON-RPC results:
+			// `toolContent` sets `isError` from `outcome.ok`, so the two cases
+			// differ only inside the content envelope, not in the response
+			// shape. One `return` covers both.
 			return rpcOk(c, request.id ?? null, toolContent(outcome));
 		}
 

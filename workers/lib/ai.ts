@@ -11,6 +11,15 @@
  */
 
 import { escapeHtml, stripHtmlToText, textToHtml } from "./email-helpers";
+// Verification failures are reported in human-readable form upstream, so a
+// failed Workers-AI call is mapped through the shared database-error helper:
+// a recognized database error becomes a neutral sentence, anything else keeps
+// a fixed fallback. Nothing from the raw exception is echoed outward.
+//
+// Note the explicit extension-less relative path: a `../db` specifier is
+// resolved by i18next as namespace "db", which it silently drops, so every
+// translation key came back verbatim as its own name.
+import { checkVerificationSqlError } from "../db/index";
 
 // ── Draft Verifier ─────────────────────────────────────────────────
 
@@ -75,10 +84,61 @@ function splitQuotedBlock(html: string): { reply: string; quoted: string } {
 
 /**
  * Verify and clean a draft email body using AI.
- * Falls back to returning the original body if the AI call fails.
+ *
+ * Returns a discriminated result instead of a bare string so a caller can tell
+ * "the verifier ran and returned the body" apart from "the verifier could not
+ * run". Collapsing both into `""` is what made the tool layer report a
+ * generic "draft verification failed": the real cause (a Workers-AI error, an
+ * unusable model response) was logged and then discarded.
+ *
+ *   • `{ ok: true,  body }` — the body to use, verified whenever the verifier
+ *     could actually run. The verifier is advisory for *unusable model
+ *     output*: an empty response or a response that is merely whitespace-
+ *     different from the input both return the caller's original body
+ *     unchanged (a no-op verdict is not a failure).
+ *   • `{ ok: false, reason }` — the verifier genuinely could not validate the
+ *     body, so the caller MUST treat the draft/send as failed:
+ *       – the Workers-AI call threw; or
+ *       – the model removed more than half of the reply, i.e. it was about to
+ *         gut a legitimate email and we refuse to use its output.
+ *     `reason` is a short, single-line, English, machine-safe sentence built
+ *     from the fixed allow-list below; it never contains SQL, ids, stack
+ *     traces or vendor text.
  */
-export async function verifyDraft(ai: Ai, body: string): Promise<string> {
-	if (!body || !body.trim()) return body;
+export type VerifyDraftResult =
+	| { ok: true; body: string }
+	| { ok: false; reason: string };
+
+/**
+ * Reason emitted when the model's output removed most of the reply.
+ * Exported so the tool layer's allow-list can be pinned to this exact string
+ * instead of a second hand-copied literal (a typo there silently drops the
+ * detail from the outward `error`).
+ */
+export const VERIFIER_REASON_REMOVED_MOST =
+	"the verifier removed most of the body";
+
+/**
+ * Reason emitted when the Workers-AI binding itself failed and no recognized
+ * D1 error could be mapped — deliberately generic, no exception text.
+ * Exported for the same reason as {@link VERIFIER_REASON_REMOVED_MOST}.
+ */
+export const VERIFIER_REASON_MODEL_UNREACHABLE =
+	"the verification model could not be reached";
+
+/**
+ * Build the failure reason for a Workers-AI error.
+ *
+ * `checkVerificationSqlError` (workers/db) maps recognized database error
+ * codes to neutral sentences; an unrecognized message falls back to a fixed
+ * sentence so nothing vendor-shaped can be echoed outward.
+ */
+function verificationFailureReason(e: unknown): string {
+	return checkVerificationSqlError(e) ?? VERIFIER_REASON_MODEL_UNREACHABLE;
+}
+
+export async function verifyDraft(ai: Ai, body: string): Promise<VerifyDraftResult> {
+	if (!body || !body.trim()) return { ok: true, body };
 
 	// Separate the quoted reply block so the AI only reviews the user's text
 	const isHtml = /<[a-z][\s\S]*>/i.test(body);
@@ -90,7 +150,7 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 	const replyText = isHtml ? stripHtmlToText(replyHtml) : replyHtml;
 
 	// Skip very short replies — nothing to verify
-	if (replyText.trim().length < 20) return body;
+	if (replyText.trim().length < 20) return { ok: true, body };
 
 	try {
 		const response = (await ai.run(
@@ -108,41 +168,56 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 		const cleaned = response?.response ?? null;
 
 		if (!cleaned || !cleaned.trim()) {
-			// AI returned empty — fall back to original
-			return body;
+			// AI returned empty. The verifier is advisory: treat this as "the
+			// verifier could not run" and keep the body the caller supplied.
+			console.warn(
+				"Draft verifier returned an empty response — keeping the original body.",
+			);
+			return { ok: true, body };
 		}
 
 		const cleanedTrimmed = cleaned.trim();
 
 		// If the AI returned something substantially similar, keep original formatting
 		if (normalizeWhitespace(cleanedTrimmed) === normalizeWhitespace(replyText)) {
-			return body;
+			return { ok: true, body };
 		}
 
 		// Safety check: if the AI removed more than 50% of the content,
-		// it's probably being too aggressive — fall back to original.
-		// This threshold balances between catching real artifacts and
-		// preventing the verifier from gutting legitimate emails.
+		// it's probably being too aggressive. This is a FAILURE, not a
+		// fall-back: the body the caller asked us to verify did not survive
+		// verification, and reporting it as `ok` would let an unverified (here,
+		// gutted-by-the-model) body out of the draft/send tools.
+		// The threshold balances between catching real artifacts and
+		// preventing the verifier from flagging legitimate emails.
 		if (cleanedTrimmed.length < replyText.trim().length * 0.5) {
 			console.warn(
-				"Draft verifier removed >50% of content, falling back to original.",
+				"Draft verifier removed >50% of content — refusing the result.",
 				`Original: ${replyText.trim().length} chars, Cleaned: ${cleanedTrimmed.length} chars`,
 			);
-			return body;
+			return { ok: false, reason: VERIFIER_REASON_REMOVED_MOST };
 		}
 
 		// The AI cleaned something — rebuild in the original format
 		if (isHtml) {
-			return `${textToHtml(cleanedTrimmed)}${quotedBlock}`;
+			return { ok: true, body: `${textToHtml(cleanedTrimmed)}${quotedBlock}` };
 		}
 
 		// Plain text: reattach quoted block if any
-		return quotedBlock
-			? `${cleanedTrimmed}\n\n${quotedBlock}`
-			: cleanedTrimmed;
+		return {
+			ok: true,
+			body: quotedBlock
+				? `${cleanedTrimmed}\n\n${quotedBlock}`
+				: cleanedTrimmed,
+		};
 	} catch (e) {
-				console.error("AI failed — returns empty body, callers may save blank draft:", (e as Error).message);
-		return "";
+		// The AI call itself failed: we could NOT verify the body, so this is a
+		// genuine failure rather than a silent pass-through. Replacing the raw
+		// message with a fixed sentence keeps the reason safe to surface in a
+		// tool error (no SQL, ids or vendor text).
+		const reason = verificationFailureReason(e);
+		console.error("AI draft verification failed. Reason:", reason, e);
+		return { ok: false, reason };
 	}
 }
 

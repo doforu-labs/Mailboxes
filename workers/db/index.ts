@@ -181,18 +181,50 @@ const NORMALIZED_SUBJECT_SQL = `LOWER(TRIM(
 const HOURLY_LIMIT = 20;
 const DAILY_LIMIT = 100;
 
-// ── Helper ────────────────────────────────────────────────────────
+// ── Error mapping ─────────────────────────────────────────────────
 
-function buildFolderCondition(
-	folder: string,
-	paramIdx: () => number,
-): { clause: string; params: string[] } {
-	const idx1 = paramIdx();
-	const idx2 = paramIdx();
-	return {
-		clause: `folder_id = (SELECT id FROM folders WHERE mailbox_id = ?${idx1} AND (name = ?${idx2} OR id = ?${idx2}) LIMIT 1)`,
-		params: [folder, folder],
-	};
+/**
+ * Map a thrown value onto a stable, human-readable sentence **without**
+ * echoing the raw error text.
+ *
+ * Used by the draft verifier (workers/lib/ai.ts) to explain why a failure
+ * happened. The reason it exists: a D1/Workers-AI error message carries the
+ * SQL, table names and internal ids, and the verifier's reason is surfaced in
+ * a tool result that an external client can read. Only messages that match the
+ * distinctive D1 shapes below are quoted, and only after the identifier / SQL
+ * fragments have been stripped from them.
+ *
+ * @returns `null` when the value is not a recognized database error, so the
+ *   caller can substitute its own generic sentence instead of leaking the
+ *   original message.
+ */
+export function checkVerificationSqlError(error: unknown): string | null {
+	const raw =
+		error instanceof Error
+			? error.message
+			: typeof error === "string"
+				? error
+				: null;
+	if (!raw) return null;
+
+	// A D1 error is recognizable by its `D1_ERROR` prefix or by the SQLite
+	// error classes D1 surfaces verbatim.
+	if (!/^D1_ERROR/i.test(raw) && !/^SQLITE_/i.test(raw)) return null;
+
+	if (/no such table/i.test(raw)) {
+		return "the database schema is missing a required table";
+	}
+	if (/no such column/i.test(raw)) {
+		return "the database schema is missing a required column";
+	}
+	if (/UNIQUE constraint failed/i.test(raw)) {
+		return "a conflicting record already exists";
+	}
+	// `... database is locked` / `... database is busy`.
+	if (/database is (locked|busy)/i.test(raw)) {
+		return "the database is temporarily unavailable";
+	}
+	return "the database rejected the request";
 }
 
 // ── 1. getEmails ─────────────────────────────────────────────────
@@ -266,7 +298,7 @@ export async function countEmails(
 	let paramIdx = 2;
 
 	if (folder) {
-		conditions.push(`folder_id = (SELECT id FROM folders WHERE mailbox_id = ?${paramIdx} AND (name = ?${paramIdx} OR id = ?${paramIdx}) LIMIT 1)`);
+		conditions.push(`folder_id = (SELECT id FROM folders WHERE mailbox_id = ?1 AND (name = ?${paramIdx} OR id = ?${paramIdx}) LIMIT 1)`);
 		params.push(folder);
 		paramIdx++;
 	}
@@ -939,25 +971,52 @@ export async function moveEmail(
 	db: D1Database,
 	mailboxId: string,
 	id: string,
-	folderId: string,
+	folderRef: string,
 ): Promise<boolean> {
+	// `folderRef` is a folder *name* or *id*, mirroring `getEmails` /
+	// `searchEmails` / `countEmails` / `createEmail` (and the SQL builders in
+	// this file), which all resolve `name = ref OR id = ref`. Callers hand us
+	// whatever `search_emails` / `list_emails` reported — `folder_name` (the
+	// display name) as often as `folder_id` — so matching on `id` alone made a
+	// display name such as "Archive" silently unresolvable.
 	const orm = drizzle(db, { schema });
 
+	// `LIMIT 1` keeps the lookup deterministic should a name ever be ambiguous
+	// (ids are the folders' primary key; names are not).
 	const folder = await orm
 		.select({ id: schema.folders.id })
 		.from(schema.folders)
-		.where(and(eq(schema.folders.mailbox_id, mailboxId), eq(schema.folders.id, folderId)))
+		.where(
+			and(
+				eq(schema.folders.mailbox_id, mailboxId),
+				or(eq(schema.folders.name, folderRef), eq(schema.folders.id, folderRef)),
+			),
+		)
+		.limit(1)
 		.get();
 
 	if (!folder) return false;
 
-	await orm
+	// Persist the *resolved* id, never the caller's raw reference: the column
+	// is a foreign key to `folders.id`, so writing the name through would
+	// orphan the row.
+	const result = await orm
 		.update(schema.emails)
-		.set({ folder_id: folderId })
+		.set({ folder_id: folder.id })
 		.where(and(eq(schema.emails.id, id), eq(schema.emails.mailbox_id, mailboxId)))
 		.run();
 
-	return true;
+	// A resolved folder is not enough: the email must exist in THIS mailbox for
+	// the UPDATE's `WHERE` to match anything. Returning `true` unconditionally
+	// reported a move that never happened — no row touched, yet the caller
+	// (and, through it, `move_email`) was told the email had been moved. Read
+	// back the affected-row count instead, mirroring the sibling
+	// `tryInsertDomain` / `createFirstAdmin` / `updateAdminPassword` helpers in
+	// this file, which all gate their boolean on `meta.changes`.
+	//
+	// `?? 0` also covers a driver that omits `meta`: an absent count must fail
+	// closed ("not moved") rather than default to a phantom success.
+	return (result.meta?.changes ?? 0) > 0;
 }
 
 // ── 18. searchEmails ─────────────────────────────────────────────

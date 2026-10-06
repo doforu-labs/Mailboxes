@@ -32,6 +32,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   external callers are reshaped to a public field whitelist — internal
   identifiers, raw message headers and other internal fields are not exposed.
 
+### Fixed
+
+- **Tool parameters that refer to an email now use the same names the tools
+  return.** `get_email`, `mark_email_read`, `move_email` and `delete_email`
+  took `emailId`, `get_thread` took `threadId`, and `draft_reply` / `send_reply`
+  took `originalEmailId` — while `list_emails` / `search_emails` *return* `id`
+  and `thread_id`. A model that copied the value straight out of a list result
+  therefore missed the required key. They now take `id` / `thread_id`, and the
+  descriptions say which returned field to read. The old spellings still work
+  (normalized to the canonical key, canonical wins on conflict); `update_draft`
+  and `discard_draft` keep `draftId`, which already matched its own return
+  field. No result shape changed, and no bare `id` is ever reinterpreted as a
+  `thread_id`.
+- **A missing required tool argument is now reported instead of failing
+  downstream.** The external tool gateway validates `required` against the
+  (alias-normalized) arguments before executing, answering
+  `{ ok:false, error:"missing required parameter: <name>" }` — previously an
+  absent argument reached the query layer and came back as an opaque failure a
+  calling model could not act on.
+- **Tool errors no longer swallow their cause.** `executeToolCall` now keeps
+  `error` stable and adds a `detail` field carrying the real exception message
+  — the agent loop gets the diagnostic it was previously only logging, so it
+  can self-correct. `detail` is internal: the external gateway never forwards
+  it, and unparseable tool arguments answer with
+  `invalid tool arguments: could not parse JSON` rather than escaping as an
+  exception.
+
 ### Changed
 
 - **README language swap.** `README.md` is now the English document, so the repository's

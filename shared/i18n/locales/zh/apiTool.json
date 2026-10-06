@@ -1,5 +1,6 @@
 {
 	"emailNotFound": "未找到该邮件",
+	"invalidReadParameter": "参数 read 无效：应为 true 或 false",
 	"draftVerificationFailedBody": "草稿校验失败——正文无法通过校验。请重试。",
 	"draftVerificationFailedKeeping": "草稿校验失败——已保留原有草稿不变。请重试。",
 	"draftVerificationFailedSend": "草稿校验失败——拒绝发送未经校验的内容。请重试。",
@@ -8,12 +9,16 @@
 	"draftNotFound": "未找到该草稿",
 	"moveFailed": "移动邮件失败",
 	"cannotDiscardNotDraft": "无法丢弃：该邮件不是草稿",
+	"cannotUpdateNotDraft": "无法更新：该邮件不是草稿",
 	"hourlySendLimitExceeded": "已超出每小时发送上限（{{count}}/{{limit}}）。请稍后重试。",
 	"dailySendLimitExceeded": "已超出每日发送上限（{{count}}/{{limit}}）。请稍后重试。",
 	"originalEmailNotFound": "未找到原始邮件",
+	"unknownFolder": "未知文件夹：{{folder}}。可用文件夹：{{folders}}。",
+	"unknownFolderNoList": "未知文件夹：{{folder}}。",
+	"threadNotFound": "未找到该会话",
 	"invalidMailboxAddress": "邮箱地址无效",
-	"sendReplyFailed": "发送回复失败：{{message}}",
-	"sendEmailFailed": "发送邮件失败：{{message}}",
+	"sendReplyFailed": "发送回复失败，请稍后重试。",
+	"sendEmailFailed": "发送邮件失败，请稍后重试。",
 	"replySent": "回复已发送至 {{to}}",
 	"emailSent": "邮件已发送至 {{to}}"
 }
