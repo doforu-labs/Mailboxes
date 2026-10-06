@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-06
+
 ### Added
 
 - **External agent access — global API keys, an MCP server and an HTTP tool
@@ -58,17 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it, and unparseable tool arguments answer with
   `invalid tool arguments: could not parse JSON` rather than escaping as an
   exception.
-
-### Changed
-
-- **README language swap.** `README.md` is now the English document, so the repository's
-  front page reads for an English-speaking audience; the Simplified Chinese version moved
-  to [`README.zh-CN.md`](README.zh-CN.md). The Add Domain steps no longer tell you to
-  register the domain on Resend by hand — the app does it, and doing it manually makes
-  Resend reject the domain with "registered to another team".
-
-### Fixed
-
 - **Claims the code did not back.** The v0.1.0 notes and both READMEs described replies
   being drafted automatically as mail arrives. No such trigger exists: the `EMAIL_AGENT`
   auto-draft path was removed and the D1 change detection named as its replacement was
@@ -78,9 +69,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stale links in the v0.1.0 release notes** — they pointed at `README.en.md` (renamed to
   `README.zh-CN.md`/`README.md`) and at a legacy repository URL.
 
+### Changed
+
+- **README language swap.** `README.md` is now the English document, so the repository's
+  front page reads for an English-speaking audience; the Simplified Chinese version moved
+  to [`README.zh-CN.md`](README.zh-CN.md). The Add Domain steps no longer tell you to
+  register the domain on Resend by hand — the app does it, and doing it manually makes
+  Resend reject the domain with "registered to another team".
+
 ### Removed
 
-- **Per-domain programmatic sending API keys.** The `mb_`-prefixed keys that let an
+- **BREAKING:** **Per-domain programmatic sending API keys.** The `mb_`-prefixed keys that let an
   external application send mail through `POST /api/v1/send` are gone, along with the
   endpoint, its management UI and the `api_keys` table (`migrations/0012_drop_api_keys.sql`).
   Resend sending credentials (`resend_api_key`) are untouched: the app still sends and
@@ -146,5 +145,6 @@ the upstream notices are retained in [`NOTICE`](NOTICE) and
   [advisory form](https://github.com/doforu-labs/Mailboxes/security/advisories/new)
   rather than a public issue — see [`SECURITY.md`](SECURITY.md).
 
-[Unreleased]: https://github.com/doforu-labs/Mailboxes/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/doforu-labs/Mailboxes/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/doforu-labs/Mailboxes/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/doforu-labs/Mailboxes/releases/tag/v0.1.0

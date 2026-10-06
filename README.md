@@ -50,7 +50,7 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 
 ## Features
 
-> Everything below is implemented in **v0.1.0**. For what is not built yet, see [Roadmap](#roadmap).
+> Everything below is implemented in **v0.2.0**. For what is not built yet, see [Roadmap](#roadmap).
 
 - **Login-protected** — the first visitor to a fresh deployment creates the admin account through a setup wizard, and the password is stored in D1 as a salted PBKDF2-SHA256 hash. There is no default password. Sessions last 7 days via an HttpOnly cookie (stored in D1).
 - **Full email client** — send and receive via Cloudflare Email Routing, with a rich-text composer, reply/forward threading, folders, search, and attachments.
@@ -305,7 +305,7 @@ See: [Resend — Claim Domain](https://resend.com/docs/api-reference/domains/cla
 
 ## Roadmap
 
-**Done ✅** is what already ships in the current version (v0.1.0) — see [Features](#features) above for the details. **Planned** is not started yet.
+**Done ✅** is what already ships in the current version (v0.2.0) — see [Features](#features) above for the details. **Planned** is not started yet.
 
 ### Done ✅
 

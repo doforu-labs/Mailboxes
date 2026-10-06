@@ -1,8 +1,8 @@
 {
 	"name": "mailboxes",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
-	"description": "Self-hosted email client with an AI agent — send, receive and auto-reply from your own domain, running entirely on Cloudflare Workers (D1 + R2 + Workers AI).",
+	"description": "Self-hosted email client with an AI agent — send, receive, search and draft replies from your own domain, running entirely on Cloudflare Workers (D1 + R2 + Workers AI).",
 	"license": "AGPL-3.0-only",
 	"author": "Doforu",
 	"repository": {
