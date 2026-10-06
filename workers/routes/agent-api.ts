@@ -147,7 +147,7 @@ const SERVER_INFO = { name: "mailboxes", version: "1.0.0" } as const;
  */
 function mcpInstructions(): string {
 	return [
-		"Mailboxes tool gateway: 14 tools for reading, searching, drafting and sending email in the mailboxes this API key can access.",
+		`Mailboxes tool gateway: ${listMcpTools().length} tools for reading, searching, drafting and sending email in the mailboxes this API key can access.`,
 		"Call list_mailboxes first to obtain a valid `mailboxId`; almost every other tool requires one, and the value cannot be guessed.",
 		"Tools are read-only unless marked otherwise: check each tool's `annotations` in tools/list. delete_email, discard_draft and update_draft are destructive (update_draft replaces the draft with a new id), and send_email / send_reply deliver real mail to external recipients — confirm intent before calling them.",
 		"A tool failure is returned as `{ error }` inside the result; read it and correct the call instead of retrying unchanged.",

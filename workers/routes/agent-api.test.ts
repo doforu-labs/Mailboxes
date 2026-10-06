@@ -39,6 +39,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { Hono } from "hono";
 import { agentApiRoute } from "./agent-api";
+import { listMcpTools } from "../lib/external-tools";
 import type { Env } from "../types";
 
 // ── node:sqlite (optional engine) ───────────────────────────────────
@@ -297,10 +298,12 @@ describe("gateway discovery surface (real routes)", () => {
 			instructions.includes("send_email") && instructions.includes("send_reply"),
 			"instructions must warn about the outbound-send tools",
 		);
-		// The tool COUNT is interpolated from the list it describes, so it
-		// cannot drift when a tool is added or removed.
+		// The tool COUNT must be interpolated from the list it describes, so it
+		// cannot drift when a tool is added or removed. The expected value is
+		// derived from `listMcpTools().length` — NOT a literal — so a hardcoded
+		// count in the source (or a stale one) turns this red.
 		assert.ok(
-			instructions.includes("14 tools"),
+			instructions.includes(`${listMcpTools().length} tools`),
 			`instructions must state the live tool count: ${instructions}`,
 		);
 	});
