@@ -201,6 +201,32 @@ export interface CreateDomainResponse {
 	warnings?: string[];
 }
 
+/**
+ * Public shape of a global agent API key. Mirrors `AgentApiKeyPublic` in
+ * `workers/db/index.ts` — the key hash never leaves the Worker, so it is not
+ * part of this contract.
+ */
+export interface AgentApiKeyPublic {
+	id: string;
+	name: string;
+	prefix: string;
+	scopes: string;
+	allowed_mailboxes: string | null;
+	created_at: string;
+	last_used_at: string | null;
+	expires_at: string | null;
+	revoked_at: string | null;
+}
+
+/** `api_key` is the plaintext secret and is returned by POST exactly once. */
+export interface CreatedAgentApiKey {
+	id: string;
+	name: string;
+	prefix: string;
+	api_key: string;
+	message: string;
+}
+
 const api = {
 	// Auth
 	auth: {
@@ -208,6 +234,18 @@ const api = {
 			post<{ authenticated: boolean; username: string }>("/api/v1/auth/login", { username, password }),
 		logout: () => post<{ success: boolean }>("/api/v1/auth/logout"),
 		me: () => get<{ authenticated: boolean; username: string }>("/api/v1/auth/me"),
+	},
+
+	// Global agent API keys (admin, session-cookie auth). These are the keys
+	// external LLM / MCP clients present to the root-mounted gateway
+	// (`/mcp`, `/tools`) via `Authorization: Bearer <key>`.
+	agentApiKeys: {
+		list: () =>
+			get<{ api_keys: AgentApiKeyPublic[] }>("/api/v1/agent-api-keys"),
+		create: (name: string) =>
+			post<CreatedAgentApiKey>("/api/v1/agent-api-keys", { name }),
+		revoke: (id: string) =>
+			del<{ ok: boolean }>(`/api/v1/agent-api-keys/${id}`),
 	},
 
 	// Config

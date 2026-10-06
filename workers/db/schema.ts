@@ -60,6 +60,31 @@ export const aiChatMessages = sqliteTable("ai_chat_messages", {
 	created_at: text("created_at").notNull(),
 });
 
+// Global API keys for external LLM access to the agent tools. Unlike the
+// removed `api_keys` table these are not scoped to a mailbox or a domain;
+// access is narrowed via `scopes` / `allowed_mailboxes`.
+export const agentApiKeys = sqliteTable("agent_api_keys", {
+	id: text("id").primaryKey(),
+	name: text("name").notNull(),
+	key_hash: text("key_hash").notNull(),
+	prefix: text("prefix").notNull(),
+	scopes: text("scopes").notNull().default("all"),
+	allowed_mailboxes: text("allowed_mailboxes"), // JSON array of mailbox ids, NULL = all
+	created_at: text("created_at").notNull(),
+	last_used_at: text("last_used_at"),
+	expires_at: text("expires_at"),
+	revoked_at: text("revoked_at"), // NULL while live
+});
+
+// Append-only audit log for the keys above.
+export const agentApiKeyAudit = sqliteTable("agent_api_key_audit", {
+	id: text("id").primaryKey(),
+	key_id: text("key_id").notNull(),
+	action: text("action").notNull(),
+	detail: text("detail"),
+	created_at: text("created_at").notNull(),
+});
+
 export const domains = sqliteTable("domains", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),

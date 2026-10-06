@@ -1,0 +1,45 @@
+{
+	"title": "Agent API Key",
+	"description": "供外部 LLM / MCP 客户端使用的全局密钥。将其指向 /mcp 或 /tools，并携带 Authorization: Bearer <key>。",
+	"expandedDescription": "这些密钥不绑定邮箱：任何携带 Authorization: Bearer <key> 的客户端都可以调用 /mcp 与 /tools 上暴露的 Agent 工具。请妥善保管——持有密钥者即等同于此账号。",
+	"badgeCount": "{{count}} 个可用",
+	"empty": "还没有 Agent API Key。创建一个即可接入外部 LLM 或 MCP 客户端。",
+	"loading": "加载中…",
+
+	"columnName": "名称",
+	"columnPrefix": "前缀",
+	"columnScopes": "权限范围",
+	"columnCreated": "创建时间",
+	"columnLastUsed": "最近使用",
+	"columnActions": "操作",
+
+	"never": "从未使用",
+	"revoked": "已吊销",
+
+	"createKey": "创建密钥",
+	"createKeyTitle": "创建 Agent API Key",
+	"createKeyName": "密钥名称",
+	"createKeyNamePlaceholder": "例如：Claude Desktop",
+	"createKeyScopes": "权限范围",
+	"createKeyScopeHint": "在此创建的密钥始终拥有完整的 `all` 权限——外部网关目前尚不支持按工具限制。",
+	"createKeySubmit": "创建",
+	"createKeyCreating": "创建中…",
+
+	"createdTitle": "API Key 已创建",
+	"createdSaveNow": "这是完整密钥唯一一次显示。请立即复制到你的客户端配置中。",
+	"createdWarning": "此后将无法再次查看该密钥。如果丢失，请吊销此密钥并重新创建。",
+	"createdDismiss": "我已保存",
+	"copied": "已复制到剪贴板",
+
+	"revokeKey": "吊销",
+	"revokeKeyTitle": "吊销 API Key",
+	"revokeConfirmPrefix": "确定要吊销",
+	"revokeConfirmSuffix": "吗？吊销立即生效——所有仍在使用该密钥的外部 LLM 或 MCP 客户端将开始收到 401 响应。",
+	"revoking": "吊销中…",
+
+	"createSuccess": "API Key 创建成功",
+	"revokeSuccess": "API Key 已吊销",
+	"loadFailed": "加载 Agent API Key 失败",
+	"createFailed": "创建 API Key 失败",
+	"revokeFailed": "吊销 API Key 失败"
+}

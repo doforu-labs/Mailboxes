@@ -58,6 +58,7 @@
 - **可以接多个域名** —— 一次部署能同时管好几个域名：每个域名各有自己的邮箱地址、自己的转发规则、自己的发信密钥，互不影响。想再加一个，在 **Settings** 里点 **Add Domain** 就行。
 - **邮箱间相互隔离** —— 每个邮箱的配置是一个 R2 对象，邮件数据按邮箱存于 D1。
 - **内置 AI 助手** —— 侧边面板提供 14 个邮件工具，可读取、检索、起草、发送；响应通过 SSE 流式返回，并展示工具调用过程。
+- **外部接入（API Key）** —— 同一套 14 个工具也可通过全局 API Key 供外部 LLM 或 MCP 客户端调用，走无状态 MCP 服务（`POST /mcp`）或 HTTP 工具网关（`GET /tools`、`POST /tools/call`）。详见[外部接入](#外部接入)。
 - **AI 起草（对话式）** —— 在侧边面板里让助手读完来信后起草或修改回复，草稿会存进该邮箱的 Drafts 文件夹；**发送前始终需要你明确确认**。
 - **可配置、可持久化** —— 每个邮箱可自定义系统提示词，聊天记录持久保存，并可单独选择模型提供方。
 
@@ -209,12 +210,16 @@ npm run deploy:full
       ▼
   Cloudflare Worker「mailboxes」—— Hono（入口 workers/app.ts）
       ├── /api/v1/*        → API 路由（workers/index.ts）
+      ├── POST /mcp        → 外部 agent 网关（无状态 MCP）
+      ├── GET /tools       → 外部 agent 网关（HTTP 工具 schema）
+      ├── POST /tools/call → 外部 agent 网关（HTTP 工具调用）
       ├── 其它所有路径      → React Router SSR
       ├── email()          → 收信入口（receiveEmail）
       └── 静态资源          → Workers Static Assets（构建时注入）
       │
       ├──►  D1（SQLite / Drizzle）—— 邮件、附件、文件夹、域名、
-      │                              登录会话、管理员、平台设置、AI 对话记录
+      │                              登录会话、管理员、平台设置、AI 对话记录、
+      │                              Agent API Key
       ├──►  R2「mailboxes」       —— 邮箱配置 mailboxes/<id>.json
       │                              附件 attachments/<邮件>/<附件>/<文件名>
       ├──►  Workers AI            —— 默认 @cf/moonshotai/kimi-k2.6
@@ -224,16 +229,34 @@ npm run deploy:full
   收信有两条路（都写回 D1 与 R2）：
     A. Cloudflare Email Routing（catch-all 规则）→ email() 处理器
     B. Resend 收信 Webhook → POST /api/v1/inbound/resend → 回拉正文
+
+  外部客户端（MCP 或 HTTP）用 Bearer `agk_…` API Key 认证：
+    Bearer agk_… → POST /mcp | GET /tools | POST /tools/call（工具网关）
 ```
 
-除了上面列出的，Worker 没有绑定任何其它 Cloudflare 资源 —— 没有 KV、Queues、Durable Objects、Vectorize，也没有定时任务（Cron）。
+除了上面列出的，Worker 没有绑定任何其它 Cloudflare 资源 —— 没有 KV、Queues、Durable Objects、Vectorize，也没有定时任务（Cron）。MCP 服务与 HTTP 工具网关都是**手写且无状态**的，不引入任何新绑定：它们用 API Key（一行 D1 记录）认证，读写与其它部分相同的 D1 与 R2，并复用内置助手完全相同的 14 个工具定义。
+
+## 外部接入
+
+外部 LLM 或 MCP 客户端可以直接调用内置工具 —— 与应用内助手完全相同的 **14 个工具**、相同的定义 —— 用一把**全局 Agent API Key** 代替浏览器会话。
+
+**创建 Key。** 登录后打开 **Settings** → **Agent API Keys**（`/api/v1/agent-api-keys`，会话 Cookie 认证）。Key 形如 `agk_` 加 64 位十六进制字符，以 SHA-256 哈希存于 D1，创建时**只显示一次**，之后可随时吊销。每次使用都会留下审计记录。
+
+**调用工具。** 在以下两个入口上用 `Authorization: Bearer <key>` 认证：
+
+- **MCP 服务** —— `POST /mcp`，一个最小、手写、**无状态**的 JSON-RPC 2.0 端点，支持 `initialize`、`tools/list`、`tools/call` 与 `ping`。它不需要 session id，也不需要 Durable Object —— 任何实例都能处理任何请求。
+- **HTTP 工具网关** —— `GET /tools` 返回工具 schema（OpenAI `functions` 形式），`POST /tools/call` 执行其中之一，供不支持 MCP 的调用方使用。
+
+两个入口复用与内置助手相同的工具定义，但外部调用走**确定性路径**：起草与发送类工具会跳过助手的 AI 正文改写校验，回复按所写内容原样发出。只读类工具的返回结果会**按公开字段白名单重塑** —— 内部标识符、原始邮件头等内部字段不会返回。
+
+> 这与按域名配置的 `mb_…` 发信 Key 不是一回事：后者已随 `POST /api/v1/send` 一并删除。现在没有「仅发信」的 HTTP 端点，外部调用方走上面的工具网关（或 MCP）。
 
 ## 和原项目的区别
 
 Mailboxes 从 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) 分叉而来。分叉点（2026-04-17）之后共有 **155 个提交、139 个文件（+18,663 / -8,139 行）**，主要差别如下。
 
 - **发信改用 Resend。** 去掉了 Cloudflare 的 `send_email` 绑定（它要求付费的 Workers 计划），改用 [Resend](https://resend.com) API，因此能跑在免费版上；密钥按域名在界面里配置。
-- **去掉了 Durable Object 与 MCP。** 上游用三个 Durable Object 分别承载邮箱状态、AI 智能体和 MCP 服务；这里改成无状态 Worker + D1，AI 助手改为在请求内调用 Workers AI（支持函数调用），MCP 面板一并移除。这一步是为了少一层框架、结构更简单，**不是费用原因**——免费版本身就能跑 Durable Object（限 SQLite 存储），上游用的正是这种。
+- **去掉了 Durable Object。** 上游用三个 Durable Object 分别承载邮箱状态、AI 智能体与其 MCP 服务；这里改成无状态 Worker + D1，AI 助手改为在请求内调用 Workers AI（支持函数调用）。这一步是为了少一层框架、结构更简单，**不是费用原因**——免费版本身就能跑 Durable Object（限 SQLite 存储），上游用的正是这种。本仓库确实有一个 MCP 服务，但是手写的、**无状态**的（见[外部接入](#外部接入)）——不需要 Durable Object，也没有新增任何 Cloudflare 绑定。
 - **自带登录，不再依赖 Cloudflare Access。** 上游要求配 `POLICY_AUD` / `TEAM_DOMAIN`；这里改成首次运行时创建管理员账号，密码以 PBKDF2-SHA256 存于 D1。
 - **配置搬进数据库和界面。** 域名、邮箱、密钥都由 D1 管理并在页面上编辑，不再靠 `wrangler.jsonc` 的环境变量。
 - **多域名。** 一个实例可同时接入多个域名，各自的转发规则与发信配置互不影响。

@@ -45,6 +45,8 @@ import enApi from "./locales/en/api.json";
 import enApiSetup from "./locales/en/apiSetup.json";
 import enApiTool from "./locales/en/apiTool.json";
 import enApiAuth from "./locales/en/apiAuth.json";
+import enApiAgentKey from "./locales/en/apiAgentKey.json";
+import enAgentApiKeys from "./locales/en/agentApiKeys.json";
 
 // Chinese catalogs
 import zhCommon from "./locales/zh/common.json";
@@ -63,6 +65,8 @@ import zhApi from "./locales/zh/api.json";
 import zhApiSetup from "./locales/zh/apiSetup.json";
 import zhApiTool from "./locales/zh/apiTool.json";
 import zhApiAuth from "./locales/zh/apiAuth.json";
+import zhApiAgentKey from "./locales/zh/apiAgentKey.json";
+import zhAgentApiKeys from "./locales/zh/agentApiKeys.json";
 
 /**
  * Namespaces that exist in the app. Add a namespace here only after creating
@@ -85,6 +89,8 @@ export const NAMESPACES = [
 	"apiSetup",
 	"apiTool",
 	"apiAuth",
+	"apiAgentKey",
+	"agentApiKeys",
 ] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];
@@ -116,6 +122,8 @@ export const resources: Record<Locale, Record<string, Record<string, Translation
 		apiSetup: enApiSetup,
 		apiTool: enApiTool,
 		apiAuth: enApiAuth,
+		apiAgentKey: enApiAgentKey,
+		agentApiKeys: enAgentApiKeys,
 	},
 	zh: {
 		common: zhCommon,
@@ -134,5 +142,7 @@ export const resources: Record<Locale, Record<string, Record<string, Translation
 		apiSetup: zhApiSetup,
 		apiTool: zhApiTool,
 		apiAuth: zhApiAuth,
+		apiAgentKey: zhApiAgentKey,
+		agentApiKeys: zhAgentApiKeys,
 	},
 };

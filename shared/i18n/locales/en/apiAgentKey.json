@@ -1,0 +1,10 @@
+{
+	"nameRequired": "Key name is required",
+	"nameTooLong": "Key name must be at most {{max}} characters",
+	"createdOnce": "Copy this key now — starting with {{prefix}}, it is shown only once and cannot be retrieved later.",
+	"keyNotFound": "API key not found",
+	"idRequired": "API key id is required",
+	"createFailed": "Failed to create the API key",
+	"listFailed": "Failed to load the API keys",
+	"revokeFailed": "Failed to revoke the API key"
+}

@@ -1,0 +1,45 @@
+{
+	"title": "Agent API Keys",
+	"description": "Global keys for external LLM / MCP clients. Point them at /mcp or /tools and send Authorization: Bearer <key>.",
+	"expandedDescription": "These keys are not scoped to a mailbox: any client presenting one over Authorization: Bearer <key> can call the agent tools exposed at /mcp and /tools. Keep them secret — anyone holding a key acts as this account.",
+	"badgeCount": "{{count}} active",
+	"empty": "No agent API keys yet. Create one to connect an external LLM or MCP client.",
+	"loading": "Loading…",
+
+	"columnName": "Name",
+	"columnPrefix": "Prefix",
+	"columnScopes": "Scopes",
+	"columnCreated": "Created",
+	"columnLastUsed": "Last Used",
+	"columnActions": "Actions",
+
+	"never": "Never",
+	"revoked": "Revoked",
+
+	"createKey": "Create Key",
+	"createKeyTitle": "Create Agent API Key",
+	"createKeyName": "Key name",
+	"createKeyNamePlaceholder": "e.g. Claude Desktop",
+	"createKeyScopes": "Scopes",
+	"createKeyScopeHint": "Keys created here always carry the full `all` scope — the external gateway has no per-tool allow-list yet.",
+	"createKeySubmit": "Create",
+	"createKeyCreating": "Creating…",
+
+	"createdTitle": "API Key Created",
+	"createdSaveNow": "This is the only time the full key is shown. Copy it into your client's configuration now.",
+	"createdWarning": "You will not be able to see this key again. If you lose it, revoke this key and create a new one.",
+	"createdDismiss": "I have saved it",
+	"copied": "Copied to clipboard",
+
+	"revokeKey": "Revoke",
+	"revokeKeyTitle": "Revoke API Key",
+	"revokeConfirmPrefix": "Revoke",
+	"revokeConfirmSuffix": "? This takes effect immediately — any external LLM or MCP client still using this key will start receiving 401 responses.",
+	"revoking": "Revoking…",
+
+	"createSuccess": "API key created",
+	"revokeSuccess": "API key revoked",
+	"loadFailed": "Failed to load agent API keys",
+	"createFailed": "Failed to create the API key",
+	"revokeFailed": "Failed to revoke the API key"
+}

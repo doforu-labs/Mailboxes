@@ -1,0 +1,10 @@
+{
+	"nameRequired": "请填写密钥名称",
+	"nameTooLong": "密钥名称最多 {{max}} 个字符",
+	"createdOnce": "请立即复制该密钥（以 {{prefix}} 开头）——它仅显示这一次，之后无法再次获取。",
+	"keyNotFound": "未找到该 API Key",
+	"idRequired": "缺少 API Key ID",
+	"createFailed": "创建 API Key 失败",
+	"listFailed": "加载 API Key 列表失败",
+	"revokeFailed": "吊销 API Key 失败"
+}

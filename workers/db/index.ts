@@ -1596,3 +1596,166 @@ export async function updateAdminPassword(
 		.bind(password, new Date().toISOString(), id)
 		.run();
 }
+
+// ── 32. Global Agent API Keys ─────────────────────────────────
+//
+// Global (non-mailbox-scoped) keys that let an external LLM call the internal
+// agent tools. This layer never sees the plaintext key: callers hash it first
+// and pass only the digest to insertAgentApiKey / getAgentApiKeyByHash.
+//
+// getAgentApiKeyByHash() deliberately does NOT return key_hash, and it also
+// does NOT filter on expires_at / revoked_at — the caller validates those so
+// it can distinguish "unknown key" from "expired" / "revoked" in its response.
+
+export interface AgentApiKeyPublic {
+	id: string;
+	name: string;
+	prefix: string;
+	scopes: string;
+	allowed_mailboxes: string | null;
+	created_at: string;
+	last_used_at: string | null;
+	expires_at: string | null;
+	revoked_at: string | null;
+}
+
+/** Columns safe to return to a client — never includes `key_hash`. */
+const AGENT_API_KEY_PUBLIC_COLUMNS =
+	"id, name, prefix, scopes, allowed_mailboxes, created_at, last_used_at, expires_at, revoked_at";
+
+/**
+ * Insert a new global agent API key. `keyHash` is computed by the caller; the
+ * plaintext key never reaches this layer. `created_at` is stamped here.
+ */
+export async function insertAgentApiKey(
+	db: D1Database,
+	row: {
+		id: string;
+		name: string;
+		keyHash: string;
+		prefix: string;
+		scopes?: string;
+		allowedMailboxes?: string | null;
+		expiresAt?: string | null;
+	},
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO agent_api_keys (id, name, key_hash, prefix, scopes, allowed_mailboxes, created_at, last_used_at, expires_at, revoked_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, NULL)`,
+		)
+		.bind(
+			row.id,
+			row.name,
+			row.keyHash,
+			row.prefix,
+			row.scopes ?? "all",
+			row.allowedMailboxes ?? null,
+			new Date().toISOString(),
+			row.expiresAt ?? null,
+		)
+		.run();
+}
+
+/**
+ * Look up a key by its hash. Returns NULL when no such key exists; returns the
+ * row (without `key_hash`) even when the key is expired or revoked, so the
+ * caller can tell those cases apart. Expiry/revocation is the caller's job.
+ */
+export async function getAgentApiKeyByHash(
+	db: D1Database,
+	hash: string,
+): Promise<{
+	id: string;
+	name: string;
+	scopes: string;
+	allowed_mailboxes: string | null;
+	expires_at: string | null;
+	revoked_at: string | null;
+} | null> {
+	const row = await db
+		.prepare(
+			`SELECT id, name, scopes, allowed_mailboxes, expires_at, revoked_at
+			 FROM agent_api_keys WHERE key_hash = ?`,
+		)
+		.bind(hash)
+		.first<{
+			id: string;
+			name: string;
+			scopes: string;
+			allowed_mailboxes: string | null;
+			expires_at: string | null;
+			revoked_at: string | null;
+		}>();
+	return row ?? null;
+}
+
+/** Every key, newest first. Never includes `key_hash`. */
+export async function listAgentApiKeys(
+	db: D1Database,
+): Promise<AgentApiKeyPublic[]> {
+	const result = await db
+		.prepare(
+			`SELECT ${AGENT_API_KEY_PUBLIC_COLUMNS} FROM agent_api_keys ORDER BY created_at DESC`,
+		)
+		.all<AgentApiKeyPublic>();
+	return (result.results ?? []) as AgentApiKeyPublic[];
+}
+
+/**
+ * Revoke a key by setting `revoked_at`. Idempotent-ish: the timestamp is only
+ * written on the first call, so repeated revokes keep the original time.
+ * Returns whether a key was actually revoked by this call.
+ */
+export async function revokeAgentApiKey(
+	db: D1Database,
+	id: string,
+): Promise<boolean> {
+	const result = await db
+		.prepare(
+			"UPDATE agent_api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+		)
+		.bind(new Date().toISOString(), id)
+		.run();
+	return (result.meta?.changes ?? 0) > 0;
+}
+
+/** Best-effort stamp of `last_used_at`; never throws into the request path. */
+export async function touchAgentApiKeyLastUsed(
+	db: D1Database,
+	id: string,
+): Promise<void> {
+	try {
+		await db
+			.prepare("UPDATE agent_api_keys SET last_used_at = ? WHERE id = ?")
+			.bind(new Date().toISOString(), id)
+			.run();
+	} catch {
+		// ignore — usage tracking must not fail the request it records
+	}
+}
+
+/** Append one audit entry for a key action. */
+export async function insertAgentApiKeyAudit(
+	db: D1Database,
+	row: {
+		id: string;
+		keyId: string;
+		action: string;
+		detail?: string | null;
+	},
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO agent_api_key_audit (id, key_id, action, detail, created_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5)`,
+		)
+		.bind(
+			row.id,
+			row.keyId,
+			row.action,
+			row.detail ?? null,
+			new Date().toISOString(),
+		)
+		.run();
+}

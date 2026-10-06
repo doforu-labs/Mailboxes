@@ -58,6 +58,7 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 - **Multiple domains** — one deployment can run several domains at once, each with its own mailbox addresses, its own forwarding rule, and its own sending key. Adding another is just **Add Domain** in **Settings**.
 - **Per-mailbox isolation** — each mailbox's configuration is an R2 object and its messages live in D1, keyed by mailbox.
 - **Built-in AI agent** — a side panel with 14 email tools for reading, searching, drafting, and sending; responses stream over SSE with tool-call visibility.
+- **External access (API key)** — the same 14 tools are reachable from an outside LLM or MCP client through a global API key, over a stateless MCP server (`POST /mcp`) or an HTTP tool gateway (`GET /tools`, `POST /tools/call`). See [External access](#external-access).
 - **AI drafting (conversational)** — ask the agent in the side panel to read an incoming message and draft or revise a reply; the draft lands in that mailbox's Drafts folder, and **sending always requires your explicit confirmation**.
 - **Configurable and persistent** — custom system prompt per mailbox, persistent chat history, and a per-mailbox choice of model provider.
 
@@ -209,12 +210,16 @@ npm run deploy:full
       v
   Cloudflare Worker "mailboxes" -- Hono (entry: workers/app.ts)
       |-- /api/v1/*         -> API routes (workers/index.ts)
+      |-- POST /mcp         -> external agent gateway (stateless MCP)
+      |-- GET /tools        -> external agent gateway (HTTP tool schema)
+      |-- POST /tools/call  -> external agent gateway (HTTP tool call)
       |-- all other paths   -> React Router SSR
       |-- email()           -> inbound entry (receiveEmail)
       `-- static assets     -> Workers Static Assets (injected at build)
       |
       |-->  D1 (SQLite / Drizzle) -- mails, attachments, folders, domains,
-      |                              sessions, admins, settings, AI chats
+      |                              sessions, admins, settings, AI chats,
+      |                              agent API keys
       |-->  R2 "mailboxes"        -- mailbox config  mailboxes/<id>.json
       |                              attachments  attachments/<email>/<att>/<file>
       |-->  Workers AI            -- default @cf/moonshotai/kimi-k2.6
@@ -225,16 +230,34 @@ npm run deploy:full
   Inbound takes one of two paths (both write back to D1 and R2):
     A. Cloudflare Email Routing (catch-all rule) -> email() handler
     B. Resend inbound webhook -> POST /api/v1/inbound/resend -> fetch body
+
+  External clients (MCP or HTTP) authenticate with a Bearer `agk_…` API key:
+    Bearer agk_… -> POST /mcp | GET /tools | POST /tools/call (tool gateway)
 ```
 
-Beyond the above, the Worker binds nothing else on Cloudflare -- no KV, no Queues, no Durable Objects, no Vectorize, and no Cron triggers.
+Beyond the above, the Worker binds nothing else on Cloudflare -- no KV, no Queues, no Durable Objects, no Vectorize, and no Cron triggers. The MCP server and the HTTP tool gateway are **hand-written and stateless** and add no bindings: they authenticate with an API key (a D1 row), read and write the same D1 and R2 as the rest of the app, and reuse the exact same 14 tool definitions the built-in agent uses.
+
+## External access
+
+An outside LLM or MCP client can call the built-in tools directly — the same **14 tools** the in-app agent uses, with the same definitions — through a **global Agent API key** instead of a browser session.
+
+**Create a key.** Sign in and open **Settings** → **Agent API Keys** (`/api/v1/agent-api-keys`, session-cookie authenticated). Keys look like `agk_` followed by 64 hex characters, are stored in D1 as a SHA-256 hash, are **shown exactly once** when created, and can be revoked at any time. Every use is recorded for auditing.
+
+**Call a tool.** Authenticate with `Authorization: Bearer <key>` on either of two surfaces:
+
+- **MCP server** — `POST /mcp`, a minimal, hand-written, **stateless** JSON-RPC 2.0 endpoint supporting `initialize`, `tools/list`, `tools/call` and `ping`. It needs no session id and no Durable Object — any instance can serve any request.
+- **HTTP tool gateway** — `GET /tools` returns the tool schemas (OpenAI `functions` shape) and `POST /tools/call` executes one, for callers that do not speak MCP.
+
+Both surfaces reuse the same tool definitions as the built-in agent, but external calls take the **deterministic path**: draft and send tools skip the agent's AI body-rewriting check, so a reply is sent exactly as written. Read-only results are **reshaped to a public field whitelist** — internal identifiers, raw message headers and other internal fields are not returned.
+
+> This is separate from the old per-domain `mb_…` sending keys, which were removed along with `POST /api/v1/send`. There is no send-only HTTP endpoint today; external callers go through the tool gateway (or MCP) above.
 
 ## How this fork differs from upstream
 
 Mailboxes is a fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Since the fork point (2026-04-17) there have been **155 commits across 139 files (+18,663 / -8,139 lines)**. The main differences:
 
 - **Sending moved to Resend.** The Cloudflare `send_email` binding was dropped — it requires a paid Workers plan — in favour of the [Resend](https://resend.com) API, which runs on the free plan. Keys are configured per domain in the UI.
-- **No Durable Objects, no MCP.** Upstream used three Durable Objects for mailbox state, the AI agent and the MCP server; here it is a stateless Worker plus D1, the assistant calls Workers AI in-request with function calling, and the MCP panel is gone. This was about dropping a layer of framework, **not about cost** — SQLite-backed Durable Objects run on the free plan, and that is the kind upstream used.
+- **No Durable Objects.** Upstream used three Durable Objects for mailbox state, the AI agent and its MCP server; here it is a stateless Worker plus D1, and the assistant calls Workers AI in-request with function calling. This was about dropping a layer of framework, **not about cost** — SQLite-backed Durable Objects run on the free plan, and that is the kind upstream used. An MCP server does exist here, but it is hand-written and **stateless** (see [External access](#external-access)) — no Durable Objects, and no new Cloudflare bindings.
 - **Its own login instead of Cloudflare Access.** Upstream required `POLICY_AUD` / `TEAM_DOMAIN`; here the first run creates an admin account whose PBKDF2-SHA256 password is stored in D1.
 - **Configuration lives in the database and the UI.** Domains, mailboxes and keys are managed in D1 and edited on screen rather than through `wrangler.jsonc` environment variables.
 - **Multiple domains.** One instance can serve several domains, each with its own routing and sending settings.

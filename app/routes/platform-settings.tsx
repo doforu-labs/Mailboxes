@@ -18,6 +18,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type MetaArgs, Link as RouterLink } from "react-router";
 import { AddDomainWizard } from "~/components/AddDomainWizard";
+import { AgentApiKeysSection } from "~/components/AgentApiKeysSection";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { PlatformSettingsSection } from "~/components/PlatformSettingsSection";
 import { useDomains } from "~/queries/domains";
@@ -162,6 +163,12 @@ export default function SettingsRoute() {
 				<div className="mb-6">
 					<h2 className="text-sm font-semibold text-kumo-default mb-3">{t("platformSettingsTitle")}</h2>
 					<PlatformSettingsSection />
+				</div>
+
+				{/* Global Agent API Keys — consumed by external LLM / MCP clients */}
+				<div className="mb-6">
+					<h2 className="text-sm font-semibold text-kumo-default mb-3">{t("agentApiKeysTitle")}</h2>
+					<AgentApiKeysSection />
 				</div>
 
 				{/* Domain Management */}

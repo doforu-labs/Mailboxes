@@ -286,6 +286,7 @@ export async function toolUpdateDraft(
 		to?: string;
 		subject?: string;
 		bodyHtml?: string;
+		skipVerifyDraft?: boolean;
 	},
 	locale?: Locale,
 ): Promise<
@@ -301,7 +302,9 @@ export async function toolUpdateDraft(
 	// Verify the body BEFORE deleting the old draft to prevent data loss
 	const newDraftId = crypto.randomUUID();
 	const rawBody = params.bodyHtml ?? oldDraft.body ?? "";
-	const verifiedBody = await verifyDraft(ai, rawBody);
+	// Skip AI verification when explicitly requested (external LLM callers
+	// prefer deterministic output and don't want the body rewritten).
+	const verifiedBody = params.skipVerifyDraft ? rawBody : await verifyDraft(ai, rawBody);
 
 	if (!verifiedBody) {
 		return { error: t("draftVerificationFailedKeeping") };
@@ -409,6 +412,7 @@ export async function toolSendReply(
 		to: string;
 		subject: string;
 		bodyHtml: string;
+		skipVerifyDraft?: boolean;
 	},
 	locale?: Locale,
 ): Promise<
@@ -435,8 +439,8 @@ export async function toolSendReply(
 	if (!fromDomain) throw new Error(t("invalidMailboxAddress"));
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	// Verify and append quoted original message
-	const sanitizedBody = await verifyDraft(ai, params.bodyHtml);
+	// Verify and append quoted original message (skipped when requested by external callers)
+	const sanitizedBody = params.skipVerifyDraft ? params.bodyHtml : await verifyDraft(ai, params.bodyHtml);
 	if (!sanitizedBody) {
 		return { error: t("draftVerificationFailedSend") };
 	}
@@ -494,6 +498,7 @@ export async function toolSendEmail(
 		to: string;
 		subject: string;
 		bodyHtml: string;
+		skipVerifyDraft?: boolean;
 	},
 	locale?: Locale,
 ): Promise<
@@ -514,7 +519,8 @@ export async function toolSendEmail(
 	if (!fromDomain) throw new Error(t("invalidMailboxAddress"));
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
 
-	const sanitizedBody = await verifyDraft(ai, params.bodyHtml);
+	// Verify the body (skipped when requested by external callers)
+	const sanitizedBody = params.skipVerifyDraft ? params.bodyHtml : await verifyDraft(ai, params.bodyHtml);
 	if (!sanitizedBody) {
 		return { error: t("draftVerificationFailedSend") };
 	}

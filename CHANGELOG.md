@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **External agent access — global API keys, an MCP server and an HTTP tool
+  gateway.** An outside LLM or MCP client can now call the same 14 tools the
+  built-in agent uses. Create keys under **Settings → Agent API Keys**
+  (`/api/v1/agent-api-keys`: `POST` to create, `GET` to list, `DELETE /:id` to
+  revoke — session-cookie authenticated). A key is `agk_` followed by 64 hex
+  characters, stored as a SHA-256 hash, **shown exactly once** at creation, and
+  revocable; every use is audited. Callers authenticate with
+  `Authorization: Bearer <key>` against either:
+  - **`POST /mcp`** — a minimal, hand-written, **stateless** MCP server
+    (JSON-RPC 2.0: `initialize`, `tools/list`, `tools/call`, `ping`), or
+  - **`GET /tools`** / **`POST /tools/call`** — an HTTP tool gateway for callers
+    that do not speak MCP.
+  Both surfaces reuse the built-in agent's exact tool definitions.
+- **No new Cloudflare bindings.** The gateway is a stateless Worker route: keys
+  are D1 rows and tool execution reuses the existing D1/R2 access, so there are
+  still no Durable Objects, KV, Queues or Vectorize bindings.
+- **Deterministic path for external calls.** Tool calls from the gateway skip
+  the agent's internal AI body-verification (`skipVerifyDraft`), so a draft or
+  reply is sent exactly as written rather than being rewritten.
+- **Field whitelisting on tool output.** Read-only tool results returned to
+  external callers are reshaped to a public field whitelist — internal
+  identifiers, raw message headers and other internal fields are not exposed.
+
 ### Changed
 
 - **README language swap.** `README.md` is now the English document, so the repository's

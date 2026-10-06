@@ -28,5 +28,9 @@ export const queryKeys = {
 	domains: {
 		all: ["domains"] as const,
 	},
+	// Global agent API keys used by external LLM / MCP clients.
+	agentApiKeys: {
+		all: ["agent-api-keys"] as const,
+	},
 	config: ["config"] as const,
 };
