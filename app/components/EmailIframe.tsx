@@ -7,6 +7,39 @@ import DOMPurify from "dompurify";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+/**
+ * Rewrites every external link so it opens in a new tab instead of
+ * navigating the sandboxed iframe.
+ *
+ * The iframe deliberately omits `allow-same-origin` (see the security
+ * model above), which means a plain link click would navigate *inside*
+ * the opaque-origin frame — losing the page and breaking the link.
+ * Opening in a new tab takes the `allow-popups-to-escape-sandbox` path
+ * instead, so the destination gets a normal, unsandboxed origin.
+ *
+ * Only absolute `http:` / `https:` / `mailto:` / `tel:` URLs are touched.
+ * `cid:` images, `#fragment` anchors, relative URLs and `javascript:`
+ * (already stripped by DOMPurify) are left exactly as-is.
+ */
+function normalizeExternalLinks(html: string): string {
+	const template = document.createElement("template");
+	template.innerHTML = html;
+	for (const anchor of template.content.querySelectorAll("a[href]")) {
+		const protocol = (anchor as HTMLAnchorElement).protocol;
+		if (
+			protocol !== "http:" &&
+			protocol !== "https:" &&
+			protocol !== "mailto:" &&
+			protocol !== "tel:"
+		) {
+			continue;
+		}
+		anchor.setAttribute("target", "_blank");
+		anchor.setAttribute("rel", "noopener noreferrer");
+	}
+	return template.innerHTML;
+}
+
 interface EmailIframeProps {
 	body: string;
 	/** When true, iframe auto-sizes to content height instead of filling parent */
@@ -62,12 +95,14 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 		const iframe = iframeRef.current;
 		if (!iframe || !body) return;
 
-		const cleanBody = DOMPurify.sanitize(body, {
-			USE_PROFILES: { html: true },
-			FORBID_TAGS: ["style"],
-			ADD_ATTR: ["target"],
-			FORCE_BODY: true,
-		});
+		const cleanBody = normalizeExternalLinks(
+			DOMPurify.sanitize(body, {
+				USE_PROFILES: { html: true },
+				FORBID_TAGS: ["style"],
+				ADD_ATTR: ["target"],
+				FORCE_BODY: true,
+			}),
+		);
 
 		const padding = autoSize ? "0" : "24px";
 
@@ -147,7 +182,7 @@ ul, ol { padding-left: 20px; margin: 4px 0; }
 			ref={iframeRef}
 			className="block w-full border-0"
 			style={autoSize ? { height: `${height}px` } : { height: "100%" }}
-			sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"
+			sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
 			title={t("iframe.title")}
 		/>
 	);
