@@ -1,13 +1,8 @@
 {
 	"notFound": "Not found",
-	"invalidApiKeyNoDomain": "Invalid API key: no domain associated",
 	"domainNotFound": "Domain not found",
-	"fromAddressNotInDomain": "From address \"{{from}}\" does not belong to domain \"{{domain}}\"",
-	"mailboxNotFoundOnDomain": "Mailbox \"{{id}}\" not found on this domain",
 	"failedToSendEmail": "Failed to send email",
 	"failedToGetDomain": "Failed to get domain",
-	"saveApiKeyOnce": "Save this API key - it will not be shown again",
-	"apiKeyNotFound": "API key not found",
 	"valueMustBeString": "value must be a string",
 	"mailboxAlreadyExists": "Mailbox already exists",
 	"missingApiKey": "Missing API key",

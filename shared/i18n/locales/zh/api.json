@@ -1,13 +1,8 @@
 {
 	"notFound": "未找到",
-	"invalidApiKeyNoDomain": "API 密钥无效：未关联域名",
 	"domainNotFound": "未找到域名",
-	"fromAddressNotInDomain": "发件地址 \"{{from}}\" 不属于域名 \"{{domain}}\"",
-	"mailboxNotFoundOnDomain": "此域名下未找到邮箱 \"{{id}}\"",
 	"failedToSendEmail": "发送邮件失败",
 	"failedToGetDomain": "获取域名失败",
-	"saveApiKeyOnce": "请保存此 API 密钥——它不会再次显示",
-	"apiKeyNotFound": "未找到 API 密钥",
 	"valueMustBeString": "value 必须是字符串",
 	"mailboxAlreadyExists": "邮箱已存在",
 	"missingApiKey": "缺少 API 密钥",

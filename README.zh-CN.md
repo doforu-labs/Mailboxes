@@ -60,7 +60,6 @@
 - **内置 AI 助手** —— 侧边面板提供 14 个邮件工具，可读取、检索、起草、发送；响应通过 SSE 流式返回，并展示工具调用过程。
 - **AI 起草（对话式）** —— 在侧边面板里让助手读完来信后起草或修改回复，草稿会存进该邮箱的 Drafts 文件夹；**发送前始终需要你明确确认**。
 - **可配置、可持久化** —— 每个邮箱可自定义系统提示词，聊天记录持久保存，并可单独选择模型提供方。
-- **程序化发送** —— 每个邮箱可创建 API Key，让你自己的应用通过 `/api/v1/send` 发信。
 
 <div align="center">
   <img src="./demo_domains.png" alt="Mailboxes 的 Settings 页：Platform Settings 显示已配置，Domains 列表里同时列出了 4 个域名" width="620">
@@ -214,7 +213,7 @@ npm run deploy:full
       ├── email()          → 收信入口（receiveEmail）
       └── 静态资源          → Workers Static Assets（构建时注入）
       │
-      ├──►  D1（SQLite / Drizzle）—— 邮件、附件、文件夹、域名、API Key、
+      ├──►  D1（SQLite / Drizzle）—— 邮件、附件、文件夹、域名、
       │                              登录会话、管理员、平台设置、AI 对话记录
       ├──►  R2「mailboxes」       —— 邮箱配置 mailboxes/<id>.json
       │                              附件 attachments/<邮件>/<附件>/<文件名>
@@ -295,7 +294,6 @@ Mailboxes 从 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-i
 - ✅ **Catch-all 收信路由** —— 每个域名可指定「全收」的邮件投到哪个邮箱
 - ✅ **完整邮件客户端** —— 富文本编辑器、会话串、回复/转发、文件夹、草稿、搜索、附件
 - ✅ **发信人显示名解析** —— 含 RFC 2047 编码字处理与数据迁移
-- ✅ **程序化发信** —— 每个邮箱的 API Key + `/api/v1/send`
 
 ### 计划中
 

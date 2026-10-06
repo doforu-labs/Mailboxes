@@ -20,11 +20,6 @@ export type D1MailboxVariables = {
 	db: D1Database;
 	mailboxId: string;
 	domainId?: string;
-	apiKeyInfo?: {
-		keyId: string;
-		scopes: string;
-		domainId: string;
-	};
 	/** [i18n-foundation] Locale resolved from the request (cookie/header). */
 	locale: Locale;
 	/** [i18n-foundation] Backend translator bound to `locale` (default ns). */

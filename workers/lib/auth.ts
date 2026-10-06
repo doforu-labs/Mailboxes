@@ -67,7 +67,6 @@ function authT(c: Context<D1MailboxContext>) {
 /**
  * Routes reachable without an admin session:
  *   - the login endpoint itself
- *   - the external send API (authenticated by its own API key)
  *   - the inbound email webhook (Resend)
  *   - the first-run setup bootstrap, which only works while no admin exists
  *
@@ -78,7 +77,6 @@ function authT(c: Context<D1MailboxContext>) {
  */
 const PUBLIC_PATHS = new Set<string>([
 	"/api/v1/auth/login",
-	"/api/v1/send",
 	"/api/v1/setup/admin",
 	"/api/v1/setup/admin/status",
 ]);

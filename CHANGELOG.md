@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stale links in the v0.1.0 release notes** — they pointed at `README.en.md` (renamed to
   `README.zh-CN.md`/`README.md`) and at a legacy repository URL.
 
+### Removed
+
+- **Per-domain programmatic sending API keys.** The `mb_`-prefixed keys that let an
+  external application send mail through `POST /api/v1/send` are gone, along with the
+  endpoint, its management UI and the `api_keys` table (`migrations/0012_drop_api_keys.sql`).
+  Resend sending credentials (`resend_api_key`) are untouched: the app still sends and
+  receives mail exactly as before, and the built-in AI agent still sends through the
+  shared mail pipeline.
+
 ## [0.1.0] - 2026-10-02
 
 First public release.

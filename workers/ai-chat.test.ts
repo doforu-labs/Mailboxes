@@ -17,8 +17,8 @@ import { describe, it, mock } from "node:test";
 // Imported for its side effect of loading the real module: mock.module() below
 // replaces the whole module, so we spread these exports and override only the
 // few functions under test. Without the spread, any other export that the app
-// pulls in (e.g. lookupApiKey via lib/api-key-middleware-global) fails to
-// resolve at import time with "does not provide an export named ...".
+// pulls in fails to resolve at import time with "does not provide an export
+// named ...".
 import * as actualDb from "./db";
 
 // ── Mock data ──────────────────────────────────────────────────────

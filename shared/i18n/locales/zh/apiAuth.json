@@ -1,8 +1,4 @@
 {
-	"missingAuthorizationHeader": "缺少 Authorization 请求头",
-	"invalidAuthorizationHeaderFormat": "Authorization 请求头格式无效。应为：Bearer mb_...",
-	"invalidApiKey": "API 密钥无效或已过期",
-	"domainIdRequired": "需要域名 ID",
 	"unauthorized": "未授权",
 	"usernameRequired": "请输入用户名",
 	"usernameTooLong": "用户名最多 {{max}} 个字符",

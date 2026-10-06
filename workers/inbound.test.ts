@@ -90,8 +90,7 @@ const MOCK_FULL_EMAIL = {
 //
 // mock.module() swaps out the ENTIRE module, so every real export is spread in
 // first and only the three functions above are overridden. Without that spread,
-// other exports the rest of the app imports (e.g. lookupApiKey, pulled in by
-// lib/api-key-middleware-global) fail to resolve at import time with
+// other exports the rest of the app imports fail to resolve at import time with
 // "does not provide an export named ...".
 //
 // `namedExports` is deprecated in favour of `exports` on newer Node releases,

@@ -60,7 +60,6 @@ Beyond the free tiers you pay only for what Cloudflare and Resend actually meter
 - **Built-in AI agent** — a side panel with 14 email tools for reading, searching, drafting, and sending; responses stream over SSE with tool-call visibility.
 - **AI drafting (conversational)** — ask the agent in the side panel to read an incoming message and draft or revise a reply; the draft lands in that mailbox's Drafts folder, and **sending always requires your explicit confirmation**.
 - **Configurable and persistent** — custom system prompt per mailbox, persistent chat history, and a per-mailbox choice of model provider.
-- **Programmatic sending** — per-mailbox API keys let your own apps send mail through `/api/v1/send`.
 
 <div align="center">
   <img src="./demo_domains.png" alt="The Settings page in Mailboxes: Platform Settings shown as configured, and a Domains list holding four domains at once" width="620">
@@ -215,7 +214,7 @@ npm run deploy:full
       `-- static assets     -> Workers Static Assets (injected at build)
       |
       |-->  D1 (SQLite / Drizzle) -- mails, attachments, folders, domains,
-      |                              API keys, sessions, admins, settings, AI chats
+      |                              sessions, admins, settings, AI chats
       |-->  R2 "mailboxes"        -- mailbox config  mailboxes/<id>.json
       |                              attachments  attachments/<email>/<att>/<file>
       |-->  Workers AI            -- default @cf/moonshotai/kimi-k2.6
@@ -296,7 +295,6 @@ See: [Resend — Claim Domain](https://resend.com/docs/api-reference/domains/cla
 - ✅ **Catch-all routing** — point a domain's catch-all at any mailbox
 - ✅ **Full email client** — rich-text composer, threading, reply/forward, folders, drafts, search, attachments
 - ✅ **Sender display-name parsing** — including RFC 2047 encoded words, with a data migration
-- ✅ **Programmatic sending** — per-mailbox API keys + `/api/v1/send`
 
 ### Planned
 

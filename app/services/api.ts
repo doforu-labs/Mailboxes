@@ -288,25 +288,6 @@ const api = {
 			put<Domain>(`/api/v1/domains/${domainId}/api-key`, { resend_api_key: apiKey }),
 	},
 
-	// ====== Domain API Key Management ======
-	domainApiKeys: {
-		list: (domainId: string) =>
-			get<{ api_keys: { id: string; name: string; prefix: string; scopes: string; created_at: string; last_used_at: string | null; expires_at: string | null }[] }>(
-				`/api/v1/domains/${encodeURIComponent(domainId)}/api-keys`,
-			),
-
-		create: (domainId: string, name?: string, scopes?: string) =>
-			post<{ id: string; api_key: string; prefix: string; name: string; scopes: string; message: string }>(
-				`/api/v1/domains/${encodeURIComponent(domainId)}/api-keys`,
-				{ name: name || "Default", scopes: scopes || "send" },
-			),
-
-		revoke: (domainId: string, keyId: string) =>
-			del<{ success: boolean }>(
-				`/api/v1/domains/${encodeURIComponent(domainId)}/api-keys/${keyId}`,
-			),
-	},
-
 	verifyResendKey: (mailboxId: string, apiKey: string) =>
 		post<VerifyResendResult>(`/api/v1/mailboxes/${mailboxId}/verify-resend`, { apiKey }),
 

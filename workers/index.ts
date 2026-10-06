@@ -51,9 +51,6 @@ import {
 	toolSendReply,
 	toolSendEmail,
 } from "./lib/tools";
-import { createApiKey, listApiKeys, revokeApiKey } from "./db/index";
-import { requireApiKeyGlobal } from "./lib/api-key-middleware-global";
-
 type AppContext = Context<D1MailboxContext>;
 
 // Local type for AI text generation output (available in CF Workers runtime)
@@ -183,142 +180,13 @@ app.get("/api/v1/auth/me", handleMe);
 app.get("/api/v1/setup/admin/status", handleAdminStatus);
 app.post("/api/v1/setup/admin", handleCreateAdmin);
 
-// Protect all remaining /api/v1/* endpoints (login, external send, inbound
-// webhook and the first-run setup bootstrap are exempted inside requireAuth).
+// Protect all remaining /api/v1/* endpoints (login, inbound webhook and the
+// first-run setup bootstrap are exempted inside requireAuth).
 app.use("/api/v1/*", requireAuth);
 
-// ====== External Email Send API (via API Key) ======
-
-// 此路由使用 requireApiKeyGlobal 通过 Bearer token 认证，无需 mailboxId 参数
-app.post("/api/v1/send", requireApiKeyGlobal, async (c) => {
-	const t = c.get("t");
-	try {
-		const db = c.env.DB;
-	const bucket = c.env.BUCKET;
-	const apiKeyInfo = c.var.apiKeyInfo;
-
-	if (!apiKeyInfo?.domainId) {
-		return c.json({ error: t("api:invalidApiKeyNoDomain") }, 401);
-	}
-
-	// 查找域名
-	const { getDomain } = await import("./db/index");
-	const domain = await getDomain(db, apiKeyInfo.domainId);
-	if (!domain) {
-		return c.json({ error: t("api:domainNotFound") }, 404);
-	}
-
-	const body = await c.req.json<{
-		from: string;
-		to: string | string[];
-		subject: string;
-		html?: string;
-		text?: string;
-		cc?: string | string[];
-		bcc?: string | string[];
-		replyTo?: string | { email: string; name: string };
-		attachments?: {
-			content: string;
-			filename: string;
-			type?: string;
-			disposition?: "attachment" | "inline";
-		}[];
-		headers?: Record<string, string>;
-	}>();
-
-	// 验证 from 地址属于该域名
-	const from = body.from;
-	const fromParts = from.split("@");
-	if (fromParts.length !== 2 || fromParts[1].toLowerCase() !== domain.name.toLowerCase()) {
-		return c.json({
-			error: t("api:fromAddressNotInDomain", { from, domain: domain.name }),
-		}, 400);
-	}
-
-	// 验证 mailbox 存在
-	const mailboxId = from;
-	const key = `mailboxes/${mailboxId}.json`;
-	const obj = await bucket.head(key);
-	if (!obj) {
-		return c.json({ error: t("api:mailboxNotFoundOnDomain", { id: mailboxId }) }, 404);
-	}
-
-	const to = Array.isArray(body.to) ? body.to : [body.to];
-	const cc = body.cc ? (Array.isArray(body.cc) ? body.cc : [body.cc]) : undefined;
-	const bcc = body.bcc ? (Array.isArray(body.bcc) ? body.bcc : [body.bcc]) : undefined;
-
-	// 发送邮件
-	const { sendEmailFromMailbox } = await import("./email-sender");
-	const { updateEmailSendStatus } = await import("./db/index");
-
-	const emailId = crypto.randomUUID();
-	const now = new Date().toISOString();
-
-	const insertStmt = db.prepare(`
-		INSERT INTO emails (id, mailbox_id, folder_id, subject, sender, recipient, cc, bcc, "date", body, read, starred, send_status)
-		VALUES (?1, ?2, 'sent', ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, 0, 'sending')
-	`);
-
-	await insertStmt.bind(
-		emailId,
-		mailboxId,
-		body.subject,
-		from,
-		to.join(", "),
-		cc ? cc.join(", ") : null,
-		bcc ? bcc.join(", ") : null,
-		now,
-		body.html || body.text || "",
-	).run();
-
-	try {
-		const result = await sendEmailFromMailbox(bucket, mailboxId, {
-			from,
-			to,
-			subject: body.subject,
-			html: body.html,
-			text: body.text,
-			cc,
-			bcc,
-			replyTo: body.replyTo,
-			attachments: body.attachments?.map(a => ({
-				content: a.content,
-				filename: a.filename,
-				type: a.type || "application/octet-stream",
-				disposition: a.disposition || "attachment",
-			})),
-			headers: body.headers,
-		}, undefined, db, c.get("locale"));
-
-		await updateEmailSendStatus(db, mailboxId, emailId, "sent");
-
-		return c.json({
-			id: emailId,
-			from,
-			to,
-			subject: body.subject,
-			created_at: now,
-			status: "sent",
-		}, 201);
-
-	} catch (error: any) {
-		await updateEmailSendStatus(db, mailboxId, emailId, "failed");
-
-		return c.json({
-			id: emailId,
-			error: error.message || t("api:failedToSendEmail"),
-			status: "failed",
-		}, 500);
-	}
-} catch (error: any) {
-	console.error("Failed to send via API key:", error);
-	return c.json({ error: error.message || t("api:failedToSendEmail") }, 500);
-}
-});
-
+// Every /api/v1/mailboxes/:mailboxId/* route needs the R2 mailbox check, which
+// also populates c.var.db and c.var.mailboxId for the handlers below.
 app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
-
-// ====== Domain API Key Management ======
 
 // ====== 单个域名详情 ======
 app.get("/api/v1/domains/:domainId", async (c) => {
@@ -336,60 +204,6 @@ app.get("/api/v1/domains/:domainId", async (c) => {
 		console.error("Failed to get domain:", error);
 		return c.json({ error: error.message || c.get("t")("api:failedToGetDomain") }, 500);
 	}
-});
-
-app.post("/api/v1/domains/:domainId/api-keys", async (c) => {
-	const db = c.env.DB;
-	const domainId = c.req.param("domainId");
-	const decodedDomainId = decodeURIComponent(domainId);
-	const t = c.get("t");
-
-	// 验证 domain 是否存在
-	const { getDomain } = await import("./db/index");
-	const domain = await getDomain(db, decodedDomainId);
-	if (!domain) {
-		return c.json({ error: t("api:domainNotFound") }, 404);
-	}
-
-	const body = await c.req.json<{ name?: string; scopes?: string }>();
-	const keyName = body.name || "Default";
-	const scopes = body.scopes || "send";
-
-	const result = await createApiKey(db, decodedDomainId, keyName, scopes);
-
-	return c.json({
-		id: result.id,
-		api_key: result.plainText,
-		prefix: result.prefix,
-		name: keyName,
-		scopes: scopes,
-		message: t("api:saveApiKeyOnce"),
-	}, 201);
-});
-
-app.get("/api/v1/domains/:domainId/api-keys", async (c) => {
-	const db = c.env.DB;
-	const domainId = c.req.param("domainId");
-	const decodedDomainId = decodeURIComponent(domainId);
-
-	const keys = await listApiKeys(db, decodedDomainId);
-
-	return c.json({ api_keys: keys });
-});
-
-app.delete("/api/v1/domains/:domainId/api-keys/:keyId", async (c) => {
-	const db = c.env.DB;
-	const domainId = c.req.param("domainId");
-	const decodedDomainId = decodeURIComponent(domainId);
-	const keyId = c.req.param("keyId");
-
-	const deleted = await revokeApiKey(db, decodedDomainId, keyId);
-
-	if (!deleted) {
-		return c.json({ error: c.get("t")("api:apiKeyNotFound") }, 404);
-	}
-
-	return c.json({ success: true });
 });
 
 // ── Setup routes (mounted here so they sit behind the admin session) ──
