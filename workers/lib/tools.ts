@@ -347,6 +347,21 @@ export async function toolSearchEmails(
 	params: { query: string; folder?: string },
 	locale?: Locale,
 ): Promise<EmailSummary[] | { error: string }> {
+	// A missing / blank query is refused, because the alternative is not "no
+	// results" — it is a WRONG ANSWER. `query` has no runtime validation here
+	// (the external gateway's `required` list is the only gate, and it does not
+	// cover the internal agent path), and `buildSearchConditions` skips its
+	// `WHERE` clause entirely when the query is falsy. `db.searchEmails` would
+	// therefore run a bare `SELECT … LIMIT 25` and hand the caller the first 25
+	// emails of the mailbox as if they were matches for an empty search — the
+	// same "empty means everything" hazard the unknown-folder guard below
+	// exists to close. Deliberately NOT fixed in `buildSearchConditions`: that
+	// helper is shared with `countSearchResults`, where an empty query is a
+	// legitimate "count the whole mailbox" request.
+	if (!params.query?.trim()) {
+		return { error: apiToolT(locale)("missingQuery") };
+	}
+
 	// `folder` is optional here: when it is omitted the search spans the whole
 	// mailbox and there is nothing to resolve. When it IS given, the same rule
 	// as `list_emails` applies — an unknown folder must fail loudly instead of
@@ -959,7 +974,7 @@ export async function toolSendReply(
 	},
 	locale?: Locale,
 ): Promise<
-	| { status: "sent"; messageId: string; message: string }
+	| { status: "sent"; id: string; message: string }
 	| { error: string }
 > {
 	const t = apiToolT(locale);
@@ -1047,7 +1062,14 @@ export async function toolSendReply(
 		[],
 	);
 
-	return { status: "sent", messageId, message: t("replySent", { to: params.to }) };
+	// The returned primary key is `id`, the same name EVERY other tool's
+	// result uses for it (`get_email`, `list_emails`, `move_email`, …) and
+	// the same name the REST surface returns. It was `messageId`, which no
+	// other result and no read tool ever used — so a caller could not copy
+	// the value of the message it had just sent into the next call without
+	// renaming it first. Only the OUTWARD key changes: the local variable
+	// stays `messageId` because that is what `generateMessageId` produces.
+	return { status: "sent", id: messageId, message: t("replySent", { to: params.to }) };
 }
 
 // ── send_email ─────────────────────────────────────────────────────
@@ -1065,7 +1087,7 @@ export async function toolSendEmail(
 	},
 	locale?: Locale,
 ): Promise<
-	| { status: "sent"; messageId: string; message: string }
+	| { status: "sent"; id: string; message: string }
 	| { error: string }
 > {
 	const t = apiToolT(locale);
@@ -1131,5 +1153,7 @@ export async function toolSendEmail(
 		[],
 	);
 
-	return { status: "sent", messageId, message: t("emailSent", { to: params.to }) };
+	// Same outward key as `toolSendReply` and every read tool — see the note
+	// there. The local stays `messageId`.
+	return { status: "sent", id: messageId, message: t("emailSent", { to: params.to }) };
 }

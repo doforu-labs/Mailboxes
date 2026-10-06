@@ -7,7 +7,7 @@
 	"draftSaved": "Draft saved to Drafts folder. Review it and confirm to send.",
 	"draftUpdated": "Draft updated in Drafts folder.",
 	"draftNotFound": "Draft not found",
-	"moveFailed": "Failed to move email",
+	"missingQuery": "Search query is required",
 	"cannotDiscardNotDraft": "Cannot discard: email is not a draft",
 	"cannotUpdateNotDraft": "Cannot update: email is not a draft",
 	"hourlySendLimitExceeded": "Hourly send limit exceeded ({{count}}/{{limit}}). Please try again later.",

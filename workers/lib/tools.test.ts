@@ -89,12 +89,13 @@ import {
 	normalizeToolArguments,
 	type AiToolCall,
 } from "./tool-dispatch";
-import { dispatchExternalTool } from "./external-tools";
+import { dispatchExternalTool, EXTERNAL_RESULT_PUBLIC_FIELDS } from "./external-tools";
 import {
 	toolDraftReply,
 	toolDraftEmail,
 	toolUpdateDraft,
 	toolDiscardDraft,
+	toolGetEmail,
 	toolGetThread,
 	toolListEmails,
 	toolMarkEmailRead,
@@ -368,6 +369,72 @@ function toolCall(name: string, args: unknown): AiToolCall {
 
 const NOOP_AI = {} as unknown as Ai;
 const NOOP_BUCKET = {} as unknown as R2Bucket;
+
+/**
+ * A mailbox configured to send, with the HTTPS call stubbed at the `fetch`
+ * boundary.
+ *
+ * The SUCCESS half of `send_email` / `send_reply` was previously unreachable
+ * here — every existing case either fails the verifier or hands in a bucket
+ * with no mailbox config — so the success return body was never observed. This
+ * helper makes it reachable without mocking any module: the bucket answers
+ * `mailboxes/<id>.json` with a Resend key exactly the way production stores one
+ * (see `sendEmailFromMailbox`), the tool's own D1 work runs against the real
+ * engine, and only the final `POST https://api.resend.com/emails` is answered
+ * locally by {@link stubResendFetch}.
+ *
+ * Deliberately NOT `mock.module("../email-sender", …)`: that registry
+ * registers a module mock, but `./tools`'s OWN static import of
+ * `../email-sender` keeps binding to the real function here (verified — the
+ * stub is never called), so the tool would still take the failure path. A
+ * `fetch` stub has no such problem: it replaces the LAST step of the real
+ * chain, so everything upstream is genuinely exercised.
+ */
+const CONFIGURED_BUCKET = {
+	get: async (key: string) =>
+		key.startsWith("mailboxes/") && key.endsWith(".json")
+			? {
+					json: async () => ({ resendApiKey: "re_unit_test_key" }),
+				}
+			: null,
+	head: async () => ({}),
+} as unknown as R2Bucket;
+
+/**
+ * Replace the global `fetch` for the duration of a send test.
+ *
+ * `sendEmail` posts to `https://api.resend.com/emails` through
+ * `fetchWithTimeout`, which resolves `globalThis.fetch` at call time — so a
+ * `mock.method` here intercepts the real send and nothing else. Real network
+ * access from a unit test is not an option, and this keeps the assertion on the
+ * production path: the URL, the parsed key and the JSON body are all observable.
+ *
+ * The returned handle restores the original in `t.after`; the caller must call
+ * it.
+ */
+function stubResendFetch(t: { after(fn: () => void): void }) {
+	const resendFetch = mock.method(
+		globalThis,
+		"fetch",
+		async () =>
+			new Response(JSON.stringify({ id: "resend-stub-id" }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			}),
+	);
+	t.after(() => resendFetch.mock.restore());
+	return resendFetch;
+}
+
+/**
+ * A seeded mailbox whose sends are answered by {@link stubResendFetch}.
+ *
+ * Every seed row is real: the tool's folder lookup, the rate-limit query and
+ * the Sent row it writes all run against the engine.
+ */
+function seededMailboxWithWorkingSend() {
+	return createSqliteD1(FULL_SEED);
+}
 
 /**
  * An `Ai` binding whose `run()` resolves a fixed verifier response.
@@ -1702,6 +1769,309 @@ describe("update_draft echoes the id it was given, under the name it takes", () 
 			skipVerifyDraft: true,
 		});
 		assert.deepStrictEqual(unknown, { error: "Draft not found" });
+	});
+});
+
+describe("search_emails refuses an empty query instead of answering with the mailbox", () => {
+	/**
+	 * The defect: `query: ""` is not a search.
+	 *
+	 * `toolSearchEmails` passed the query straight to `db.searchEmails`, and
+	 * `buildSearchConditions` emits its `WHERE` clause only when the query is
+	 * truthy. An empty one therefore produced a bare `SELECT … LIMIT 25` and
+	 * the caller received the first 25 emails of the mailbox as "matches" —
+	 * indistinguishable, from the result, from a real search that happened to
+	 * match. The internal agent can send this (the schema's `required: ["query"]`
+	 * is enforced by the external gateway only), so it is reachable in
+	 * production, not just from a test.
+	 *
+	 * Every case below asserts on the WHOLE result rather than on `"error" in
+	 * result`: the failure mode being guarded is a plausible-looking LIST, and
+	 * only pinning the exact shape rules that out.
+	 */
+	it("rejects an empty string and a whitespace-only query", { skip: sqliteSkip }, async () => {
+		for (const blank of ["", " ", "   ", "\t", "\n", " \t\n "]) {
+			const { db } = seededMailbox();
+			const result = await toolSearchEmails(db, MAILBOX, { query: blank });
+			assert.deepStrictEqual(
+				result,
+				{ error: "Search query is required" },
+				`query = ${JSON.stringify(blank)} must be refused`,
+			);
+			assert.ok(
+				!Array.isArray(result),
+				"a blank query must never come back as a list of emails",
+			);
+		}
+	});
+
+	it("rejects a query that is absent entirely", { skip: sqliteSkip }, async () => {
+		// A `undefined` query is the `{}` call — the same missing argument, and
+		// the same wrong answer (`buildSearchConditions` skips on falsy), so it
+		// is refused identically rather than being a second hole.
+		const { db } = seededMailbox();
+		const result = await toolSearchEmails(db, MAILBOX, {} as { query: string });
+		assert.deepStrictEqual(result, { error: "Search query is required" });
+	});
+
+	it("refuses before touching the database", { skip: sqliteSkip }, async () => {
+		// The guard is up front, not a post-hoc filter over rows the query
+		// already fetched: an empty query must not cost a full-table scan whose
+		// result is then thrown away. This also pins the guard's position —
+		// ahead of the folder resolution, which would otherwise report an
+		// unknown folder for a call that cannot search anyway.
+		const { db, statements } = createSqliteD1(SEED);
+		const before = statements.length;
+		const result = await toolSearchEmails(db, MAILBOX, { query: "  ", folder: "inbxo" });
+		assert.deepStrictEqual(result, { error: "Search query is required" });
+		assert.strictEqual(
+			statements.length,
+			before,
+			"not one statement may have run for a search with no query",
+		);
+	});
+
+	it("still searches for a real query", { skip: sqliteSkip }, async () => {
+		// The guard must not become the bug. `orig-1` is the only seeded email
+		// whose body contains "original"; `inbox-2`'s contains "another".
+		const { db } = seededMailbox();
+		const hit = await toolSearchEmails(db, MAILBOX, { query: "original" });
+		assert.ok(Array.isArray(hit), JSON.stringify(hit));
+		assert.deepStrictEqual(
+			hit.map((email) => email.id),
+			["orig-1"],
+			"a real query must still return its real matches",
+		);
+
+		// And a padded query keeps working — `trim()` decides "is there a
+		// query", it does not become the search term the caller never asked for.
+		const padded = await toolSearchEmails(db, MAILBOX, { query: " original " });
+		assert.ok(Array.isArray(padded), JSON.stringify(padded));
+	});
+
+	it("the empty-query error is localized like its siblings", { skip: sqliteSkip }, async () => {
+		const { db } = seededMailbox();
+		const result = await toolSearchEmails(db, MAILBOX, { query: "" }, "zh");
+		// A whole-sentence assertion, like the zh `unknownFolder` case: it fails
+		// if the key is missing (i18next falls back to the key NAME) or if the
+		// catalog entry drifts.
+		assert.deepStrictEqual(result, { error: "搜索关键词不能为空" });
+	});
+
+	it("the external gateway still blocks the missing query first (unchanged)", { skip: sqliteSkip }, async () => {
+		// `dispatchExternalTool` gates on the schema's `required` list before
+		// executing, so an external caller sees its own message and never reaches
+		// the new guard. This pins the split the task asked for: the guard closes
+		// the internal / direct path, and the external contract is unchanged.
+		//
+		// The argument bag is deliberately `{"query": ""}` rather than an empty
+		// one: an EMPTY bag is caught by the gateway's own required-parameter
+		// pre-check, and this case is about the boundary BETWEEN the two gates —
+		// the query is present (so the gateway passes it through) yet blank (so
+		// the internal guard refuses it).
+		const { db, statements } = createSqliteD1(SEED);
+		const before = statements.length;
+		const result = await dispatchExternalTool(
+			{ DB: db, BUCKET: NOOP_BUCKET, AI: NOOP_AI },
+			{ name: "search_emails", arguments: { query: "" }, mailboxId: MAILBOX },
+		);
+		assert.deepStrictEqual(result, {
+			ok: false,
+			error: "tool execution failed",
+		});
+		assert.strictEqual(
+			statements.length,
+			before,
+			"the guard must have refused before any statement ran",
+		);
+	});
+
+	it("a missing query is refused before the tool runs", { skip: sqliteSkip }, async () => {
+		// The other half of the boundary: with no `query` key at all the call
+		// fails on the schema's declared requirement rather than on the guard,
+		// which is why the internal guard can be a backstop rather than the
+		// only defence. The exact string is the dispatcher's own generic
+		// failure copy — this case pins that a missing query is still a
+		// FAILURE, not that some particular sentence is used.
+		const { db } = seededMailbox();
+		const result = await dispatchExternalTool(
+			{ DB: db, BUCKET: NOOP_BUCKET, AI: NOOP_AI },
+			{ name: "search_emails", arguments: {}, mailboxId: MAILBOX },
+		);
+		assert.deepStrictEqual(result, { ok: false, error: "tool execution failed" });
+	});
+
+	it("the guard is documented as internal-only by the schema it backs up", async () => {
+		// The guard is a backstop, not a replacement: `query` stays declared and
+		// required, so the external callers that rely on the gateway's 400 keep
+		// getting one.
+		const tool = TOOL_DEFINITIONS.find((entry) => entry.name === "search_emails")!;
+		assert.deepStrictEqual(tool.parameters.required, ["query"]);
+	});
+});
+
+// ── 10. Fix round 4: the send result names its message `id` ────────
+//
+// `send_email` / `send_reply` answered `{ status: "sent", messageId, message }`
+// while EVERY other tool — `get_email`, `list_emails`, `search_emails`,
+// `move_email`, `delete_email` — names an email handle `id`, and so does the
+// REST surface. A model chaining a send into a follow-up call therefore had to
+// know that this one tool renamed the same concept, which is exactly the
+// "argument names match the returned field names" contract the rest of this
+// file holds the tools to.
+//
+// Both cases below drive the REAL tool to its SUCCESS return: the bucket serves
+// a Resend key out of R2 (as production does) and only the final HTTPS POST is
+// answered locally — see `CONFIGURED_BUCKET` / `stubResendFetch`. With the real
+// sender unresolvable the call can only ever fail, and a failure body never
+// reaches the line this defect is in.
+
+describe("send tools return `id`, not `messageId`", () => {
+	it("send_email's success body carries `id` and contains no `messageId`", async (t) => {
+		const resendFetch = stubResendFetch(t);
+		const { db, sqlite } = seededMailboxWithWorkingSend();
+
+		const result = await toolSendEmail(db, MAILBOX, NOOP_AI, CONFIGURED_BUCKET, {
+			to: "them@example.com",
+			subject: "Hi",
+			bodyHtml: "<p>Body.</p>",
+			skipVerifyDraft: true,
+		});
+
+		assert.ok(!("error" in result), JSON.stringify(result));
+		assert.strictEqual(result.status, "sent");
+		assert.ok("id" in result, "the send result must name its message `id`");
+		assert.ok(
+			!("messageId" in result),
+			"`messageId` must be gone, not merely accompanied by `id`",
+		);
+		// The primary key is the row that was written, not a fresh invention:
+		// the value `id` carries is the sent email's real handle, which is what
+		// the caller needs for a follow-up `get_email`.
+		const row = rowFor(sqlite, result.id)!;
+		assert.ok(row, "`id` must name the row the tool actually wrote");
+		assert.strictEqual(row.folder_id, "sent");
+		assert.strictEqual(row.subject, "Hi");
+		assert.strictEqual(row.recipient, "them@example.com");
+		// Exactly one outbound request — and it went to the real endpoint with
+		// the real body, so the success above is production's success path and
+		// not a bypassed one.
+		assert.strictEqual(resendFetch.mock.callCount(), 1);
+		assert.strictEqual(
+			String(resendFetch.mock.calls[0]!.arguments[0]),
+			"https://api.resend.com/emails",
+		);
+	});
+
+	it("send_reply's success body carries `id` and contains no `messageId`", async (t) => {
+		stubResendFetch(t);
+		const { db, sqlite } = seededMailboxWithWorkingSend();
+
+		const result = await toolSendReply(db, MAILBOX, NOOP_AI, CONFIGURED_BUCKET, {
+			id: "orig-1",
+			to: "them@example.com",
+			subject: "Re: Hello",
+			bodyHtml: "<p>Replying now.</p>",
+			skipVerifyDraft: true,
+		});
+
+		assert.ok(!("error" in result), JSON.stringify(result));
+		assert.strictEqual(result.status, "sent");
+		assert.ok("id" in result);
+		assert.ok(!("messageId" in result));
+		// The leading assertion in this file is that TWO different ids must never
+		// share a name: `id` is the row that was SENT, not the original it
+		// replies to.
+		assert.notStrictEqual(result.id, "orig-1");
+		const row = rowFor(sqlite, result.id)!;
+		assert.strictEqual(row.folder_id, "sent");
+		assert.strictEqual(row.thread_id, "thread-1");
+		// The two id-shaped columns are the ones production writes: the row's own
+		// `id` is the value the tool returned, and `message_id` is the outbound
+		// RFC 2822 header derived from it (`<uuid>@<domain>`), never the
+		// original's. NOTE: `message_id` is NOT the Resend response's id —
+		// `sendEmailFromMailbox`'s `{ messageId }` is discarded by the tool, so
+		// the outward `id` is the internal row handle and nothing of the vendor's
+		// value can leak into it.
+		assert.strictEqual(row.id, result.id);
+		assert.match(String(row.message_id), /@example\.com$/);
+		assert.notStrictEqual(row.message_id, "orig-msg-1@example.com");
+		// Threading is anchored on the original's RFC 2822 header, which is what
+		// `messageId`/`message_id` and `in_reply_to` hold in this schema — NOT on
+		// the row id `result.id`. Pinning it here keeps the two id worlds
+		// (`id` = row handle, `message_id` = header) from being confused by the
+		// rename this suite exists for.
+		assert.strictEqual(row.in_reply_to, "orig-msg-1@example.com");
+	});
+
+	it("the success result's key set is exactly `status`, `id`, `message`", async (t) => {
+		// A whole-object key assertion, so no legacy alias can ride along
+		// unnoticed — a kept `messageId` would defeat the entire point of the
+		// rename for a model that reads the first id-shaped key it finds.
+		stubResendFetch(t);
+		const { db } = seededMailboxWithWorkingSend();
+		const result = await toolSendEmail(db, MAILBOX, NOOP_AI, CONFIGURED_BUCKET, {
+			to: "them@example.com",
+			subject: "Hi",
+			bodyHtml: "<p>Body.</p>",
+			skipVerifyDraft: true,
+		});
+		assert.ok(!("error" in result), JSON.stringify(result));
+		assert.deepStrictEqual(Object.keys(result).sort(), ["id", "message", "status"]);
+	});
+
+	it("the `id` a send returns feeds straight back into the read tools", async (t) => {
+		// The point of the rename: no hand-renaming step in between. The value
+		// `id` names must resolve through `get_email`, which is the tool the
+		// model would reach for next.
+		stubResendFetch(t);
+		const { db } = seededMailboxWithWorkingSend();
+		const sent = await toolSendEmail(db, MAILBOX, NOOP_AI, CONFIGURED_BUCKET, {
+			to: "them@example.com",
+			subject: "Hi",
+			bodyHtml: "<p>Body.</p>",
+			skipVerifyDraft: true,
+		});
+		assert.ok(!("error" in sent), JSON.stringify(sent));
+
+		const fetched = await toolGetEmail(db, MAILBOX, sent.id);
+		assert.ok(!("error" in fetched), JSON.stringify(fetched));
+		assert.strictEqual(fetched.subject, "Hi");
+		// `get_email` resolves the handle it is given. NOTE: it echoes the id
+		// the caller PASSED (`toolGetEmail` takes the id positionally and
+		// `getFullEmail` spreads the row), so this pins the chaining contract —
+		// the value `send_email` returned is accepted, and resolves to the
+		// message that was actually sent.
+		assert.strictEqual(fetched.id, sent.id);
+	});
+
+	it("the failure bodies still carry no id at all", { skip: sqliteSkip }, async () => {
+		// The rename must not have bolted an `id` onto the error shapes — a
+		// success-shaped field on a failure is the exact problem the rest of
+		// this file exists to prevent. No bucket config, so the send really
+		// fails and this stays on the unchanged failure path.
+		const { db } = seededMailbox();
+		const result = await toolSendEmail(db, MAILBOX, NOOP_AI, NOOP_BUCKET, {
+			to: "them@example.com",
+			subject: "Hi",
+			bodyHtml: "<p>Body.</p>",
+			skipVerifyDraft: true,
+		});
+		assert.ok("error" in result, JSON.stringify(result));
+		assert.ok(!("id" in result), "no `id` may appear on a failed send");
+		assert.ok(!("messageId" in result));
+	});
+
+	it("the external gateway's public field list needed no widening", async () => {
+		// `dispatchExternalTool` reshapes the tool result for the wire, and the
+		// public list is `[ok, result, error]` — the tool's own body travels
+		// inside `result`, so the renamed key needs no gateway change at all.
+		// This pins that the fix really is confined to the tool's return body.
+		assert.deepStrictEqual(
+			[...EXTERNAL_RESULT_PUBLIC_FIELDS],
+			["ok", "result", "error"],
+			"the rename must not have required widening the public field list",
+		);
 	});
 });
 
