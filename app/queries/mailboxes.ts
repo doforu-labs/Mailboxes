@@ -12,6 +12,7 @@ export function useMailboxes() {
 	return useQuery<Mailbox[]>({
 		queryKey: queryKeys.mailboxes.all,
 		queryFn: () => api.listMailboxes() as Promise<Mailbox[]>,
+		refetchInterval: 30_000,
 	});
 }
 

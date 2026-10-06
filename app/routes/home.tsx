@@ -31,7 +31,9 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, type MetaArgs } from "react-router";
 import { useTranslation } from "react-i18next";
 import { isLocale } from "shared/i18n/config";
+import type { Locale } from "shared/i18n/types";
 import { translate } from "shared/i18n/translate";
+import { formatListDate } from "shared/dates";
 import {
 	useCreateMailbox,
 	useDeleteMailbox,
@@ -478,7 +480,16 @@ export default function HomeRoute() {
 												</div>
 												{account.latest_subject && (
 													<div className="mt-0.5 flex items-center gap-1.5 text-xs text-kumo-subtle/70 truncate">
-														<span className="truncate font-medium text-kumo-subtle/80">
+														{account.latest_read === false && (
+															<Mail
+																size={12}
+																className="shrink-0 text-kumo-brand"
+																aria-hidden="true"
+															/>
+														)}
+														<span
+															className={`truncate ${account.latest_read === false ? "font-semibold text-kumo-default" : "font-medium text-kumo-subtle/80"}`}
+														>
 															{account.latest_subject}
 														</span>
 														{account.latest_snippet && (
@@ -488,6 +499,14 @@ export default function HomeRoute() {
 																	{account.latest_snippet}
 																</span>
 															</>
+														)}
+														{account.latest_date && (
+															<span
+																title={new Date(account.latest_date).toLocaleString(i18n.language)}
+																className="ml-auto shrink-0 whitespace-nowrap text-kumo-subtle/60"
+															>
+																{formatListDate(account.latest_date, i18n.language as Locale)}
+															</span>
 														)}
 													</div>
 												)}

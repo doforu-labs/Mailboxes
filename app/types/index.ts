@@ -38,6 +38,7 @@ export interface Mailbox {
 	latest_sender?: string | null;
 	latest_sender_name?: string | null;
 	latest_date?: string | null;
+	latest_read?: boolean | null;
 	latest_snippet?: string | null;
 }
 

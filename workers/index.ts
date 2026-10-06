@@ -240,6 +240,29 @@ app.get("/api/v1/config", async (c) => {
 
 // -- Mailboxes ------------------------------------------------------
 
+/**
+ * Turn a raw email body into a short, tag-free snippet for the dashboard.
+ *
+ * Order matters: `<script>` / `<style>` blocks are removed *with their
+ * contents* first, so CSS/JS text can't leak into the snippet, and only then
+ * are the remaining tags stripped. The 100-char cut backs off to the last `&`
+ * when it would slice an HTML entity (`&amp;`, `&#39;`, …) in half.
+ */
+function stripHtmlForSnippet(raw: string): string {
+	const withoutBlocks = raw
+		.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+		.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
+	const text = withoutBlocks.replace(/<[^>]*>/g, "").trim();
+	if (text.length <= 100) return text;
+	const cut = text.substring(0, 100);
+	// An unterminated entity at the tail (`&…;`) would render literally; drop
+	// from the last `&` onward in that case.
+	const lastAmp = cut.lastIndexOf("&");
+	return lastAmp !== -1 && !cut.slice(lastAmp).includes(";")
+		? cut.substring(0, lastAmp)
+		: cut;
+}
+
 app.get("/api/v1/mailboxes", async (c) => {
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
 	const mailboxIds = allMailboxes.map((m) => m.id);
@@ -261,9 +284,8 @@ app.get("/api/v1/mailboxes", async (c) => {
 			latest_sender: latest?.sender ?? null,
 			latest_sender_name: latest?.sender_name ?? null,
 			latest_date: latest?.date ?? null,
-			latest_snippet: rawSnippet
-				? rawSnippet.replace(/<[^>]*>/g, "").trim().substring(0, 100)
-				: null,
+			latest_read: latest ? latest.read === 1 : null,
+			latest_snippet: rawSnippet ? stripHtmlForSnippet(rawSnippet) : null,
 		};
 	});
 

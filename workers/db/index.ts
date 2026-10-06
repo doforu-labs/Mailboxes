@@ -1418,12 +1418,33 @@ export async function getMailboxUnreadCounts(
 export async function getMailboxLatestEmails(
 	db: D1Database,
 	mailboxIds: string[],
-): Promise<Map<string, { subject: string | null; sender: string | null; sender_name: string | null; date: string | null; snippet: string | null }>> {
+): Promise<
+	Map<
+		string,
+		{
+			subject: string | null;
+			sender: string | null;
+			sender_name: string | null;
+			date: string | null;
+			snippet: string | null;
+			read: number | null;
+			folder_id: string | null;
+		}
+	>
+> {
 	if (mailboxIds.length === 0) return new Map();
 
 	const orm = drizzle(db, { schema });
 
-	// Use a subquery: for each mailbox_id, find the row with MAX(date)
+	// Pick the newest INBOX email per mailbox. Drafts / sent / archive / trash
+	// must never hijack the dashboard's "latest email" line, so the folder is
+	// filtered here (mirroring `getMailboxUnreadCounts`).
+	//
+	// Determinism: the pick is "the inbox row for which no strictly newer inbox
+	// row exists in the same mailbox", where newer means a later `date`, or an
+	// equal `date` with a larger `id`. That yields exactly one row per mailbox
+	// even when several emails share a `date`, and `date IS NOT NULL` keeps
+	// undated rows from ever winning.
 	const idLiterals = mailboxIds.map((id) => sql`${id}`);
 	const inList = sql.join(idLiterals, sql`, `);
 
@@ -1435,30 +1456,49 @@ export async function getMailboxLatestEmails(
 			sender_name: schema.emails.sender_name,
 			date: schema.emails.date,
 			snippet: sql<string>`SUBSTR(${schema.emails.body}, 1, 150)`,
+			read: sql<number>`${schema.emails.read}`,
+			folder_id: schema.emails.folder_id,
 		})
 		.from(schema.emails)
 		.where(
-			sql`(${schema.emails.mailbox_id}, ${schema.emails.date}) IN (
-				SELECT mailbox_id, MAX(date)
-				FROM emails
-				WHERE mailbox_id IN (${inList})
-				GROUP BY mailbox_id
-			)`,
+			sql`${schema.emails.folder_id} = 'inbox'
+				AND ${schema.emails.mailbox_id} IN (${inList})
+				AND ${schema.emails.date} IS NOT NULL
+				AND NOT EXISTS (
+					SELECT 1 FROM emails AS newer
+					WHERE newer.mailbox_id = ${schema.emails.mailbox_id}
+						AND newer.folder_id = 'inbox'
+						AND newer.date IS NOT NULL
+						AND (
+							newer.date > ${schema.emails.date}
+							OR (newer.date = ${schema.emails.date} AND newer.id > ${schema.emails.id})
+						)
+				)`,
 		)
 		.all();
 
-	const map = new Map<string, { subject: string | null; sender: string | null; sender_name: string | null; date: string | null; snippet: string | null }>();
-	for (const row of results) {
-		// If two rows share the same timestamp, keep the first (any is fine)
-		if (!map.has(row.mailboxId)) {
-			map.set(row.mailboxId, {
-				subject: row.subject,
-				sender: row.sender,
-				sender_name: row.sender_name,
-				date: row.date,
-				snippet: row.snippet,
-			});
+	const map = new Map<
+		string,
+		{
+			subject: string | null;
+			sender: string | null;
+			sender_name: string | null;
+			date: string | null;
+			snippet: string | null;
+			read: number | null;
+			folder_id: string | null;
 		}
+	>();
+	for (const row of results) {
+		map.set(row.mailboxId, {
+			subject: row.subject,
+			sender: row.sender,
+			sender_name: row.sender_name,
+			date: row.date,
+			snippet: row.snippet,
+			read: row.read,
+			folder_id: row.folder_id,
+		});
 	}
 	return map;
 }
