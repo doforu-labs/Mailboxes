@@ -24,6 +24,7 @@
 	"createDialogTitle": "创建新邮箱",
 	"errorLocalPartRequired": "请输入邮箱用户名",
 	"errorDomainRequired": "请选择域名",
+	"errorInvalidEmail": "邮箱地址格式不正确：不能包含空格，只能使用字母、数字和 . * _ - （从别处粘贴时请注意是否带了空格）",
 	"catchAllDefaultName": "全接收",
 	"catchAllCreated": "全接收邮箱 {{email}} 已创建！",
 	"catchAllCreateFailed": "创建全接收邮箱失败",

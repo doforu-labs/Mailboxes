@@ -81,7 +81,14 @@ const CreateMailboxBody = z.object({
 	// NOTE: the schema is built once at module scope (no request-scoped `t`),
 	// so this message stays English as a last-resort fallback. The handler
 	// localizes the surfaced error via `api:validationFailed` instead.
-	email: z.string().regex(/^[a-z0-9*][a-z0-9.*_-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i, "Invalid email address"),
+	//
+	// `trim()` + `toLowerCase()` normalise the address BEFORE the regex runs.
+	// Without them a pasted local part carrying a stray space (" privacy",
+	// "privacy ") failed the anchored regex and surfaced as a bare
+	// "validation failed" that named no field and no character. Trimming is
+	// safe: whitespace is never significant around an address, and the handler
+	// already lower-cased the value, so the stored id/key is unchanged.
+	email: z.string().trim().toLowerCase().regex(/^[a-z0-9*][a-z0-9.*_-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i, "Invalid email address"),
 	name: z.string().min(1),
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });

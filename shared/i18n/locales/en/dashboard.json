@@ -24,6 +24,7 @@
 	"createDialogTitle": "Create New Mailbox",
 	"errorLocalPartRequired": "Please enter a local part",
 	"errorDomainRequired": "Please select a domain",
+	"errorInvalidEmail": "Invalid email address: it cannot contain spaces and may only use letters, digits and . * _ - (check for a stray space if you pasted it).",
 	"catchAllDefaultName": "Catch-all",
 	"catchAllCreated": "Catch-all mailbox {{email}} created!",
 	"catchAllCreateFailed": "Failed to create catch-all mailbox",

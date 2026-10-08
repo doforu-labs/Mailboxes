@@ -40,7 +40,7 @@ import {
 	useMailboxes,
 } from "~/queries/mailboxes";
 import { useDomains, useUpdateDomainApiKey } from "~/queries/domains";
-import api, { type VerifyResendResult } from "~/services/api";
+import api, { ApiError, type VerifyResendResult } from "~/services/api";
 import { DomainFullStatus } from "~/components/DomainStatusBadge";
 import { formatSenderLabel } from "shared/participants";
 import type { Domain, Mailbox } from "~/types";
@@ -153,11 +153,39 @@ export default function HomeRoute() {
 		return [...map.values()];
 	}, [domains, mailboxes]);
 
+	/**
+	 * Message for a failed create-mailbox call.
+	 *
+	 * A rejected create answers 400 with `{ error: "校验失败" (or its English
+	 * twin), details: <zod issues> }`. `error` names no field — which is exactly
+	 * why this dialog could only ever say "校验失败" — while the zod issues DO
+	 * carry the offending field. So read them and say which field was refused.
+	 * Everything else keeps the error's own message; for an `ApiError` that is
+	 * the server's copy verbatim (e.g. "邮箱已存在" on a 409).
+	 */
+	const describeCreateFailure = (err: unknown, fallback: string): string => {
+		if (err instanceof ApiError) {
+			const details = err.body.details;
+			if (Array.isArray(details) && details.length > 0) {
+				const issue = details[0] as { path?: unknown[] } | undefined;
+				if (issue?.path?.[0] === "email") return t("errorInvalidEmail");
+			}
+		}
+		return (err instanceof Error ? err.message : null) || fallback;
+	};
+
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
 		setCreateError(null);
 
-		if (!localPart) {
+		// Trim before validating. A pasted local part routinely carries a leading
+		// or trailing space, and `" privacy"` is truthy — so it sailed past the
+		// non-empty check, composed `" privacy@doforu.ai"`, and was then refused
+		// by the backend's email regex as a bare "校验失败" with no hint of why.
+		// Trimming means the pasted value creates `privacy@…` as intended.
+		const trimmedLocalPart = localPart.trim();
+
+		if (!trimmedLocalPart) {
 			setCreateError(t("errorLocalPartRequired"));
 			return;
 		}
@@ -166,12 +194,12 @@ export default function HomeRoute() {
 			return;
 		}
 
-		const email = `${localPart}@${selectedDomain}`;
+		const email = `${trimmedLocalPart}@${selectedDomain}`;
 
 		// Handle catch-all pattern (localPart === "*")
-		if (localPart === "*") {
+		if (trimmedLocalPart === "*") {
 			const catchAllEmail = `*@${selectedDomain}`;
-			const name = newName || t("catchAllDefaultName");
+			const name = newName.trim() || t("catchAllDefaultName");
 			setIsCreating(true);
 			try {
 				await createMailbox.mutateAsync({ email: catchAllEmail, name });
@@ -190,17 +218,14 @@ export default function HomeRoute() {
 				setSelectedDomain("");
 				setNewName("");
 			} catch (err: unknown) {
-				const message =
-					(err instanceof Error ? err.message : null) ||
-					t("catchAllCreateFailed");
-				setCreateError(message);
+				setCreateError(describeCreateFailure(err, t("catchAllCreateFailed")));
 			} finally {
 				setIsCreating(false);
 			}
 			return;
 		}
 
-		const name = newName || localPart;
+		const name = newName.trim() || trimmedLocalPart;
 		setIsCreating(true);
 		try {
 			await createMailbox.mutateAsync({ email, name });
@@ -210,10 +235,7 @@ export default function HomeRoute() {
 			setSelectedDomain("");
 			setNewName("");
 		} catch (err: unknown) {
-			const message =
-				(err instanceof Error ? err.message : null) ||
-				t("mailboxCreateFailed");
-			setCreateError(message);
+			setCreateError(describeCreateFailure(err, t("mailboxCreateFailed")));
 		} finally {
 			setIsCreating(false);
 		}
