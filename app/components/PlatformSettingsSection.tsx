@@ -8,7 +8,7 @@ import { Badge, Button, useKumoToastManager } from "@cloudflare/kumo";
 import { ChevronDown, ChevronRight, Settings, Link, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import api from "~/services/api";
+import api, { describeCfVerifyError } from "~/services/api";
 
 // ── CF Credentials (D1 via API) ──────────────────────────────────
 
@@ -130,10 +130,20 @@ export function PlatformSettingsSection() {
 				cfApiToken: creds.cfApiToken.trim(),
 				cfAccountId: creds.cfAccountId.trim(),
 			});
-		} catch {
+		} catch (err) {
+			// Report WHY verification failed instead of a blanket "credentials are
+			// invalid": a token can be perfectly valid and still be rejected — most
+			// notably when its Client IP Address Filtering does not allow the
+			// Worker's egress IP, in which case `curl` from the user's own machine
+			// succeeds while every request the app makes fails. See
+			// `describeCfVerifyError` in ~/services/api for the mapping.
 			toastManager.add({
 				title: t("platform.verificationFailed"),
-				description: t("platform.invalidCredentials"),
+				description: describeCfVerifyError(
+					err,
+					t("platform.timeout"),
+					t("platform.verificationError"),
+				),
 				variant: "error",
 			});
 			setIsVerifying(false);
@@ -145,10 +155,17 @@ export function PlatformSettingsSection() {
 		setIsSaving(true);
 		try {
 			await saveCfCredentials(creds);
-		} catch {
+		} catch (err) {
+			// Same rule as the verification step above: never assert a cause we did
+			// not observe. This used to be a bare `catch {}` that always blamed the
+			// database.
 			toastManager.add({
 				title: t("platform.saveFailed"),
-				description: t("platform.databaseError"),
+				description: describeCfVerifyError(
+					err,
+					t("platform.timeout"),
+					t("platform.databaseError"),
+				),
 				variant: "error",
 			});
 			setIsSaving(false);

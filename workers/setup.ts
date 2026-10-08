@@ -57,6 +57,14 @@ function normalizeDomainStatus(status: string | undefined): string {
 
 const setup = new Hono<{ Bindings: Env }>();
 
+/**
+ * The Cloudflare API's error envelope, as far as this route cares about it.
+ * `detect-cf-domains` forwards both `message` and `code` to the client so the
+ * settings UI can distinguish "bad credentials" from "Cloudflare rejected this
+ * request" (see the comment at the `!res.ok` branch below).
+ */
+type CfApiErrorBody = { errors?: Array<{ code?: number; message?: string }> };
+
 // ── POST /api/v1/setup/detect-cf-domains ───────────────────────────
 // Given a CF API Token + Account ID, return all zones in the account.
 setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
@@ -73,10 +81,6 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 		if (!cfApiToken) {
 			const saved = await dbService.getSetting(c.env.DB, "cf_api_token");
 			if (saved) cfApiToken = saved;
-		}
-		if (!cfAccountId) {
-			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
-			if (saved) cfAccountId = saved;
 		}
 		if (!cfAccountId) {
 			const saved = await dbService.getSetting(c.env.DB, "cf_account_id");
@@ -109,23 +113,42 @@ setup.post("/api/v1/setup/detect-cf-domains", async (c) => {
 			});
 
 			if (!res.ok) {
-				const errBody = await res.json().catch(() => ({}));
-				const msg =
-					(errBody as any)?.errors?.[0]?.message ||
-					t("cfApiError", { status: res.status });
-				return c.json({ error: msg }, 400);
+				const errBody = (await res.json().catch(() => ({}))) as CfApiErrorBody;
+				const cfError = errBody?.errors?.[0];
+				// Forward Cloudflare's OWN message plus the upstream status and error
+				// code. Without them the client can only guess, and its only guess —
+				// "the token or account ID is invalid" — is wrong for the most common
+				// real failure: a valid token whose Client IP Address Filtering does
+				// not allow the Worker's egress IP, so every request from the app is
+				// rejected while the same token works from the user's own machine.
+				return c.json(
+					{
+						error:
+							cfError?.message || t("cfApiError", { status: res.status }),
+						cfStatus: res.status,
+						cfCode: cfError?.code,
+					},
+					400,
+				);
 			}
 
 			const data = (await res.json()) as {
 				success: boolean;
-				errors: Array<{ message: string }>;
+				errors: Array<{ code?: number; message: string }>;
 				result: Array<{ id: string; name: string; status: string; account?: { id: string; name: string } }>;
 				result_info: { total_pages: number };
 			};
 
 			if (!data.success) {
-				const msg = data.errors?.[0]?.message || t("cfApiGenericError");
-				return c.json({ error: msg }, 400);
+				const cfError = data.errors?.[0];
+				return c.json(
+					{
+						error: cfError?.message || t("cfApiGenericError"),
+						cfStatus: res.status,
+						cfCode: cfError?.code,
+					},
+					400,
+				);
 			}
 
 			for (const zone of data.result) {

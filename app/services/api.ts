@@ -20,6 +20,89 @@ export class ApiError extends Error {
 	}
 }
 
+/**
+ * Read a string field (`name` / `message`) off a thrown value.
+ *
+ * Deliberately does NOT use `instanceof`: a value created in another realm (an
+ * iframe, a content script) fails `instanceof` against this realm's
+ * constructors even though it is a perfectly ordinary error object. `name` and
+ * `message` are readable either way and are all this module needs.
+ *
+ * Also note the WebIDL subtlety this avoids depending on: whether
+ * `DOMException` inherits from `Error` is an implementation detail (it does in
+ * current Node and browsers, but nothing here should hinge on that).
+ */
+function errorField(err: unknown, key: "name" | "message"): string | undefined {
+	if (typeof err !== "object" || err === null) return undefined;
+	const value = (err as Record<string, unknown>)[key];
+	return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Human-readable reason for a failed `detectCfDomains` verification call.
+ *
+ * Verification can fail for causes that need completely different fixes: a
+ * token that is invalid or missing a permission, a token whose **Client IP
+ * Address Filtering** rejects the caller's IP (the Worker queries the
+ * Cloudflare API from Cloudflare's own egress addresses, not from the user's
+ * machine, so a filter that allows only the user's IP rejects every Worker
+ * call while the very same token works fine from `curl`), an upstream
+ * Cloudflare error, a network failure, or our own client timeout.
+ *
+ * Collapsing all of those into a single "the token or account ID is invalid"
+ * hint is actively misleading, so prefer the concrete message the backend
+ * produced. `ApiError.body` carries what `workers/setup.ts` forwards from the
+ * upstream Cloudflare response: `error` (Cloudflare's own message) plus
+ * `cfStatus` / `cfCode` (the upstream HTTP status and Cloudflare error code).
+ *
+ * @param timeoutMessage   shown when the request was aborted client-side
+ * @param fallbackMessage  shown when nothing more specific is available
+ */
+export function describeCfVerifyError(
+	err: unknown,
+	timeoutMessage: string,
+	fallbackMessage: string,
+): string {
+	const name = errorField(err, "name");
+
+	// Aborted client-side: the AbortController inside `request()` above
+	// ("AbortError"), or a deadline the caller supplied such as
+	// `AbortSignal.timeout()` ("TimeoutError"). A `TimeoutError` used to fall
+	// through to the fallback, which is why both names are listed here.
+	if (name === "AbortError" || name === "TimeoutError") {
+		return timeoutMessage;
+	}
+
+	if (err instanceof ApiError) {
+		const cfStatus = err.body?.cfStatus;
+		const cfCode = err.body?.cfCode;
+		const detail =
+			typeof cfStatus === "number"
+				? `HTTP ${cfStatus}${
+						typeof cfCode === "number" ? `, code ${cfCode}` : ""
+					}`
+				: `HTTP ${err.status}`;
+		return `${err.message} (${detail})`;
+	}
+
+	// Network-layer failures only. Deliberately narrowed to `TypeError`: a 2xx
+	// response whose body is not valid JSON makes `request()` throw a
+	// `SyntaxError` ("Unexpected token '<' ..."), and that parse detail is
+	// developer noise — not something to put in front of a user.
+	//
+	// For `detectCfDomains` this branch is a safety net rather than the usual
+	// path: the route parses the upstream Cloudflare body itself and reports a
+	// real message on failure, so the client only sees a `SyntaxError` if
+	// something in front of our own API answers with HTML.
+	//
+	// Anything we cannot attribute to a known cause falls back to a neutral
+	// message rather than blaming the credentials.
+	const message = errorField(err, "message");
+	if (name === "TypeError" && message) return message;
+
+	return fallbackMessage;
+}
+
 async function request<T>(
 	url: string,
 	options: RequestInit = {},

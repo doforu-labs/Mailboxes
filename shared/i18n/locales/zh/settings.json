@@ -46,6 +46,8 @@
 		"bothRequired": "API Token 和 Account ID 均为必填项",
 		"verificationFailed": "验证失败",
 		"invalidCredentials": "所提供的 Cloudflare API Token 或 Account ID 无效，请检查后重试。",
+		"timeout": "请求超时，请检查网络连接后重试。",
+		"verificationError": "验证请求未能完成，请重试。",
 		"saveFailed": "保存凭据失败",
 		"databaseError": "写入数据库时发生错误，请重试。",
 		"verified": "Cloudflare 凭据验证成功",

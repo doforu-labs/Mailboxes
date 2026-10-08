@@ -46,6 +46,8 @@
 		"bothRequired": "Both API Token and Account ID are required",
 		"verificationFailed": "Verification failed",
 		"invalidCredentials": "The provided Cloudflare API Token or Account ID is invalid. Please check and try again.",
+		"timeout": "Request timed out. Check your network connection and try again.",
+		"verificationError": "The verification request could not be completed. Please try again.",
 		"saveFailed": "Failed to save credentials",
 		"databaseError": "An error occurred while saving to the database. Please try again.",
 		"verified": "Cloudflare credentials verified successfully",
