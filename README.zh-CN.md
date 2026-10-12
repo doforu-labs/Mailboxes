@@ -345,7 +345,13 @@ Mailboxes 从 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-i
 
 ## 贡献
 
-欢迎提 Issue 和 Pull Request。提交 PR 前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并保持改动聚焦、有测试（`npm test`、`npm run typecheck`）。
+**欢迎任何形式的贡献** —— 修 bug、加功能、补文档、做翻译，或者是换一张更清楚的截图。
+
+- 发现问题、有想法？[提一个 Issue](https://github.com/doforu-labs/Mailboxes/issues)。
+- 想改代码？Fork 本仓库，从 `main` 切一个分支，然后开 Pull Request；提交前请先读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 保持改动聚焦（一个 PR 只做一件事），并确保检查通过：`npm run typecheck`、`npm test`、`npm run build`。
+
+贡献不分大小 —— 改个错别字、把一句话写清楚，和提交新功能一样受欢迎。第一次参与？可以从标了 [`good first issue`](https://github.com/doforu-labs/Mailboxes/labels/good%20first%20issue) 的 Issue 入手。
 
 ## 安全
 

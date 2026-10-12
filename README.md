@@ -346,7 +346,13 @@ Have an idea? Open an issue.
 
 ## Contributing
 
-Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR, and keep changes focused and tested (`npm test`, `npm run typecheck`).
+**Contributions of every kind are welcome** — bug fixes, new features, docs, translations, or a clearer screenshot.
+
+- Found a bug or have an idea? [Open an issue](https://github.com/doforu-labs/Mailboxes/issues).
+- Want to change the code? Fork the repo, branch off `main`, and send a pull request. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+- Keep changes focused (one feature or fix per PR) and make sure the checks pass: `npm run typecheck`, `npm test`, `npm run build`.
+
+No contribution is too small — a typo fix or a clearer sentence is as welcome as a new feature. New here? Issues labelled [`good first issue`](https://github.com/doforu-labs/Mailboxes/labels/good%20first%20issue) are a good place to start.
 
 ## Security
 
