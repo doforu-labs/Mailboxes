@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sources the deploy fails with the newest source, the oldest artifact, and the two
   ways to fix it. Escape hatch: `ALLOW_STALE_DEPLOY=1`.
 
+- **The external-agent surfaces now describe themselves to a caller.** The MCP
+  `initialize` result carries `instructions` — the domain, the `list_mailboxes`
+  prerequisite, the destructive tools and the outbound-send warning — and every
+  `tools/list` entry carries `annotations`. `GET /tools` gains a top-level `info`
+  block (name, version, auth scheme). The `folder` parameter of `list_emails`,
+  `search_emails` and `move_email` is now a JSON-Schema `enum` sourced from the
+  `Folders` constants in `shared/folders.ts` — the same six ids
+  `initMailboxFolders` seeds — so a schema cannot advertise a folder that does
+  not exist, and the tool descriptions no longer repeat the set as prose.
+
 ### Fixed
 
 - **First deploy no longer fails on the Vite redirect.** `scripts/setup.mjs` used to
@@ -32,6 +42,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-bundled the raw `workers/app.ts` on the spot and died on the build-time virtual
   module `virtual:react-router/server-build`. The `deploy` call (and its `--dry-run`
   rehearsal) now omits `--config` and follows the redirect instead.
+
+- **Every 401 now says how to authenticate.** Both auth surfaces answered with a
+  bare `401 { error }` and no `WWW-Authenticate`, which RFC 7235/9110 make
+  mandatory and which left an agent that guessed a guarded path with no way in.
+  The gateway funnels every rejection through one `unauthorized()` helper and
+  answers `WWW-Authenticate: Bearer realm="mailboxes"`, adding
+  `error="invalid_token"` only when credentials were presented but did not verify
+  (RFC 6750 §3.1); the eight cookie-session 401s answer
+  `Session realm="mailboxes"` — deliberately not `Bearer`, which would send a
+  client looking for an OAuth access token. Both carry `Cache-Control: no-store`
+  and a body `hint`. The gateway's `info.docs` pointer is removed: it named
+  `/.well-known/api-catalog`, a route this worker does not register, so the
+  request fell through to the SPA fallback and returned HTML.
+
+- **The MCP `instructions` tool count is interpolated, not hardcoded.**
+  `mcpInstructions()` returned a literal "14 tools" while its own doc comment —
+  and the commit that introduced the literal — claimed the count came from
+  `listMcpTools().length`, and the test asserted the same literal, so the drift
+  the assertion existed to catch could never turn it red. The count is
+  interpolated now and the test derives its expectation from
+  `listMcpTools().length`; for the current 14 tools the rendered string is
+  byte-for-byte what it was before the fix.
+
+- **Domain verification accepts the real Cloudflare Email Routing MX hosts.**
+  verify-mx compared every exchange against a single hardcoded
+  `mailboxes.pages.dev`, so the four live domains — whose MX is Cloudflare Email
+  Routing's `route*.mx.cloudflare.net` — reported `verified: false` even though
+  inbound was configured correctly. The literal is replaced by
+  `ACCEPTED_INBOUND_MX_TARGETS`, compared for exact membership (case-insensitive,
+  trailing dot stripped); the legacy target stays accepted for compatibility.
+
+- **The dashboard's "latest email" line is scoped to the inbox, and says whether
+  it is read.** `getMailboxLatestEmails` grouped by `mailbox_id` alone, so a
+  newer draft, sent or trashed email could hijack the line — `inbox@demo.local`
+  rendered a draft titled `s` instead of the newest received mail. The query now
+  filters `folder_id = 'inbox'`, as `getMailboxUnreadCounts` always has, breaks
+  `date` ties by `id` and never lets an undated row win. That row's `read` flag is
+  exposed as `latest_read`, rendered on the homepage as a brand-coloured icon and
+  a bolded subject, and the row polls every 30s instead of going stale;
+  `latest_snippet` no longer leaks `<style>` / `<script>` text.
+
+- **A failed Cloudflare credential check reports why, not "invalid
+  credentials".** Every failure was collapsed into "the API token or account ID
+  is invalid", though the most common real cause is a valid token whose Client IP
+  Address Filtering does not allow the Worker's egress IP — the same token works
+  from `curl` on the user's own machine. `workers/setup.ts` now forwards
+  Cloudflare's own `message` together with `cfStatus` and `cfCode`, and
+  `describeCfVerifyError()` tells a timeout, an `ApiError` and a network-layer
+  `TypeError` apart; the fallback no longer blames the credentials.
+
+- **A mailbox address pasted with a leading or trailing space no longer fails as
+  "校验失败".** The dialog composed `${localPart}@${domain}` without trimming,
+  and `" privacy"` is truthy, so it sailed past the non-empty check and was
+  rejected by the backend's anchored email regex at its first character. The API
+  had answered a Zod validation failure with `400 { error, details: <zod issues> }`
+  all along — `details` only rides along on that branch; a 409 "already exists"
+  carries `error` alone — but `error` names no field, and the dialog never read
+  `details`, so the user saw a bare "validation failed" naming neither the field
+  nor the reason. Both sides trim now (`CreateMailboxBody.email` is
+  `.trim().toLowerCase()`, which leaves stored ids and R2 keys byte-identical),
+  and `describeCreateFailure()` reads the zod issue's `path` to name the rejected
+  field.
 
 ### Changed
 
@@ -52,6 +124,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entries (`npm run deploy`, `npm run setup` / `bash deploy.sh`, `npm run deploy:full`)
   and note that `build.command` in `wrangler.jsonc` is not a safeguard here: the
   Cloudflare Vite plugin deletes that field when it generates the config.
+
+### Removed
+
+- **The `.tmp-verify/` scratch tree and the pointers to it.** It was a gitignored
+  leftover from an earlier verification pass — fourteen Playwright scripts that
+  checked the themes' contrast and spacing — and `app/themes/README.md` named two
+  of them as the regression harness. The directory is gone, and that reference
+  with it. `.gitignore` no longer carries a rule for it — or a claim about a
+  hardcoded admin password. It never entered git history.
 
 ## [0.2.0] - 2026-10-06
 
