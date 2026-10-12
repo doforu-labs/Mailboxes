@@ -417,7 +417,7 @@ describe("gateway discovery surface (real routes)", () => {
 		assert.deepStrictEqual(Object.keys(body).sort(), ["info", "tools"]);
 
 		assert.strictEqual(body.info!.name, "mailboxes-tool-gateway");
-		assert.strictEqual(body.info!.version, "0.2.0");
+		assert.strictEqual(body.info!.version, "0.2.1");
 		// Anti-regression: the key set is EXACTLY these three. A `docs` field
 		// pointing at `/.well-known/api-catalog` used to sit here, but that
 		// route is not implemented (the request hits the SPA fallback and

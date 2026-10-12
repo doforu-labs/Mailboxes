@@ -178,7 +178,7 @@ const TOOL_GATEWAY_INFO = {
 	// in every Workers bundling mode and a wrong version is worse than a
 	// duplicated constant — this one is asserted against package.json by the
 	// gateway tests.
-	version: "0.2.0",
+	version: "0.2.1",
 	auth: {
 		scheme: "bearer",
 		header: "Authorization",
