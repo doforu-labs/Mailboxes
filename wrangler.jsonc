@@ -12,7 +12,7 @@
 	// happened once.
 	//
 	// ✅ Use one of the supported entry points instead:
-	//   npm run deploy                 everyday redeploy (build + deploy)
+	//   npm run deploy                 everyday redeploy (build + remote migrations + deploy)
 	//   npm run setup / bash deploy.sh first-time deploy + resource creation
 	//   npm run deploy:full            build + deploy + apply remote migrations
 	//
@@ -56,7 +56,11 @@
 		{
 			"binding": "DB",
 			"database_name": "mailboxes-db",
-			"database_id": "bce48f1a-88a3-4a57-8cee-a0f0c7a7ac38",
+			// All-zero placeholder. Deploy to Cloudflare provisions a D1 database
+			// and rewrites this id in the user's clone. `npm run setup` treats it
+			// as unset and writes the real id for an existing database of this
+			// name — leave that local rewrite uncommitted.
+			"database_id": "00000000-0000-0000-0000-000000000000",
 			"preview_database_id": "local",
 			"migrations_dir": "migrations"
 		}

@@ -93,11 +93,11 @@ npm install
 npm run setup
 ```
 
-Once those resources exist, everyday redeploys are `npm run deploy` (see [Production deploy](#production-deploy)).
+Once those resources exist, everyday redeploys are `npm run deploy` (see [Production deploy](#production-deploy)). That command also applies remote migrations; a migration already applied is skipped.
 
 The script is **safe to re-run**. Anything that already exists is skipped. Add `-- --dry-run` to see what it would do first.
 
-> The **Deploy to Cloudflare** button at the top works too, but it only creates the app. The bucket, the database, and the database id are on you. See the note at the end of this section.
+> The **Deploy to Cloudflare** button at the top is the one-click path for a new account. Cloudflare clones this repo, creates the R2 bucket and the D1 database, and deploys the Worker. That prepares the infrastructure. Receiving and sending still need the steps below: open the Worker URL, finish `/setup`, turn on Email Routing (or Platform Settings + **Add Domain**), and add Resend if you want to send. From a checkout, `npm run setup` is still the guided first deploy.
 
 1. **Turn on receiving.** In the Cloudflare dashboard, open your domain → **Email Routing**, create a **catch-all** rule (mail to any address on the domain), and forward it to this app. If the domain is *not* on Cloudflare DNS, you can receive through the Resend inbound webhook at `/api/v1/inbound/resend` instead.
 
@@ -110,18 +110,17 @@ The script is **safe to re-run**. Anything that already exists is skipped. Add `
 4. **Create a mailbox.** Once signed in, create a mailbox for any address on your domain (for example `hello@yourdomain.com`).
 
 <details>
-<summary>Using the <strong>Deploy to Cloudflare</strong> button instead?</summary>
+<summary>Using the <strong>Deploy to Cloudflare</strong> button</summary>
 
-The button only creates the Worker. The app also needs an R2 bucket and a D1 database. `wrangler.jsonc` in this repository points at resources in the author's account, so deploying straight from the button fails. To make the button work:
+The button is for a new Cloudflare account that wants to skip the CLI. Cloudflare clones this repository into your GitHub or GitLab account, reads `wrangler.jsonc`, creates the R2 bucket (`mailboxes`) and the D1 database (`mailboxes-db`), writes the new `database_id` into that clone, and deploys. The `deploy` script runs `wrangler d1 migrations apply DB --remote` before `wrangler deploy`, so the empty database gets its tables. Migrations that are already applied are skipped.
 
-1. **Fork** the repository.
-2. In your fork, create the resources and point the config at them:
-   - `wrangler r2 bucket create mailboxes`
-   - `wrangler d1 create mailboxes-db`, then copy the returned `database_id` into the `d1_databases` block of `wrangler.jsonc`
-   - `wrangler d1 migrations apply mailboxes-db --remote`
-3. Click the button **on your fork** (the button in this README points at this repository and would use the author's `database_id`).
+The button stops at infrastructure. The inbox still cannot receive or send until you do this:
 
-Much less work: run `npm run setup` as above.
+1. Open the Worker URL. The first visit is the `/setup` wizard, where you create the admin account. There is no default password.
+2. Turn on receiving. In the Cloudflare dashboard: your domain → **Email Routing** → a catch-all rule forwarded to this Worker. After the wizard, you can instead save a Cloudflare API token and account id under **Settings → Platform Settings**, then **Add Domain** — the app writes the catch-all when the domain's DNS is already on Cloudflare.
+3. Sending is optional. Add a Resend API key when you add the domain, or later from the domain menu.
+
+`npm run setup` stays the guided first deploy from a checkout. It reuses an R2 bucket and a D1 database that already exist under those names, and it replaces the placeholder `database_id` in your local `wrangler.jsonc` with the real one. Leave that edit uncommitted.
 
 </details>
 
@@ -129,7 +128,7 @@ Much less work: run `npm run setup` as above.
 
 Most of this is filled in by `npm run setup`, or edited in the app after you sign in.
 
-- **`wrangler.jsonc`** — your database id (D1 `database_id`), the file-storage bucket name (R2), and any bindings. `npm run setup` fills in `database_id`.
+- **`wrangler.jsonc`** — the D1 `database_id` committed here is the placeholder `00000000-0000-0000-0000-000000000000`, so the Deploy button can create a database and fill in the real id. `npm run setup` does the same write-back for a CLI deploy. The R2 bucket name stays `mailboxes`.
 - **Cloudflare credentials (Platform Settings)** — sign in, open **Settings** (`/settings`) → **Platform Settings**, and enter **Cloudflare API Token** and **Cloudflare Account ID**. **Verify & Save** checks them before saving (the success message names the account and how many domains were found) and the badge turns into `Configured`. Both values are stored in the database.
   - The "Create a pre-configured Token →" link in that panel selects three of the permissions for you. One more has to be added by hand: click Add more, then Zone → Email Routing Rules → Edit, and paste the token back into the field.
   - Once saved, adding a domain turns on Email Routing and creates the forwarding rule — no dashboard clicking. If you skip the credentials, use the manual path in step 1 of [Quick start](#quick-start).
@@ -165,7 +164,7 @@ Most of this is filled in by `npm run setup`, or edited in the app after you sig
    wrangler d1 create mailboxes-db
    ```
 
-4. Copy the returned `database_id` into the `d1_databases` array in `wrangler.jsonc`.
+4. Copy the returned `database_id` into the `d1_databases` array in `wrangler.jsonc`, in place of the placeholder `00000000-0000-0000-0000-000000000000`.
 
 5. Create the file-storage bucket (R2):
 
@@ -187,21 +186,21 @@ Most of this is filled in by `npm run setup`, or edited in the app after you sig
 
 ### Production deploy
 
-**First deploy — `npm run setup`.** It creates anything missing (R2 bucket, D1 database), writes `database_id` back into the config, builds, and deploys. By default it does **not** apply migrations to a production database you already had: it runs a read-only `wrangler d1 migrations list <db> --remote`, and if anything is pending it **stops**, lists the migration filenames, and asks you to re-run with `--migrate`. The exception is a database created by that same run — an empty database has nothing to lose, so it is initialized right away. `bash deploy.sh` is the same as `npm run setup`.
+**First deploy — `npm run setup`.** It creates anything missing (R2 bucket, D1 database), writes `database_id` back into the config, builds, and deploys. By default it does **not** apply migrations to a production database you already had: it runs a read-only `wrangler d1 migrations list DB --remote`, and if anything is pending it **stops**, lists the migration filenames, and asks you to re-run with `--migrate`. The exception is a database created by that same run — an empty database has nothing to lose, so it is initialized right away. `bash deploy.sh` is the same as `npm run setup`.
 
-**Everyday redeploy — `npm run deploy`.** It builds and deploys only. It does not touch migrations and does not create resources.
+**Everyday redeploy — `npm run deploy`.** It builds, applies remote D1 migrations, then deploys. A migration that is already applied is skipped, so a repeat deploy leaves the schema in place, and the first deploy onto an empty database creates the tables. Creating the R2 bucket and the D1 database stays with `npm run setup`, or with the Deploy to Cloudflare button. The `database_id` in this repo is the all-zero placeholder the button replaces. On a machine that already runs this app, run `npm run setup` once after pulling so it writes your real id back into the local `wrangler.jsonc`, and leave that edit uncommitted.
 
 ```bash
 npm run deploy
 ```
 
-**Apply migrations to production.** `npm run setup -- --migrate` applies pending remote migrations as part of setup. To apply them on their own:
+**Apply migrations to production.** `npm run deploy` and `npm run db:migrate` both apply pending remote migrations (`wrangler d1 migrations apply DB --remote`). `npm run setup -- --migrate` does the same inside setup. Setup on its own still stops when an existing production database has pending migrations, and asks you to re-run with `--migrate`. To apply them on their own:
 
 ```bash
 npm run db:migrate
 ```
 
-**Everything in one step.** `npm run deploy:full` builds, deploys, and applies remote migrations:
+**Deploy, then migrate.** `npm run deploy:full` builds, deploys, and then applies remote migrations against the same `DB` binding. `npm run deploy` applies them first, which is the order [Workers Builds](https://developers.cloudflare.com/workers/platform/deploy-buttons/) uses, so a new database has its tables before the Worker is published.
 
 ```bash
 npm run deploy:full
@@ -215,7 +214,7 @@ Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you can publish a s
 
 **Why.** This project uses `@cloudflare/vite-plugin`. `npm run build` writes `.wrangler/deploy/config.json`, which redirects wrangler to `build/server/wrangler.json` (`main: index.js`, `assets.directory: ../client`, `no_bundle: true`, and no `build` key). A bare `wrangler deploy` follows that redirect and uploads whatever is already in `build/` — it runs **no build at all**. This has already happened once.
 
-**What to run instead:** `npm run deploy` (everyday), `npm run setup` or `bash deploy.sh` (first time, and when creating resources), `npm run deploy:full` (deploy plus migrations).
+**What to run instead:** `npm run deploy` (everyday: build, apply remote migrations, deploy), `npm run setup` or `bash deploy.sh` (first time, and when creating resources or rewriting `database_id`), `npm run deploy:full` (deploy, then apply remote migrations).
 
 **There is a guard now.** `npm run build` injects a freshness check into the generated `build/server/wrangler.json` (see [`scripts/deploy-freshness-guard.mjs`](scripts/deploy-freshness-guard.mjs)), so when `build/` is older than the sources a bare `wrangler deploy` fails and tells you what to run (override with `ALLOW_STALE_DEPLOY=1` if you really mean it). `npm run deploy` and `bash deploy.sh` stay the supported entry points.
 
@@ -302,7 +301,7 @@ See: [Resend — Claim Domain](https://resend.com/docs/api-reference/domains/cla
 
 ### Done ✅
 
-- ✅ **Guided first deploy** — `npm run setup` creates the R2 bucket and D1 database, writes `database_id`, builds and deploys, and creates the tables when it has just made an empty database. Later migrations stay opt-in (`--migrate`)
+- ✅ **Guided first deploy** — `npm run setup` creates the R2 bucket and D1 database, writes `database_id`, builds and deploys, and creates the tables when it has just made an empty database. Later migrations on that path stay opt-in (`--migrate`). Everyday `npm run deploy` applies remote migrations itself; ones already applied are skipped
 - ✅ **Receiving sets itself up** — save a Cloudflare API token and account id in Platform Settings, and adding a domain turns on Email Routing and writes the catch-all (`*@your-domain` → this app). Fully automatic only when DNS is on Cloudflare; other DNS providers get a step-by-step guide
 - ✅ **Sending sets itself up** — save a per-domain Resend API key and the app creates the domain on Resend, writes the MX/TXT/CNAME records into your Cloudflare DNS, and starts a verification. Without Cloudflare credentials it lists the records for you to add
 - ✅ **Setup wizard with no default password** — salted PBKDF2-SHA256 hash stored in the database
