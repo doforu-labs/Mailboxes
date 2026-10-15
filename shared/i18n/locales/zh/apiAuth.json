@@ -1,6 +1,6 @@
 {
 	"unauthorized": "未授权",
-	"unauthorizedHint": "请发送 `Authorization: Bearer agk_<64 位 hex>`（或 `X-API-Key`）。可用工具列表见 GET /tools。",
+	"unauthorizedHint": "请发送 `Authorization: Bearer mbx_<64 位 hex>`（或 `X-API-Key`）。已有的 `agk_` 密钥在吊销前仍然有效。可用工具列表见 GET /tools。",
 	"sessionRequiredHint": "请用浏览器在 /login 登录，并在后续请求中带上取得的会话 cookie；或调用 POST /api/v1/auth/login 获取。",
 	"usernameRequired": "请输入用户名",
 	"usernameTooLong": "用户名最多 {{max}} 个字符",

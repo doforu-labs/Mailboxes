@@ -8,8 +8,9 @@
  * ─────────────────────────────────────────────────────────────────────
  *  What this guards
  * ─────────────────────────────────────────────────────────────────────
- * A *global* (non-mailbox-scoped) `agk_…` key lets an external LLM call the
- * internal agent tools without an admin browser session. It is the machine
+ * A *global* (non-mailbox-scoped) `mbx_…` key lets an external LLM call the
+ * internal agent tools without an admin browser session. Legacy `agk_…`
+ * keys are still accepted until revoked. It is the machine
  * counterpart to `requireAuth` (see ./auth.ts), which guards the same routes
  * for humans via an HttpOnly session cookie.
  *
@@ -182,13 +183,14 @@ function apiKeyT(c: Context<ApiKeyContext>): TFunction {
  *
  * Order is significant: `Authorization: Bearer <key>` wins, and `X-API-Key`
  * is consulted only when that yields nothing. Both go through
- * `extractBearerToken`, which accepts a bare `agk_…` value as well as a
- * `Bearer `-prefixed one (case-insensitive scheme), so a client that sends
- * `X-API-Key: Bearer agk_…` for whatever reason still authenticates.
+ * `extractBearerToken`, which accepts a bare `mbx_…` value (and a legacy
+ * `agk_…` value) as well as a `Bearer `-prefixed one (case-insensitive
+ * scheme), so a client that sends `X-API-Key: Bearer mbx_…` for whatever
+ * reason still authenticates.
  *
- * `extractBearerToken` also shape-checks the value (`agk_` + 64 hex), so a
- * key of the wrong family or an obviously malformed token is rejected here
- * without touching the database.
+ * `extractBearerToken` also shape-checks the value (`mbx_` or `agk_` + 64
+ * hex), so a key of the wrong family or an obviously malformed token is
+ * rejected here without touching the database.
  */
 function readApiKey(c: Context<ApiKeyContext>): string | null {
 	const fromAuthorization = extractBearerToken(c.req.header("Authorization"));
@@ -201,7 +203,7 @@ function readApiKey(c: Context<ApiKeyContext>): string | null {
  *
  * This is what separates the two RFC 6750 §3.1 challenges. `readApiKey`
  * returns null both for "no header at all" and for "a header whose value
- * failed the `agk_` + 64-hex shape check", and those deserve different
+ * failed the `mbx_`/`agk_` + 64-hex shape check", and those deserve different
  * answers: the first is a client that has not been told how to authenticate
  * (`Bearer realm="mailboxes"`), the second is a client that *tried* and got
  * it wrong (`…, error="invalid_token"`).
@@ -279,7 +281,8 @@ function isExpired(expiresAt: string | null): boolean {
 }
 
 /**
- * Middleware: require a valid global `agk_…` API key.
+ * Middleware: require a valid global `mbx_…` API key. Legacy `agk_…` keys
+ * are still accepted until revoked.
  *
  * On success sets `c.get("apiKeyInfo")` to `{ id, name, scopes,
  * allowedMailboxes }` and calls `next()`. On any failure returns a

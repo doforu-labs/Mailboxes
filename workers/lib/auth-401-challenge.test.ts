@@ -585,12 +585,16 @@ describe("apiAuth locale bundles", () => {
 
 		assert.strictEqual(
 			en.unauthorizedHint,
-			"Send `Authorization: Bearer agk_<64 hex>` (or `X-API-Key`). List tools at GET /tools.",
+			"Send `Authorization: Bearer mbx_<64 hex>` (or `X-API-Key`). Existing `agk_` keys still work until revoked. List tools at GET /tools.",
 			"unauthorizedHint is the agent-gateway hint; the session surface must not overwrite it",
 		);
 		assert.ok(
-			/^Send `Authorization: Bearer agk_/.test(en.unauthorizedHint),
+			/^Send `Authorization: Bearer mbx_/.test(en.unauthorizedHint),
 			"and it must still read as an API-key instruction",
+		);
+		assert.ok(
+			en.unauthorizedHint.includes("`agk_`"),
+			"the hint must say legacy agk_ keys still work",
 		);
 		assert.ok(
 			!/\/login/.test(en.unauthorizedHint),
@@ -599,7 +603,7 @@ describe("apiAuth locale bundles", () => {
 
 		assert.strictEqual(
 			zh.unauthorizedHint,
-			"请发送 `Authorization: Bearer agk_<64 位 hex>`（或 `X-API-Key`）。可用工具列表见 GET /tools。",
+			"请发送 `Authorization: Bearer mbx_<64 位 hex>`（或 `X-API-Key`）。已有的 `agk_` 密钥在吊销前仍然有效。可用工具列表见 GET /tools。",
 			"the zh bundle must not be overwritten either",
 		);
 	});

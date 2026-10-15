@@ -53,7 +53,7 @@ import { Hono } from "hono";
 import type { Env } from "../types";
 import type { ApiKeyVariables } from "./api-key-middleware";
 import { requireGlobalApiKey } from "./api-key-middleware";
-import { generateApiKey, hashApiKey } from "./api-key-utils";
+import { extractBearerToken, generateApiKey, hashApiKey } from "./api-key-utils";
 
 // ── The two challenges, spelled out ────────────────────────────────
 //
@@ -69,7 +69,7 @@ const CHALLENGE_INVALID_TOKEN =
 	'Bearer realm="mailboxes", error="invalid_token"';
 
 const HINT =
-	"Send `Authorization: Bearer agk_<64 hex>` (or `X-API-Key`). List tools at GET /tools.";
+	"Send `Authorization: Bearer mbx_<64 hex>` (or `X-API-Key`). Existing `agk_` keys still work until revoked. List tools at GET /tools.";
 
 // ── Fake D1 ────────────────────────────────────────────────────────
 
@@ -228,37 +228,41 @@ describe("401 challenge — malformed token", () => {
 	});
 
 	it("reports invalid_token for a correctly-prefixed but wrong-length key", async () => {
-		const { db } = makeFakeDb(new Map());
+		const { db, lookups } = makeFakeDb(new Map());
 		const { app, env } = createApp(db);
 
-		const res = await req(app, env, { Authorization: "Bearer agk_deadbeef" });
-
-		assert.strictEqual(res.status, 401);
-		assert.strictEqual(res.headers.get("WWW-Authenticate"), CHALLENGE_INVALID_TOKEN);
+		for (const token of ["agk_deadbeef", "mbx_deadbeef"]) {
+			const res = await req(app, env, { Authorization: `Bearer ${token}` });
+			assert.strictEqual(res.status, 401, token);
+			assert.strictEqual(res.headers.get("WWW-Authenticate"), CHALLENGE_INVALID_TOKEN);
+		}
+		assert.strictEqual(lookups.length, 0, "a short key of either family never reaches the database");
 	});
 });
 
 // ── Case 3: a well-shaped but unknown key ──────────────────────────
 
 describe("401 challenge — unknown key", () => {
-	it("reports invalid_token and does look the key up", async () => {
-		const { db, lookups } = makeFakeDb(new Map()); // empty: nothing matches
-		const { app, env } = createApp(db);
+	for (const family of ["mbx_", "agk_"]) {
+		it(`reports invalid_token and looks up a well-shaped ${family} key`, async () => {
+			const { db, lookups } = makeFakeDb(new Map()); // empty: nothing matches
+			const { app, env } = createApp(db);
 
-		const unknown = "agk_" + "0".repeat(64);
-		const res = await req(app, env, { Authorization: `Bearer ${unknown}` });
+			const unknown = family + "0".repeat(64);
+			const res = await req(app, env, { Authorization: `Bearer ${unknown}` });
 
-		assert.strictEqual(res.status, 401);
-		assert.strictEqual(res.headers.get("WWW-Authenticate"), CHALLENGE_INVALID_TOKEN);
-		assert.strictEqual(res.headers.get("Cache-Control"), "no-store");
-		assert.strictEqual(lookups.length, 1, "a well-shaped key IS looked up");
-		assert.strictEqual(lookups[0], await hashApiKey(unknown), "the digest, never the plaintext");
+			assert.strictEqual(res.status, 401);
+			assert.strictEqual(res.headers.get("WWW-Authenticate"), CHALLENGE_INVALID_TOKEN);
+			assert.strictEqual(res.headers.get("Cache-Control"), "no-store");
+			assert.strictEqual(lookups.length, 1, "a well-shaped key IS looked up");
+			assert.strictEqual(lookups[0], await hashApiKey(unknown), "the digest, never the plaintext");
 
-		assert.deepStrictEqual(await res.json(), {
-			error: "Unauthorized",
-			hint: HINT,
+			assert.deepStrictEqual(await res.json(), {
+				error: "Unauthorized",
+				hint: HINT,
+			});
 		});
-	});
+	}
 });
 
 // ── Case 4: revoked and expired keys ───────────────────────────────
@@ -326,7 +330,10 @@ describe("401 challenge — revoked / expired key", () => {
 
 describe("success path is untouched", () => {
 	it("lets a valid key through and sets apiKeyInfo", async () => {
-		const { plainText, hash } = await generateApiKey();
+		const { plainText, prefix, hash } = await generateApiKey();
+		assert.match(plainText, /^mbx_[0-9a-f]{64}$/);
+		assert.strictEqual(prefix, plainText.slice(0, 12));
+		assert.match(prefix, /^mbx_[0-9a-f]{8}$/);
 		const rows = new Map<string, FakeKeyRow>([
 			[
 				hash,
@@ -371,5 +378,54 @@ describe("success path is untouched", () => {
 		const res = await req(app, env, { "X-API-Key": plainText });
 
 		assert.strictEqual(res.status, 200);
+	});
+
+	it("still accepts a legacy agk_ key until it is revoked", async () => {
+		const legacy = `agk_${"ab".repeat(32)}`;
+		assert.match(legacy, /^agk_[0-9a-f]{64}$/);
+		const hash = await hashApiKey(legacy);
+		const rows = new Map<string, FakeKeyRow>([
+			[
+				hash,
+				{
+					id: "key-legacy",
+					name: "legacy key",
+					scopes: "mail:read",
+					allowed_mailboxes: null,
+					expires_at: null,
+					revoked_at: null,
+				},
+			],
+		]);
+		const { db } = makeFakeDb(rows);
+		const { app, env } = createApp(db);
+
+		const res = await req(app, env, { Authorization: `Bearer ${legacy}` });
+
+		assert.strictEqual(res.status, 200);
+		assert.deepStrictEqual(await res.json(), { tools: [], key: "legacy key" });
+	});
+});
+
+describe("key families", () => {
+	it("mints only mbx_ + 64 lowercase hex", async () => {
+		const { plainText, prefix, hash } = await generateApiKey();
+		assert.match(plainText, /^mbx_[0-9a-f]{64}$/);
+		assert.strictEqual(plainText.length, "mbx_".length + 64);
+		assert.strictEqual(prefix, plainText.slice(0, 12));
+		assert.strictEqual(hash, await hashApiKey(plainText));
+		assert.ok(!plainText.startsWith("agk_"));
+		assert.ok(!plainText.startsWith("mb_"));
+	});
+
+	it("extracts mbx_ and legacy agk_, and rejects retired mb_ and short keys", () => {
+		const mbx = `mbx_${"cd".repeat(32)}`;
+		const agk = `agk_${"cd".repeat(32)}`;
+		assert.strictEqual(extractBearerToken(`Bearer ${mbx}`), mbx);
+		assert.strictEqual(extractBearerToken(`bearer ${agk}`), agk);
+		assert.strictEqual(extractBearerToken(agk), agk);
+		assert.strictEqual(extractBearerToken(`Bearer mb_${"cd".repeat(32)}`), null);
+		assert.strictEqual(extractBearerToken("Bearer mbx_deadbeef"), null);
+		assert.strictEqual(extractBearerToken("Bearer agk_DEADBEEF" + "ab".repeat(28)), null);
 	});
 });

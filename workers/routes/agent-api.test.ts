@@ -27,7 +27,7 @@
  * ── Real routes, real auth ──────────────────────────────────────────────────
  * The sub-app is mounted exactly as `../index.ts` mounts it
  * (`new Hono().route("/", agentApiRoute)`) and driven through `app.request()`.
- * Authentication is real too: the request carries an actual `agk_…` key whose
+ * Authentication is real too: the request carries an actual `mbx_…` key whose
  * SHA-256 hash is present in a SQLite-backed `api_keys` table, so
  * `requireGlobalApiKey` runs its production lookup and the handlers run because
  * the key resolved — not because the middleware was bypassed.
@@ -107,13 +107,14 @@ const SCHEMA_SQL = `
 /**
  * The plaintext key the request presents.
  *
- * Shaped exactly like a production key (`agk_` + 64 lowercase hex) because
+ * Shaped exactly like a production key (`mbx_` + 64 lowercase hex) because
  * `extractBearerToken` shape-checks the value BEFORE any lookup: a key of the
  * wrong family is rejected without touching the database, so a fixture with a
  * short key would make every case here fail at the parser and prove nothing
- * about the routes under test.
+ * about the routes under test. A separate case presents a legacy `agk_` key
+ * of the same length.
  */
-const API_KEY = `agk_${"7f3c".repeat(16)}`;
+const API_KEY = `mbx_${"7f3c".repeat(16)}`;
 
 /** SHA-256 hex, computed the way `api-key-utils` does. */
 async function sha256Hex(value: string): Promise<string> {
@@ -133,7 +134,9 @@ function unwrapDriverValue(arg: unknown): unknown {
  * A `D1Database` backed by a real SQLite engine, plus an `Env` carrying a key
  * row that matches {@link API_KEY}.
  */
-async function createEnv(): Promise<{ env: Env; sqlite: InstanceType<DatabaseSyncLike> }> {
+async function createEnv(
+	apiKey: string = API_KEY,
+): Promise<{ env: Env; sqlite: InstanceType<DatabaseSyncLike> }> {
 	const Ctor = DatabaseSyncCtor;
 	if (!Ctor) throw new Error("node:sqlite unavailable");
 
@@ -146,8 +149,8 @@ async function createEnv(): Promise<{ env: Env; sqlite: InstanceType<DatabaseSyn
 		.run(
 			"key-1",
 			"route test key",
-			await sha256Hex(API_KEY),
-			API_KEY.slice(0, 12),
+			await sha256Hex(apiKey),
+			apiKey.slice(0, 12),
 			"all",
 			// `null` = unrestricted, which is what most cases want.
 			null,
@@ -250,6 +253,19 @@ describe("gateway discovery surface (real routes)", () => {
 		// the middleware's decision rather than a missing guard.
 		const anonymous = await createApp().request("/tools", { method: "GET" }, env);
 		assert.strictEqual(anonymous.status, 401);
+	});
+
+	it("still accepts a legacy agk_ key on the gateway", { skip: sqliteSkip }, async () => {
+		const legacy = `agk_${"7f3c".repeat(16)}`;
+		const { env } = await createEnv(legacy);
+		const res = await createApp().request(
+			"/tools",
+			{ method: "GET", headers: { Authorization: `Bearer ${legacy}` } },
+			env,
+		);
+		assert.strictEqual(res.status, 200);
+		const body = (await res.json()) as { info?: { auth?: { prefix?: string } } };
+		assert.strictEqual(body.info?.auth?.prefix, "mbx_");
 	});
 
 	// ── C3: MCP `initialize` instructions ─────────────────────────
@@ -433,7 +449,7 @@ describe("gateway discovery surface (real routes)", () => {
 			scheme: "bearer",
 			header: "Authorization",
 			alternativeHeader: "X-API-Key",
-			prefix: "agk_",
+			prefix: "mbx_",
 		});
 
 		// The advertised version is the deployable's own — pinned against

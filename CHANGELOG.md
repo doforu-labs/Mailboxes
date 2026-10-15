@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **New agent API keys use the `mbx_` prefix.** Fresh keys are `mbx_` followed
+  by 64 lowercase hex characters (32 random bytes, the same entropy as
+  before). Verification still accepts existing `agk_` + 64 hex keys, so a
+  key already deployed keeps working until it is revoked. Retired `mb_` send
+  keys stay rejected. `GET /tools` advertises `auth.prefix` as `mbx_`, and
+  the 401 hint names the new shape.
+
+### Documentation
+
+- **README screenshots.** `demo_app.png` and `demo_domains.png` are replaced
+  with the current three-pane inbox (AI assistant draft, Review & send) and
+  the Settings → Domains list. The image paths in both READMEs are unchanged.
+
 ## [0.2.1] - 2026-10-13
 
 ### Added
@@ -144,9 +159,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway.** An outside LLM or MCP client can now call the same 14 tools the
   built-in agent uses. Create keys under **Settings → Agent API Keys**
   (`/api/v1/agent-api-keys`: `POST` to create, `GET` to list, `DELETE /:id` to
-  revoke — session-cookie authenticated). A key is `agk_` followed by 64 hex
-  characters, stored as a SHA-256 hash, **shown exactly once** at creation, and
-  revocable; every use is audited. Callers authenticate with
+  revoke — session-cookie authenticated). This release minted `agk_` followed
+  by 64 hex characters, stored as a SHA-256 hash, **shown exactly once** at
+  creation, and revocable; every use is audited. New keys are `mbx_`; an
+  `agk_` key from this release still works until revoked. Callers authenticate with
   `Authorization: Bearer <key>` against either:
   - **`POST /mcp`** — a minimal, hand-written, **stateless** MCP server
     (JSON-RPC 2.0: `initialize`, `tools/list`, `tools/call`, `ping`), or

@@ -223,7 +223,7 @@ npm run deploy:full
 
 ## 外部接入
 
-外面的客户端拿一把 Bearer `agk_…` 密钥，就能**读信，也能发信**。工具和应用内助手是同一套 **14 个**，不用登录浏览器。密钥缺失或错误会返回 **401**。把密钥放在 `X-API-Key` 里也同样认。
+外面的客户端拿一把 Bearer `mbx_…` 密钥，就能**读信，也能发信**。工具和应用内助手是同一套 **14 个**，不用登录浏览器。密钥缺失或错误会返回 **401**。把密钥放在 `X-API-Key` 里也同样认。更早签发的 `agk_…` 密钥在作废之前仍然有效。
 
 有了这把密钥，客户端可以：
 
@@ -241,13 +241,13 @@ npm run deploy:full
 
 **Grok Bot**，以及同类、能讲 MCP 或 HTTP 工具的桌面应用和智能体，都是这样接：把地址指到你的应用，填上密钥。
 
-**创建密钥。** 登录后打开 **Settings** → **Agent API Keys**（`/api/v1/agent-api-keys`，用登录 Cookie 认证）。密钥形如 `agk_` 加 64 位十六进制字符，以 SHA-256 哈希存在数据库里，创建时**只显示一次**，之后可以随时作废。每次使用都会留下记录。
+**创建密钥。** 登录后打开 **Settings** → **Agent API Keys**（`/api/v1/agent-api-keys`，用登录 Cookie 认证）。新密钥形如 `mbx_` 加 64 位十六进制字符，以 SHA-256 哈希存在数据库里，创建时**只显示一次**，之后可以随时作废。每次使用都会留下记录。已有的 `agk_` 密钥在作废前仍然可用。
 
 **示例。** 用 HTTP 读收件箱。把主机名和邮箱地址换成你自己的：
 
 ```bash
 curl -s https://YOUR_APP/tools/call \
-  -H "Authorization: Bearer agk_…" \
+  -H "Authorization: Bearer mbx_…" \
   -H "Content-Type: application/json" \
   -d '{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}'
 ```
@@ -256,7 +256,7 @@ curl -s https://YOUR_APP/tools/call \
 
 ```bash
 curl -s https://YOUR_APP/mcp \
-  -H "Authorization: Bearer agk_…" \
+  -H "Authorization: Bearer mbx_…" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}}'
 ```
@@ -360,8 +360,8 @@ curl -s https://YOUR_APP/mcp \
     A. Cloudflare Email Routing（catch-all 规则）→ email() 处理器
     B. Resend 收信 Webhook → POST /api/v1/inbound/resend → 回拉正文
 
-  外部客户端（MCP 或 HTTP）用 Bearer `agk_…` API Key 认证：
-    Bearer agk_… → POST /mcp | GET /tools | POST /tools/call（工具网关）
+  外部客户端（MCP 或 HTTP）用 Bearer `mbx_…` API Key 认证（已有的 `agk_…` 密钥在作废前仍然有效）：
+    Bearer mbx_… → POST /mcp | GET /tools | POST /tools/call（工具网关）
 ```
 
 Worker 没有再绑定别的 Cloudflare 资源：没有 KV、Queues、Durable Objects、Vectorize，也没有定时任务。MCP 服务和 HTTP 工具网关都是手写的、无状态的：用一把 API 密钥（数据库里的一行）认证，读写的是同一套数据库和文件存储，工具定义也是那 14 个。每个邮箱的配置是 R2 里单独的一个文件，D1 里的邮件按邮箱分开。

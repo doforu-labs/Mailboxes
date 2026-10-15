@@ -1,6 +1,6 @@
 {
 	"unauthorized": "Unauthorized",
-	"unauthorizedHint": "Send `Authorization: Bearer agk_<64 hex>` (or `X-API-Key`). List tools at GET /tools.",
+	"unauthorizedHint": "Send `Authorization: Bearer mbx_<64 hex>` (or `X-API-Key`). Existing `agk_` keys still work until revoked. List tools at GET /tools.",
 	"sessionRequiredHint": "Sign in at /login in your browser and send the session cookie with the request, or call POST /api/v1/auth/login to obtain one.",
 	"usernameRequired": "Username is required",
 	"usernameTooLong": "Username must be at most {{max}} characters",
