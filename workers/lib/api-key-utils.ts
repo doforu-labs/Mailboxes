@@ -6,20 +6,24 @@
  * Global API key primitives — pure functions, no I/O, no DB, no framework.
  *
  * ─────────────────────────────────────────────────────────────────────
- *  KEY FORMAT:  agk_ + 64 lowercase hex characters (32 random bytes)
+ *  KEY FORMAT:  mbx_ + 64 lowercase hex characters (32 random bytes)
  * ─────────────────────────────────────────────────────────────────────
  *
- *     agk_<64 hex>            full key, shown to the operator exactly once
- *     agk_<8 hex>             `prefix`, 12 chars, stored for lookup + UI
+ *     mbx_<64 hex>            full key, shown to the operator exactly once
+ *     mbx_<8 hex>             `prefix`, 12 chars, stored for lookup + UI
  *     sha256(full key) hex    `hash`, the only value worth persisting
  *
- * An earlier revision of this file minted `mb_` keys with 24 random bytes
- * (192 bits of entropy) and compared hashes with `===`. Both were retired in
- * commit ecd1413 and are deliberately NOT accepted here:
+ * Two earlier families exist, and they are not treated the same:
  *
- *   - The `agk_` prefix keeps the new key family distinguishable from `mb_`
- *     rows in logs, secret scanners and `Authorization` headers, so a leaked
- *     legacy key can be identified (and revoked) without ambiguity.
+ *   - An earlier revision minted `mb_` keys with 24 random bytes (192 bits
+ *     of entropy) and compared hashes with `===`. Both were retired in
+ *     commit ecd1413 and are deliberately NOT accepted here. `mbx_`
+ *     (Mailboxes) stays distinguishable from those retired send keys in
+ *     logs, secret scanners and `Authorization` headers, so a leaked `mb_`
+ *     key can be identified without ambiguity.
+ *   - The previous mint prefix was `agk_`. Verification still accepts
+ *     `agk_` + 64 hex so a deployed key is not orphaned. New keys are minted
+ *     only as `mbx_`; an `agk_` key keeps working until it is revoked.
  *   - 32 bytes (256 bits) matches the SHA-256 digest width, so the key is
  *     never the weak link in the chain.
  *   - String `===` over the hash would leak, byte by byte, how many leading
@@ -34,8 +38,19 @@
  * everything stateful lives at the call site.
  */
 
-/** Marks the `agk_` key family. Changing it orphans every issued key. */
-const KEY_PREFIX = "agk_";
+/**
+ * Prefix minted on new keys. `mbx_` names Mailboxes and stays distinct from
+ * the retired `mb_` send-key family. Legacy `agk_` keys are still accepted
+ * by the shape check below; only minting moves.
+ */
+export const KEY_PREFIX = "mbx_" as const;
+
+/**
+ * Previous mint prefix. Accepted by {@link extractBearerToken} so keys
+ * already in the field keep working until revoked. Not used by
+ * {@link generateApiKey}.
+ */
+const LEGACY_KEY_PREFIX = "agk_" as const;
 
 /** Bytes of CSPRNG output per key. 32 bytes = 256 bits = the SHA-256 width. */
 const KEY_BYTES = 32;
@@ -51,11 +66,22 @@ const KEY_BYTES = 32;
  */
 const PREFIX_HEX_CHARS = 8;
 
-/** Full prefix length in characters: "agk_" + 8. */
+/**
+ * Full prefix length in characters: "mbx_" + 8.
+ *
+ * `agk_` is the same length, so a legacy row's stored prefix stays 12
+ * characters and the UI column does not change width.
+ */
 const PREFIX_LENGTH = KEY_PREFIX.length + PREFIX_HEX_CHARS;
 
-/** `agk_` followed by exactly 64 lowercase hex characters. */
-const KEY_PATTERN = /^agk_[0-9a-f]{64}$/;
+/**
+ * Current `mbx_` or legacy `agk_`, followed by exactly 64 lowercase hex
+ * characters. Built from the two prefix constants so the shape check cannot
+ * drift from what {@link generateApiKey} mints. `mb_` is absent on purpose.
+ */
+const KEY_PATTERN = new RegExp(
+	`^(?:${KEY_PREFIX}|${LEGACY_KEY_PREFIX})[0-9a-f]{64}$`,
+);
 
 /**
  * Lowercase hex encoding.
@@ -153,8 +179,9 @@ export async function generateApiKey(): Promise<{
  * Pull the key out of an `Authorization` header value.
  *
  * Accepts a `Bearer <key>` pair or a bare key, and returns null for anything
- * else — a wrong scheme, a missing header, a non-`agk_` key family, or a value
- * that does not have the exact shape of a key we issue.
+ * else — a wrong scheme, a missing header, a key family we do not accept
+ * (`mb_` and anything other than `mbx_` or legacy `agk_`), or a value that
+ * does not have the exact shape of a key we issue.
  *
  * `Bearer` is matched case-insensitively per RFC 7235 (auth-scheme is
  * case-insensitive), which also covers the `bearer`/`BEARER` variants some
@@ -172,12 +199,12 @@ export function extractBearerToken(
 
 	const trimmed = header.trim();
 
-	// Bare key: "agk_..."
+	// Bare key: "mbx_..." or a legacy "agk_..."
 	if (!trimmed.includes(" ")) {
 		return KEY_PATTERN.test(trimmed) ? trimmed : null;
 	}
 
-	// Scheme + credentials: "Bearer agk_..."
+	// Scheme + credentials: "Bearer mbx_..." (legacy "Bearer agk_..." too)
 	// Split on the first space only; the credentials part cannot contain one,
 	// but this keeps the parse honest about where the scheme ends.
 	const separator = trimmed.indexOf(" ");

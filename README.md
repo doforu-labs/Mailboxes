@@ -223,7 +223,7 @@ Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you can publish a s
 
 ## External access
 
-An outside agent can **read and send** with a Bearer `agk_…` key — the same **14 tools** as the in-app assistant, without a browser login. A missing or wrong key returns **401**. `X-API-Key` is accepted as well.
+An outside agent can **read and send** with a Bearer `mbx_…` key — the same **14 tools** as the in-app assistant, without a browser login. A missing or wrong key returns **401**. `X-API-Key` is accepted as well. Keys minted earlier as `agk_…` still work until they are revoked.
 
 With that key the client can:
 
@@ -241,13 +241,13 @@ The rest of the 14 (mark read, move, delete, update a draft, discard a draft) ar
 
 **Grok Bot**, and similar desktop or agent hosts that speak MCP or HTTP tools, connect this way: point the host at your app and give it the key.
 
-**Create a key.** Sign in and open **Settings** → **Agent API Keys** (`/api/v1/agent-api-keys`, session-cookie authenticated). Keys look like `agk_` followed by 64 hex characters, are stored in the database as a SHA-256 hash, are **shown exactly once** when created, and can be revoked at any time. Every use is recorded.
+**Create a key.** Sign in and open **Settings** → **Agent API Keys** (`/api/v1/agent-api-keys`, session-cookie authenticated). New keys look like `mbx_` followed by 64 hex characters, are stored in the database as a SHA-256 hash, are **shown exactly once** when created, and can be revoked at any time. Every use is recorded. Existing `agk_` keys keep working until revoked.
 
 **Example.** Read the inbox over HTTP. Replace the host and the mailbox address:
 
 ```bash
 curl -s https://YOUR_APP/tools/call \
-  -H "Authorization: Bearer agk_…" \
+  -H "Authorization: Bearer mbx_…" \
   -H "Content-Type: application/json" \
   -d '{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}'
 ```
@@ -256,7 +256,7 @@ The same read over MCP:
 
 ```bash
 curl -s https://YOUR_APP/mcp \
-  -H "Authorization: Bearer agk_…" \
+  -H "Authorization: Bearer mbx_…" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}}'
 ```
@@ -361,8 +361,9 @@ The sections above are enough to run it. This one is the map.
     A. Cloudflare Email Routing (catch-all rule) -> email() handler
     B. Resend inbound webhook -> POST /api/v1/inbound/resend -> fetch body
 
-  External clients (MCP or HTTP) authenticate with a Bearer `agk_…` API key:
-    Bearer agk_… -> POST /mcp | GET /tools | POST /tools/call (tool gateway)
+  External clients (MCP or HTTP) authenticate with a Bearer `mbx_…` API key
+  (legacy `agk_…` keys still work until revoked):
+    Bearer mbx_… -> POST /mcp | GET /tools | POST /tools/call (tool gateway)
 ```
 
 The Worker binds nothing else on Cloudflare — no KV, no Queues, no Durable Objects, no Vectorize, and no Cron triggers. The MCP server and the HTTP tool gateway are hand-written and stateless: they authenticate with an API key (a database row), read and write the same database and file storage as the rest of the app, and reuse the same 14 tool definitions. Each mailbox's settings are its own file in R2, and its messages in D1 are keyed by mailbox.

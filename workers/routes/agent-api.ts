@@ -17,7 +17,8 @@
  *   2. **HTTP tool gateway** (`GET /tools`, `POST /tools/call`) — the same
  *      tools in OpenAI `functions` shape, for callers that do not speak MCP.
  *
- * Every route is authenticated by a *global* `agk_…` API key via
+ * Every route is authenticated by a *global* `mbx_…` API key (legacy `agk_…`
+ * keys are still accepted until revoked) via
  * `requireGlobalApiKey` (`../lib/api-key-middleware.ts`). There is no admin
  * session, no cookie and no gateway-side re-implementation of authorization:
  * the key is the identity, and `apiKeyInfo` is the only thing the middleware
@@ -84,6 +85,7 @@ import {
 	requireGlobalApiKey,
 	type ApiKeyVariables,
 } from "../lib/api-key-middleware";
+import { KEY_PREFIX } from "../lib/api-key-utils";
 import {
 	listMcpTools,
 	listOpenAiTools,
@@ -183,7 +185,7 @@ const TOOL_GATEWAY_INFO = {
 		scheme: "bearer",
 		header: "Authorization",
 		alternativeHeader: "X-API-Key",
-		prefix: "agk_",
+		prefix: KEY_PREFIX,
 	},
 } as const;
 
@@ -578,7 +580,7 @@ agentApiRoute.delete("/mcp", (c) =>
  * and needs no migration. What the block adds is the two things a caller
  * otherwise has to reverse-engineer from a 401: what this endpoint is called
  * and at which version, and how to authenticate (`Authorization: Bearer
- * agk_…`, or `X-API-Key`).
+ * mbx_…` — legacy `agk_…` keys still work until revoked — or `X-API-Key`).
  *
  * Deliberately no `docs` pointer: see `TOOL_GATEWAY_INFO` for why the field
  * was removed rather than left pointing at an unimplemented route.
