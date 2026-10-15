@@ -36,7 +36,7 @@ Everything here ships in **v0.2.1**. For what is not built yet, see the [roadmap
 - **Mail stays in your Cloudflare account.** Messages live in a database ([D1](https://developers.cloudflare.com/d1/)). Mailbox settings and attachments live in file storage ([R2](https://developers.cloudflare.com/r2/)).
 - **A login with no default password.** The first visitor creates the admin account in a setup wizard. The password is stored as a salted hash. Sessions last 7 days, in an HttpOnly cookie.
 - **A few looks.** Three extra themes (midnight, porcelain, sakura) besides the default, each in light and dark. See [`app/themes/README.md`](app/themes/README.md).
-- **A key for an outside assistant.** The same 14 tools can be called with an API key. See [External access](#external-access).
+- **A key for an outside assistant.** Grok Bot, or any other host that speaks MCP or HTTP tools, can read and send with the same 14 tools. See [External access](#external-access).
 
 <div align="center">
   <img src="./demo_domains.png" alt="The Settings page in Mailboxes: Platform Settings shown as configured, and a Domains list holding four domains at once" width="620">
@@ -223,16 +223,47 @@ Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you can publish a s
 
 ## External access
 
-An outside assistant — another LLM app, or an MCP client — can use the same **14 tools** as the in-app assistant, with a **global Agent API key** instead of a browser login.
+An outside agent can **read and send** with a Bearer `agk_…` key — the same **14 tools** as the in-app assistant, without a browser login. A missing or wrong key returns **401**. `X-API-Key` is accepted as well.
+
+With that key the client can:
+
+- **List mailboxes** — `list_mailboxes`. Call this first. Almost every other tool needs the `mailboxId` it returns (the mailbox address).
+- **Read and search** — `list_emails`, `get_email`, `search_emails`, `get_thread`.
+- **Draft** — `draft_email` and `draft_reply` take a plain `body`. They save a draft and do not send.
+- **Send** — `send_email` and `send_reply` take `bodyHtml`. Calling either one delivers real mail. This path has no confirm screen in the app; the caller is the confirmation. The in-app assistant still asks you before it sends.
+
+The rest of the 14 (mark read, move, delete, update a draft, discard a draft) are on the same list. `GET /tools` returns all of them.
+
+**Clients.** Any MCP client, or any caller that uses an HTTP tool list:
+
+- **MCP** — `POST /mcp`, with `initialize`, `tools/list`, `tools/call`, and `ping`. Stateless: no session id, no Durable Object.
+- **HTTP tool gateway** — `GET /tools` returns the schemas (OpenAI `functions` shape). `POST /tools/call` runs one, with a body of `{ "name", "arguments" }`.
+
+**Grok Bot**, and similar desktop or agent hosts that speak MCP or HTTP tools, connect this way: point the host at your app and give it the key.
 
 **Create a key.** Sign in and open **Settings** → **Agent API Keys** (`/api/v1/agent-api-keys`, session-cookie authenticated). Keys look like `agk_` followed by 64 hex characters, are stored in the database as a SHA-256 hash, are **shown exactly once** when created, and can be revoked at any time. Every use is recorded.
 
-**Call a tool.** Send `Authorization: Bearer <key>` to either surface:
+**Example.** Read the inbox over HTTP. Replace the host and the mailbox address:
 
-- **MCP server** — `POST /mcp`, a small, hand-written, **stateless** JSON-RPC 2.0 endpoint supporting `initialize`, `tools/list`, `tools/call`, and `ping`. It needs no session id and no Durable Object.
-- **HTTP tool gateway** — `GET /tools` returns the tool schemas (OpenAI `functions` shape) and `POST /tools/call` runs one, for callers that don't speak MCP.
+```bash
+curl -s https://YOUR_APP/tools/call \
+  -H "Authorization: Bearer agk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}'
+```
 
-Both reuse the built-in tool definitions. External calls take the **deterministic path**: draft and send tools skip the assistant's AI body-rewriting check, so a reply goes out exactly as written. Read-only results are **limited to a public field list** — internal ids, raw message headers, and other internal fields are left out.
+The same read over MCP:
+
+```bash
+curl -s https://YOUR_APP/mcp \
+  -H "Authorization: Bearer agk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}}'
+```
+
+To send, call `send_email` with `to`, `subject`, `bodyHtml`, and `mailboxId`. `send_reply` also needs the original email's `id`. To draft instead, call `draft_email` or `draft_reply` with a plain `body` (not `bodyHtml`).
+
+Both surfaces use the built-in tool definitions. External calls take the **deterministic path**: draft and send skip the assistant's AI rewrite, so a message goes out exactly as written. Read-only results are **limited to a public field list** — internal ids, raw message headers, and other internal fields are left out.
 
 > This replaced the old per-domain `mb_…` sending keys, which were removed along with `POST /api/v1/send`. There is no send-only HTTP endpoint today. Outside callers use the tool gateway or MCP above.
 

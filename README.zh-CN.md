@@ -36,7 +36,7 @@ Mailboxes 把这两件事放在一起：你域名上的邮箱，和一个会起�
 - **邮件留在你的账号里。** 正文在数据库（[D1](https://developers.cloudflare.com/d1/)）里，邮箱配置和附件在文件存储（[R2](https://developers.cloudflare.com/r2/)）里。
 - **登录没有默认密码。** 第一个打开页面的人在设置向导里创建管理员账号，密码以加盐哈希保存。登录状态保持 7 天，放在 HttpOnly Cookie 里。
 - **几套外观。** 默认之外还有三套主题（midnight、porcelain、sakura），每套都有浅色和深色。见 [`app/themes/README.md`](app/themes/README.md)。
-- **外面的助手也能接进来。** 同一套 14 个工具可以用 API 密钥调用。见[外部接入](#外部接入)。
+- **外面的助手也能读信、发信。** 比如 **Grok Bot**，以及其它支持 MCP 或 HTTP 工具的桌面应用和智能体，用的是同一套 14 个工具。见[外部接入](#外部接入)。
 
 <div align="center">
   <img src="./demo_domains.png" alt="Mailboxes 的 Settings 页：Platform Settings 显示已配置，Domains 列表里同时列出了 4 个域名" width="620">
@@ -223,16 +223,47 @@ npm run deploy:full
 
 ## 外部接入
 
-如果你已经有自己的 AI 客户端，或一个 MCP 客户端，可以用一把**全局 Agent API Key** 调用和应用内助手相同的 **14 个工具**，不必走浏览器登录。
+外面的客户端拿一把 Bearer `agk_…` 密钥，就能**读信，也能发信**。工具和应用内助手是同一套 **14 个**，不用登录浏览器。密钥缺失或错误会返回 **401**。把密钥放在 `X-API-Key` 里也同样认。
+
+有了这把密钥，客户端可以：
+
+- **列出邮箱** —— `list_mailboxes`。先调这个。其它工具几乎都要它返回的 `mailboxId`（也就是邮箱地址）。
+- **读和搜索** —— `list_emails`、`get_email`、`search_emails`、`get_thread`。
+- **起草** —— `draft_email` 和 `draft_reply` 的正文是纯文本 `body`。只存进草稿箱，不发送。
+- **发送** —— `send_email` 和 `send_reply` 的正文是 `bodyHtml`。调用其中任何一个，信就会真的发出去。这条路径上没有应用里的确认框，调用方自己就是确认。应用内的助手在发送前仍会先问你。
+
+其余工具（标已读、移动、删除、改草稿、丢掉草稿）也在这 14 个里。`GET /tools` 会把全部列出来。
+
+**能接哪些客户端。** 任何 MCP 客户端，或任何会先拿一份 HTTP 工具列表再调用的程序：
+
+- **MCP** —— `POST /mcp`，支持 `initialize`、`tools/list`、`tools/call` 和 `ping`。无状态：不需要 session id，也不需要 Durable Object。
+- **HTTP 工具网关** —— `GET /tools` 返回工具描述（OpenAI `functions` 的形状）。`POST /tools/call` 执行其中一个，请求体是 `{ "name", "arguments" }`。
+
+**Grok Bot**，以及同类、能讲 MCP 或 HTTP 工具的桌面应用和智能体，都是这样接：把地址指到你的应用，填上密钥。
 
 **创建密钥。** 登录后打开 **Settings** → **Agent API Keys**（`/api/v1/agent-api-keys`，用登录 Cookie 认证）。密钥形如 `agk_` 加 64 位十六进制字符，以 SHA-256 哈希存在数据库里，创建时**只显示一次**，之后可以随时作废。每次使用都会留下记录。
 
-**调用工具。** 在下面任一入口带上 `Authorization: Bearer <key>`：
+**示例。** 用 HTTP 读收件箱。把主机名和邮箱地址换成你自己的：
 
-- **MCP 服务** —— `POST /mcp`。一个很小的、手写的、**无状态** JSON-RPC 2.0 端点，支持 `initialize`、`tools/list`、`tools/call` 和 `ping`。不需要 session id，也不需要 Durable Object。
-- **HTTP 工具网关** —— `GET /tools` 返回工具描述（OpenAI `functions` 的形状），`POST /tools/call` 执行其中一个，给不讲 MCP 的调用方用。
+```bash
+curl -s https://YOUR_APP/tools/call \
+  -H "Authorization: Bearer agk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}'
+```
 
-两个入口用的是同一套工具定义。外部调用走**确定性路径**：起草和发送会跳过助手对正文的 AI 改写检查，回复按所写内容原样发出。只读结果**只保留公开字段**——内部 id、原始邮件头，以及其它内部字段不会返回。
+同一条读取，走 MCP：
+
+```bash
+curl -s https://YOUR_APP/mcp \
+  -H "Authorization: Bearer agk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}}'
+```
+
+要发信，调用 `send_email`，带上 `to`、`subject`、`bodyHtml` 和 `mailboxId`。`send_reply` 还要原来那封信的 `id`。只起草的话，用 `draft_email` 或 `draft_reply`，正文是纯文本 `body`，不是 `bodyHtml`。
+
+两个入口用的是同一套工具定义。外部调用走**确定性路径**：起草和发送会跳过助手对正文的 AI 改写，发出去的就是所写的内容。只读结果**只保留公开字段**——内部 id、原始邮件头，以及其它内部字段不会返回。
 
 > 这取代了以前按域名配置的 `mb_…` 发信密钥；那些密钥和 `POST /api/v1/send` 已经一起去掉了。现在没有「只发信」的 HTTP 接口。外部调用走上面的工具网关或 MCP。
 
