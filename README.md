@@ -1,6 +1,6 @@
 <div align="center">
   <h1><picture><source media="(prefers-color-scheme: dark)" srcset="./logo-rounded-dark.png"><img src="./logo-rounded.png" alt="The Mailboxes icon: a white letter M whose middle valley doubles as an envelope flap, on a black tile" width="48" align="absmiddle"></picture>&nbsp;&nbsp;Mailboxes</h1>
-  <p><em>Send and receive email from your own domain — a completely free, self-hosted email client running entirely on Cloudflare, with a built-in AI agent.</em></p>
+  <p><em>Use your own domain for product email, plus an AI assistant that asks before it sends. Runs on Cloudflare's free tiers.</em></p>
 
   <p>
     <a href="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml/badge.svg"></a>
@@ -18,93 +18,101 @@
 
 > **English** · [简体中文](./README.zh-CN.md)
 
-**Mailboxes is free to run.** There are no servers to rent and no per-seat fees — the whole thing lives inside your own Cloudflare account and the Resend free tier. For a personal inbox or a small product, your monthly bill is **$0**.
+`support@` and `hello@` should live on the domain you already own. A hosted inbox charges for every seat, and a mailbox on its own still leaves you writing every reply.
 
-## Why Mailboxes
+Mailboxes is that inbox, with an assistant beside it. It runs in **your Cloudflare account**, on the free tiers — nothing to rent, and nothing to pay Mailboxes. Incoming mail arrives through [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/). Outgoing mail goes out through [Resend](https://resend.com), with SPF, DKIM, and DMARC so it is set up to reach Gmail and Outlook. The assistant can read what came in, search older threads, and draft a reply. **It does not send until you confirm.**
 
-Give your product a real inbox on your own domain — `support@`, `hello@`, `sales@` — for **sending, receiving, and drafting replies**, without paying per mailbox per month.
+A personal inbox or a small product stays at **$0 a month**. The allowances are in [What it costs](#what-it-costs).
 
-Built for developers shipping products to a global audience:
+## What you get
 
-- **Free by design** — runs within Cloudflare's and Resend's free tiers. No always-on server, no per-user pricing, no credit card to start. → [What it costs](#what-it-costs)
-- **Your domain, your data** — mail is stored in your own Cloudflare account: messages in a [D1](https://developers.cloudflare.com/d1/) (SQLite) database, mailbox configuration and attachments in [R2](https://developers.cloudflare.com/r2/). Nothing leaves your account.
-- **Deliverability that lands** — outbound mail goes through [Resend](https://resend.com) with proper SPF/DKIM/DMARC, so it reaches Gmail and Outlook instead of spam.
-- **Multi-domain, multi-mailbox** — run several domains and as many mailboxes as you like (e.g. a catch-all) from one dashboard.
-- **AI inbox agent** — a side panel with **14 tools** that reads incoming mail, searches your conversations, and drafts replies — always requiring your explicit confirmation before sending.
-- **Bring your own model** — defaults to Cloudflare Workers AI (no key needed) and can be pointed at any OpenAI-compatible endpoint per mailbox.
-- **Global at the edge** — Cloudflare's network serves it from wherever your users are, with no region to pick and nothing to keep online at 3 a.m.
+Everything here ships in **v0.2.1**. For what is not built yet, see the [roadmap](#roadmap).
 
-## What it costs
-
-| Component | Free tier | Used for |
-| --- | --- | --- |
-| Cloudflare [Workers](https://developers.cloudflare.com/workers/platform/pricing/) | 100,000 requests/day | The web app + API |
-| Cloudflare [D1](https://developers.cloudflare.com/d1/platform/pricing/) | 5M rows read/day · 100K rows written/day · 5 GB storage | Emails, threads, folders, sessions |
-| Cloudflare [R2](https://developers.cloudflare.com/r2/pricing/) | 10 GB storage · 1M Class A + 10M Class B ops / month · **zero egress** | Mailbox config + attachments |
-| Cloudflare [Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/) | 10,000 Neurons/day | The inbox agent (default provider) |
-| Cloudflare [Email Routing](https://developers.cloudflare.com/email-routing/) | Included (free) | Receiving mail |
-| [Resend](https://resend.com/pricing) | 100 emails/day (3,000/month) | Sending mail |
-| **Total** | **$0 / month** | Personal use and small products |
-
-Beyond the free tiers you pay only for what Cloudflare and Resend actually meter — nothing is tied to the number of mailboxes or users.
-
-## Features
-
-> Everything below is implemented in **v0.2.1**. For what is not built yet, see [Roadmap](#roadmap).
-
-- **Login-protected** — the first visitor to a fresh deployment creates the admin account through a setup wizard, and the password is stored in D1 as a salted PBKDF2-SHA256 hash. There is no default password. Sessions last 7 days via an HttpOnly cookie (stored in D1).
-- **Full email client** — send and receive via Cloudflare Email Routing, with a rich-text composer, reply/forward threading, folders, search, and attachments.
-- **Switchable themes and dark mode** — three extra skins (midnight / porcelain / sakura) on top of the default look, each with light and dark modes. The UI is driven by semantic tokens, so themes can be added or swapped without touching component code (see `app/themes/README.md`).
-- **Multiple domains** — one deployment can run several domains at once, each with its own mailbox addresses, its own forwarding rule, and its own sending key. Adding another is just **Add Domain** in **Settings**.
-- **Per-mailbox isolation** — each mailbox's configuration is an R2 object and its messages live in D1, keyed by mailbox.
-- **Built-in AI agent** — a side panel with 14 email tools for reading, searching, drafting, and sending; responses stream over SSE with tool-call visibility.
-- **External access (API key)** — the same 14 tools are reachable from an outside LLM or MCP client through a global API key, over a stateless MCP server (`POST /mcp`) or an HTTP tool gateway (`GET /tools`, `POST /tools/call`). See [External access](#external-access).
-- **AI drafting (conversational)** — ask the agent in the side panel to read an incoming message and draft or revise a reply; the draft lands in that mailbox's Drafts folder, and **sending always requires your explicit confirmation**.
-- **Configurable and persistent** — custom system prompt per mailbox, persistent chat history, and a per-mailbox choice of model provider.
+- **Addresses on your domain.** `support@`, `hello@`, `sales@`, a catch-all, or several domains from one screen. Each domain has its own addresses, its own forwarding rule, and its own sending key. Add another with **Add Domain** in **Settings**.
+- **An inbox you can work in.** Rich-text composer, reply and forward, threads, folders, search, and attachments.
+- **An assistant that waits for you.** The side panel reads mail, searches conversations, and drafts replies — 14 tools. The reply streams in, and you can see each tool it calls. Drafts land in that mailbox's Drafts folder. **Sending always needs your confirmation.** Each mailbox can have its own prompt, and the chat is saved.
+- **Your own model, if you want one.** The default is Cloudflare's built-in AI (Workers AI — no key). Any mailbox can use an OpenAI-compatible endpoint instead, and falls back to the default if that endpoint is unreachable.
+- **Adding a domain can set itself up.** Save a Cloudflare API token and account id, and adding a domain turns on Email Routing and writes the catch-all for you. Save that domain's Resend key, and the app creates the domain on Resend, writes the DNS records, and starts verification. This is fully automatic when the domain's DNS is already on Cloudflare; otherwise the app lists the records for you to add.
+- **Mail stays in your Cloudflare account.** Messages live in a database ([D1](https://developers.cloudflare.com/d1/)). Mailbox settings and attachments live in file storage ([R2](https://developers.cloudflare.com/r2/)).
+- **A login with no default password.** The first visitor creates the admin account in a setup wizard. The password is stored as a salted hash. Sessions last 7 days, in an HttpOnly cookie.
+- **A few looks.** Three extra themes (midnight, porcelain, sakura) besides the default, each in light and dark. See [`app/themes/README.md`](app/themes/README.md).
+- **A key for an outside assistant.** Grok Bot, or any other host that speaks MCP or HTTP tools, can read and send with the same 14 tools. See [External access](#external-access).
 
 <div align="center">
   <img src="./demo_domains.png" alt="The Settings page in Mailboxes: Platform Settings shown as configured, and a Domains list holding four domains at once" width="620">
-  <p><em>The domain list in Settings — this deployment runs four domains at once, and each domain's catch-all mail can go to a different mailbox.</em></p>
+  <p><em>Settings, with four domains on one deployment. Each domain can send its catch-all mail to a different mailbox.</em></p>
 </div>
 
-## Prerequisites
+## Compared with agentic-inbox
 
-- **Node.js ≥ 20** and npm (the repository ships a `.nvmrc`, so `nvm use` is enough)
-- A Cloudflare account (`npm run setup` runs `wrangler login` for you when needed)
-- **A domain.** You can add more later whenever you like. You can buy it from any registrar (Namecheap, GoDaddy, Cloudflare Registrar, …), but your domain's DNS has to be managed by Cloudflare: add the domain to your Cloudflare account first, then follow its instructions and switch the domain's nameservers at your registrar to the two Cloudflare gives you. Receiving runs on Cloudflare Email Routing; when you add the domain in the app, it looks that domain up in your Cloudflare account and reports `Zone for "<domain>" not found in Cloudflare` if it isn't there.
-- [Email Routing](https://developers.cloudflare.com/email-routing/) enabled for **receiving**
-- A [Resend](https://resend.com) account for **sending** (outbound mail does not use Cloudflare Email Service)
-- [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled for the agent (on by default)
+Cloudflare publishes [agentic-inbox](https://github.com/cloudflare/agentic-inbox), an official inbox-and-assistant app. Mailboxes is for the same job. The rows below are the choices that differ — pick by the one you care about.
+
+| | Mailboxes | agentic-inbox |
+| --- | --- | --- |
+| Sending on a free plan | [Resend](https://resend.com)'s free tier (100 emails/day). Each domain has its own key, set in the app. | Cloudflare Email Service (the `send_email` binding), which needs a paid Workers plan. |
+| Durable Objects | None. One stateless app, plus a database and file storage. | Three: mailbox state, the AI agent, and its MCP server. |
+| Sign-in | You create an admin account the first time you open the app. No default password. | [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/). You set `POLICY_AUD` and `TEAM_DOMAIN`. |
+| Domains | Add several in the app. Each has its own addresses, catch-all, and sending key. | A deploy-time setting (`DOMAINS` in the Worker config), not a screen in the app. |
+| License | [AGPL-3.0](LICENSE). If you run a modified version as a service for other people, you must offer them the source. | [Apache-2.0](https://github.com/cloudflare/agentic-inbox/blob/main/LICENSE). |
+
+Two things the table does not mean. Dropping Durable Objects is a simpler shape, **not a lower bill** — the SQLite-backed kind agentic-inbox uses already runs on the free plan. And both products wait for a person before anything is sent. agentic-inbox can draft a reply when mail arrives; Mailboxes drafts when you ask, and automatic replies are still on the [roadmap](#roadmap).
+
+Mailboxes builds on agentic-inbox and includes its code. How the licenses sit together is under [License](#license).
+
+## What it costs
+
+You pay nothing to Mailboxes. The app runs inside your own Cloudflare account, and the free allowances below cover a personal inbox or an early product. Past them, you pay only what Cloudflare and Resend meter. The price does not grow with the number of mailboxes or people.
+
+| Piece | Free allowance | What it's for |
+| --- | --- | --- |
+| The app ([Workers](https://developers.cloudflare.com/workers/platform/pricing/)) | 100,000 requests/day | The website and API |
+| Database ([D1](https://developers.cloudflare.com/d1/platform/pricing/)) | 5M rows read/day · 100K rows written/day · 5 GB | Emails, threads, folders, sessions |
+| File storage ([R2](https://developers.cloudflare.com/r2/pricing/)) | 10 GB · 1M Class A + 10M Class B ops/month · **zero egress** | Mailbox settings and attachments |
+| The assistant ([Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/)) | 10,000 Neurons/day | The default model |
+| Receiving ([Email Routing](https://developers.cloudflare.com/email-routing/)) | Included | Incoming mail |
+| Sending ([Resend](https://resend.com/pricing)) | 100 emails/day (3,000/month) | Outgoing mail |
+| **Total** | **$0 / month** | Personal use and small products |
+
+There is no machine to keep running. Receiving is included with Email Routing (or Resend's inbound webhook, if the domain's DNS is not on Cloudflare). Sending stays on Resend's free tier. The assistant uses the free daily AI allowance unless you connect your own model.
+
+## Before you start
+
+- **Node.js 20 or newer**, and npm (the repository ships a `.nvmrc`, so `nvm use` is enough)
+- A Cloudflare account (`npm run setup` runs `wrangler login` when it needs to)
+- **A domain.** You can add more later. Buy it anywhere (Namecheap, GoDaddy, Cloudflare Registrar, …), but its DNS has to be managed by Cloudflare: add the domain to your Cloudflare account, then at your registrar switch the nameservers to the two Cloudflare gives you. When you add the domain in the app, it looks the domain up in your account and reports `Zone for "<domain>" not found in Cloudflare` if it isn't there.
+- [Email Routing](https://developers.cloudflare.com/email-routing/) for **receiving**
+- A [Resend](https://resend.com) account for **sending** (outgoing mail does not use Cloudflare Email Service)
+- [Workers AI](https://developers.cloudflare.com/workers-ai/) for the assistant (on by default)
 
 ## Quick start
 
-**`npm run setup` is the first-time deploy.** It creates the bucket and database you need (R2 and D1), puts the database ID into the config file, builds, and deploys — and prints your URL. If the database is the one this run just created (an empty database), it also applies the schema; migrations against a pre-existing production database are **not** applied automatically (see [Production deploy](#production-deploy)):
+**`npm run setup` is the first deploy.** It creates the file storage and the database (an R2 bucket and a D1 database), writes the database id into the config, builds, deploys, and prints your URL. If the database is the one this run just created (empty), it also creates the tables. It does **not** migrate a database you already had in production (see [Production deploy](#production-deploy)):
 
 ```bash
 npm install
 npm run setup
 ```
 
-For everyday redeploys once the resources exist, use `npm run deploy` (see [Production deploy](#production-deploy)).
+Once those resources exist, everyday redeploys are `npm run deploy` (see [Production deploy](#production-deploy)).
 
-The script is **safe to re-run**, so it doubles as a redeploy (anything that already exists is skipped; add `-- --dry-run` to see what it would do first).
+The script is **safe to re-run**. Anything that already exists is skipped. Add `-- --dry-run` to see what it would do first.
 
-> The **Deploy to Cloudflare** button at the top of this README works too, but it only creates the Worker — the bucket, the database and the database ID are on you. See the note at the end of this section.
+> The **Deploy to Cloudflare** button at the top works too, but it only creates the app. The bucket, the database, and the database id are on you. See the note at the end of this section.
 
-1. **Set up receiving.** In the Cloudflare dashboard, go to your domain → **Email Routing** and create a **catch-all** rule — one that catches mail sent to any address on the domain — and forward it to this Worker. (For a domain that is *not* on Cloudflare DNS, you can instead receive through the Resend inbound webhook at `/api/v1/inbound/resend`.)
+1. **Turn on receiving.** In the Cloudflare dashboard, open your domain → **Email Routing**, create a **catch-all** rule (mail to any address on the domain), and forward it to this app. If the domain is *not* on Cloudflare DNS, you can receive through the Resend inbound webhook at `/api/v1/inbound/resend` instead.
 
-   To skip the manual part: finish step 3 below (create your admin account), fill in the Cloudflare credentials under **Settings** (`/settings`) — see Configuration — then add your domain on the home page. The app turns on Email Routing and creates this forwarding rule for you.
+   To skip the manual part: finish step 3 (create your admin account), fill in the Cloudflare credentials under **Settings** (`/settings`) — see [Configuration](#configuration) — then add the domain on the home page. The app turns on Email Routing and creates the forwarding rule for you.
 
-2. **Configure Resend for sending** (optional — only needed if you want to send). Sign up at [resend.com](https://resend.com) and copy an API key — **you do not need to add the domain there yourself**; the app creates it on Resend for you. Then add the domain in the app: the **Add Domain** flow asks for the Resend API key, and you can update it later from the domain menu on the home page. If Resend says the domain "is registered to another team", see the FAQ below.
+2. **Connect Resend for sending** (only if you want to send). Sign up at [resend.com](https://resend.com) and copy an API key. **You do not add the domain on Resend yourself** — the app creates it. **Add Domain** in the app asks for the Resend API key, and you can change it later from the domain menu on the home page. If Resend says the domain "is registered to another team", see the [FAQ](#faq).
 
-3. **Create your admin account.** The first time you open the app you are sent straight to the setup wizard at `/setup`, which asks for a username (default `admin`) and a password. No other page is reachable until you do. There is no default password, and no token or environment variable is involved. The window is one-shot: once the account exists, the wizard and its sign-up endpoint both close, and further attempts get a 409.
+3. **Create your admin account.** The first time you open the app you land on `/setup`. Choose a username (default `admin`) and a password. No other page opens until you do. There is no default password, and no token or environment variable to set. The window is one-shot: once the account exists, the wizard and its sign-up endpoint both close, and a later attempt gets a 409.
 
-4. **Create a mailbox.** Once signed in, create a mailbox for any address on your domain (e.g. `hello@yourdomain.com`).
+4. **Create a mailbox.** Once signed in, create a mailbox for any address on your domain (for example `hello@yourdomain.com`).
 
 <details>
 <summary>Using the <strong>Deploy to Cloudflare</strong> button instead?</summary>
 
-The button only creates the Worker, while the app also needs an R2 bucket and a D1 database. `wrangler.jsonc` in this repository pins resources that live in the author's account, so deploying straight from the button fails. To make the button work:
+The button only creates the Worker. The app also needs an R2 bucket and a D1 database. `wrangler.jsonc` in this repository points at resources in the author's account, so deploying straight from the button fails. To make the button work:
 
 1. **Fork** the repository.
 2. In your fork, create the resources and point the config at them:
@@ -119,23 +127,25 @@ Much less work: run `npm run setup` as above.
 
 ## Configuration
 
-- **`wrangler.jsonc`** — set your D1 `database_id`, the R2 bucket name, and any bindings. `npm run setup` fills in `database_id` for you.
-- **Domains and Cloudflare credentials (Platform Settings)** — sign in, open **Settings** (`/settings`) → **Platform Settings**, and fill in the two values: **Cloudflare API Token** and **Cloudflare Account ID**. **Verify & Save** checks them before saving (the success message names the account and how many domains were found) and the badge turns into `Configured`; the two values are stored in the database.
-  - The "创建预配置 Token →" link in that panel ticks three of the permissions for you. One more has to be added by hand: click Add more, then Zone → Email Routing Rules → Edit, and paste the token back into the field.
-  - Once saved, adding a domain in the app turns on Email Routing and creates the forwarding rule for you — no dashboard clicking. If you skip it, use the manual path in step 1 of Quick start.
-  - The domain has to be in your Cloudflare account already (subdomains find their parent domain automatically). The app only looks it up; it never adds it for you.
-- **R2 bucket** — the app expects a bucket named `mailboxes`:
+Most of this is filled in by `npm run setup`, or edited in the app after you sign in.
+
+- **`wrangler.jsonc`** — your database id (D1 `database_id`), the file-storage bucket name (R2), and any bindings. `npm run setup` fills in `database_id`.
+- **Cloudflare credentials (Platform Settings)** — sign in, open **Settings** (`/settings`) → **Platform Settings**, and enter **Cloudflare API Token** and **Cloudflare Account ID**. **Verify & Save** checks them before saving (the success message names the account and how many domains were found) and the badge turns into `Configured`. Both values are stored in the database.
+  - The "Create a pre-configured Token →" link in that panel selects three of the permissions for you. One more has to be added by hand: click Add more, then Zone → Email Routing Rules → Edit, and paste the token back into the field.
+  - Once saved, adding a domain turns on Email Routing and creates the forwarding rule — no dashboard clicking. If you skip the credentials, use the manual path in step 1 of [Quick start](#quick-start).
+  - The domain has to be in your Cloudflare account already (subdomains find their parent domain automatically). The app looks it up; it never adds it for you.
+- **File storage** — the app expects an R2 bucket named `mailboxes`:
   ```bash
   wrangler r2 bucket create mailboxes
   ```
-- **Admin credentials** — created once by the first-run setup wizard (`/setup`) and stored in D1; there are no credential vars to configure. The wizard is only open while the `admins` table is empty and closes itself as soon as the account exists; if two requests race, only one can win and the other gets a 409. To start over, delete the row and reload: `wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`.
-- **Password storage** — the admin password is stored in D1 as a salted **PBKDF2-SHA256** hash, 100,000 iterations (workerd's ceiling for PBKDF2), with the parameters stored alongside the value. An earlier revision kept it in plain text, on the premise that the Free plan caps CPU at 10 ms per request and a KDF would trip Error 1102 intermittently; measuring a real Free-plan deployment showed the practical ceiling is nearer 2,000 ms, and the KDF costs 21-26 ms, so it was reinstated. Details and measurements: [SECURITY.md](SECURITY.md) and [`workers/lib/password.ts`](workers/lib/password.ts).
-- **AI provider** — by default the agent uses Cloudflare Workers AI and needs no key. To use a custom model, open a mailbox's **Settings → AI Model**, enable the switch, and enter a base URL, model name, and API key (OpenAI-compatible). If the custom provider is unreachable, the app falls back to Workers AI.
-- **Sending** — the Resend API key is configured per domain.
+- **Admin account** — created once by the first-run wizard (`/setup`) and stored in the database. There is no credential variable to set. The wizard is open only while the `admins` table is empty, and it closes as soon as the account exists. If two requests race, only one wins and the other gets a 409. To start over, delete the row and reload: `wrangler d1 execute mailboxes-db --remote --command "DELETE FROM admins"`.
+- **Password storage** — a salted **PBKDF2-SHA256** hash, 100,000 iterations, in the database. There is no default password. Why hashing fits the free plan, with measurements: [SECURITY.md](SECURITY.md) and [`workers/lib/password.ts`](workers/lib/password.ts).
+- **AI provider** — Workers AI by default, with no key. For a custom model, open a mailbox's **Settings → AI Model**, turn the switch on, and enter a base URL, model name, and API key (OpenAI-compatible). If that provider is unreachable, the app falls back to Workers AI.
+- **Sending** — the Resend API key is set per domain.
 
 ## Local development
 
-> Just want to run it locally? Local development uses Miniflare's local D1/R2 bindings, so no Cloudflare resources are needed up front — steps 3–5 below only matter once you are ready to deploy (and `npm run setup` takes care of them).
+> Just want to run it on your machine? Local development uses a local database and local file storage, so you don't need Cloudflare resources yet. Steps 3–5 matter only when you are ready to deploy (`npm run setup` does them for you).
 
 1. Clone the repository and install dependencies:
 
@@ -149,7 +159,7 @@ Much less work: run `npm run setup` as above.
    cp .dev.vars.example .dev.vars
    ```
 
-3. Create the D1 database:
+3. Create the database (D1):
 
    ```bash
    wrangler d1 create mailboxes-db
@@ -157,7 +167,7 @@ Much less work: run `npm run setup` as above.
 
 4. Copy the returned `database_id` into the `d1_databases` array in `wrangler.jsonc`.
 
-5. Create the R2 bucket:
+5. Create the file-storage bucket (R2):
 
    ```bash
    wrangler r2 bucket create mailboxes
@@ -177,48 +187,152 @@ Much less work: run `npm run setup` as above.
 
 ### Production deploy
 
-**First deploy — `npm run setup`.** It creates the missing resources (R2 bucket, D1 database), writes `database_id` back into the config, builds, and deploys. By default it does **not** apply remote migrations to your production database: it runs a read-only `wrangler d1 migrations list <db> --remote`, and if anything is pending it **stops**, lists the migration filenames, and asks you to re-run with `--migrate`. The one exception is a database created by that same run — an empty database has nothing to lose, so it is initialized right away. `bash deploy.sh` is the same as `npm run setup`.
+**First deploy — `npm run setup`.** It creates anything missing (R2 bucket, D1 database), writes `database_id` back into the config, builds, and deploys. By default it does **not** apply migrations to a production database you already had: it runs a read-only `wrangler d1 migrations list <db> --remote`, and if anything is pending it **stops**, lists the migration filenames, and asks you to re-run with `--migrate`. The exception is a database created by that same run — an empty database has nothing to lose, so it is initialized right away. `bash deploy.sh` is the same as `npm run setup`.
 
-**Everyday redeploy — `npm run deploy`.** It builds and deploys only: it does not touch migrations and does not create resources.
+**Everyday redeploy — `npm run deploy`.** It builds and deploys only. It does not touch migrations and does not create resources.
 
 ```bash
 npm run deploy
 ```
 
-**Apply migrations to production.** `npm run setup -- --migrate` applies pending remote migrations as part of setup; to apply them on their own:
+**Apply migrations to production.** `npm run setup -- --migrate` applies pending remote migrations as part of setup. To apply them on their own:
 
 ```bash
 npm run db:migrate
 ```
 
-**Everything in one step.** `npm run deploy:full` builds, deploys and applies remote migrations:
+**Everything in one step.** `npm run deploy:full` builds, deploys, and applies remote migrations:
 
 ```bash
 npm run deploy:full
 ```
 
-**Preview a run without writing anything.** `npm run setup -- --dry-run` performs the read-only cloud queries, a deploy rehearsal (`wrangler deploy --dry-run`, which uploads nothing) and a report — it changes nothing.
+**Preview a run without writing anything.** `npm run setup -- --dry-run` runs the read-only cloud queries, a deploy rehearsal (`wrangler deploy --dry-run`, which uploads nothing), and a report. It changes nothing.
 
 ### Do not run wrangler deploy directly
 
-Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you will silently ship a stale build.
+Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you can publish a stale build with no error and no warning.
 
-**Why.** This project uses `@cloudflare/vite-plugin`. `npm run build` writes `.wrangler/deploy/config.json`, which redirects wrangler to `build/server/wrangler.json` (`main: index.js`, `assets.directory: ../client`, `no_bundle: true`, and no `build` key). A bare `wrangler deploy` follows that redirect and uploads whatever already sits in `build/` — it runs **no build at all**. There is no error and no warning: you just publish an outdated artifact. This has already happened for real once.
+**Why.** This project uses `@cloudflare/vite-plugin`. `npm run build` writes `.wrangler/deploy/config.json`, which redirects wrangler to `build/server/wrangler.json` (`main: index.js`, `assets.directory: ../client`, `no_bundle: true`, and no `build` key). A bare `wrangler deploy` follows that redirect and uploads whatever is already in `build/` — it runs **no build at all**. This has already happened once.
 
-**What to run instead:** `npm run deploy` (everyday), `npm run setup` or `bash deploy.sh` (first time and resource creation), `npm run deploy:full` (deploy plus migrations).
+**What to run instead:** `npm run deploy` (everyday), `npm run setup` or `bash deploy.sh` (first time, and when creating resources), `npm run deploy:full` (deploy plus migrations).
 
-**There is now a guard.** `npm run build` injects a freshness assertion into the generated `build/server/wrangler.json` (see `scripts/deploy-freshness-guard.mjs`), so when `build/` is older than the sources a bare `wrangler deploy` fails loudly and tells you exactly what to run instead (override with `ALLOW_STALE_DEPLOY=1` if you really mean it). `npm run deploy` / `bash deploy.sh` remain the only supported entry points.
+**There is a guard now.** `npm run build` injects a freshness check into the generated `build/server/wrangler.json` (see [`scripts/deploy-freshness-guard.mjs`](scripts/deploy-freshness-guard.mjs)), so when `build/` is older than the sources a bare `wrangler deploy` fails and tells you what to run (override with `ALLOW_STALE_DEPLOY=1` if you really mean it). `npm run deploy` and `bash deploy.sh` stay the supported entry points.
 
-> Adding a `build.command` to `wrangler.jsonc` is **not** a safeguard here. Under the Cloudflare Vite plugin that field is ignored — the plugin deletes `config["build"]` when it generates the config, and the official Custom builds documentation marks it "Not applicable if you're using the Cloudflare Vite plugin".
+> Adding a `build.command` to `wrangler.jsonc` does not prevent this. Under the Cloudflare Vite plugin that field is ignored — the plugin deletes `config["build"]` when it generates the config, and the official Custom builds documentation marks it "Not applicable if you're using the Cloudflare Vite plugin".
 
-## Stack
+## External access
+
+An outside agent can **read and send** with a Bearer `agk_…` key — the same **14 tools** as the in-app assistant, without a browser login. A missing or wrong key returns **401**. `X-API-Key` is accepted as well.
+
+With that key the client can:
+
+- **List mailboxes** — `list_mailboxes`. Call this first. Almost every other tool needs the `mailboxId` it returns (the mailbox address).
+- **Read and search** — `list_emails`, `get_email`, `search_emails`, `get_thread`.
+- **Draft** — `draft_email` and `draft_reply` take a plain `body`. They save a draft and do not send.
+- **Send** — `send_email` and `send_reply` take `bodyHtml`. Calling either one delivers real mail. This path has no confirm screen in the app; the caller is the confirmation. The in-app assistant still asks you before it sends.
+
+The rest of the 14 (mark read, move, delete, update a draft, discard a draft) are on the same list. `GET /tools` returns all of them.
+
+**Clients.** Any MCP client, or any caller that uses an HTTP tool list:
+
+- **MCP** — `POST /mcp`, with `initialize`, `tools/list`, `tools/call`, and `ping`. Stateless: no session id, no Durable Object.
+- **HTTP tool gateway** — `GET /tools` returns the schemas (OpenAI `functions` shape). `POST /tools/call` runs one, with a body of `{ "name", "arguments" }`.
+
+**Grok Bot**, and similar desktop or agent hosts that speak MCP or HTTP tools, connect this way: point the host at your app and give it the key.
+
+**Create a key.** Sign in and open **Settings** → **Agent API Keys** (`/api/v1/agent-api-keys`, session-cookie authenticated). Keys look like `agk_` followed by 64 hex characters, are stored in the database as a SHA-256 hash, are **shown exactly once** when created, and can be revoked at any time. Every use is recorded.
+
+**Example.** Read the inbox over HTTP. Replace the host and the mailbox address:
+
+```bash
+curl -s https://YOUR_APP/tools/call \
+  -H "Authorization: Bearer agk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}'
+```
+
+The same read over MCP:
+
+```bash
+curl -s https://YOUR_APP/mcp \
+  -H "Authorization: Bearer agk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_emails","arguments":{"mailboxId":"hello@yourdomain.com","folder":"inbox"}}}'
+```
+
+To send, call `send_email` with `to`, `subject`, `bodyHtml`, and `mailboxId`. `send_reply` also needs the original email's `id`. To draft instead, call `draft_email` or `draft_reply` with a plain `body` (not `bodyHtml`).
+
+Both surfaces use the built-in tool definitions. External calls take the **deterministic path**: draft and send skip the assistant's AI rewrite, so a message goes out exactly as written. Read-only results are **limited to a public field list** — internal ids, raw message headers, and other internal fields are left out.
+
+> This replaced the old per-domain `mb_…` sending keys, which were removed along with `POST /api/v1/send`. There is no send-only HTTP endpoint today. Outside callers use the tool gateway or MCP above.
+
+## FAQ
+
+### Is it really free?
+
+Yes, for personal use and small products. There is nothing to pay Mailboxes itself. The app runs in **your** Cloudflare account, and the free allowances above cover a personal inbox or an early product — see [What it costs](#what-it-costs). There is no per-seat or per-mailbox fee, so a tenth mailbox costs the same as the first.
+
+### Adding a domain fails with "the domain is registered to another team"
+
+When you add a domain, Resend may return:
+
+> Failed to create domain on Resend: The `yourdomain.com` domain is registered to another team. You can claim it using the Domain Claim API.
+
+This error comes from **Resend**, not from Mailboxes. A domain can only be active on **one Resend team at a time**, and `yourdomain.com` was already added (and most likely verified) on a different Resend team — usually an old account, a teammate's personal account, or a throwaway test account.
+
+**Fix it in one of two ways:**
+
+1. **You control the other team** — sign in to that Resend team, open **Domains**, delete the domain, then add it again from Mailboxes. Check the team switcher at the top left.
+2. **You don't have access to that team** — claim the domain by proving you own it:
+   - **Dashboard:** Domains → **Add Domain** → enter the domain → **Start claim** → add the returned **TXT** record to your DNS (some registrars offer a one-click add) → click **I've added the records**.
+   - **API:** `POST https://api.resend.com/domains/claim` with `{ "name": "yourdomain.com" }`, add the returned TXT record, then verify and poll until `status` is `completed`.
+   - A successful claim **releases the domain from the previous team and transfers it to yours**. Claims expire after **7 days**.
+   - If the claim is `blocked` with a reason such as `recent_owner_activity` or `pending_scheduled_emails`, the other team is still sending from the domain — contact [Resend support](https://resend.com/help) to release it.
+
+Once the domain is released or claimed in Resend, add it again from Mailboxes.
+
+> **Receiving is separate.** This only affects **outgoing** mail through Resend. Incoming mail arrives through **Cloudflare Email Routing** (a catch-all rule to this app), or the Resend inbound webhook for domains that are not on Cloudflare DNS. Keep the domain's MX records pointed at Cloudflare Email Routing. Pointing the root MX at Resend will break incoming mail.
+
+See: [Resend — Claim Domain](https://resend.com/docs/api-reference/domains/claim-domain) · [Domain already registered by another account](https://resend.com/docs/knowledge-base/domain-already-registered)
+
+## Roadmap
+
+**Done ✅** already ships in the current version (v0.2.1) — see [What you get](#what-you-get). **Planned** is not started.
+
+### Done ✅
+
+- ✅ **Guided first deploy** — `npm run setup` creates the R2 bucket and D1 database, writes `database_id`, builds and deploys, and creates the tables when it has just made an empty database. Later migrations stay opt-in (`--migrate`)
+- ✅ **Receiving sets itself up** — save a Cloudflare API token and account id in Platform Settings, and adding a domain turns on Email Routing and writes the catch-all (`*@your-domain` → this app). Fully automatic only when DNS is on Cloudflare; other DNS providers get a step-by-step guide
+- ✅ **Sending sets itself up** — save a per-domain Resend API key and the app creates the domain on Resend, writes the MX/TXT/CNAME records into your Cloudflare DNS, and starts a verification. Without Cloudflare credentials it lists the records for you to add
+- ✅ **Setup wizard with no default password** — salted PBKDF2-SHA256 hash stored in the database
+- ✅ **Your own login and sessions** — HttpOnly cookie, 7 days, sessions in the database
+- ✅ **Several domains** — each with its own addresses and sending key
+- ✅ **Catch-all routing** — point a domain's catch-all at any mailbox
+- ✅ **Full email client** — rich-text composer, threads, reply/forward, folders, drafts, search, attachments
+- ✅ **Sender display-name parsing** — including RFC 2047 encoded words, with a data migration
+
+### Planned
+
+- [ ] **Auto-replies** — send a reply automatically when mail arrives, with no human confirmation. Today you draft in the side panel and send after confirming.
+- [ ] **Shared team mailboxes** — several people on one mailbox, with members and permissions. Today there is a single admin.
+- [ ] **More sending providers** — sending currently supports Resend only.
+- [ ] **A light contact layer** — there is no contact record today, only people parsed from message headers.
+
+Have an idea? Open an issue.
+
+## Under the hood
+
+The sections above are enough to run it. This one is the map.
+
+### Stack
 
 - **Frontend:** React 19, React Router v7 (SSR), Tailwind CSS v4, Zustand, TipTap, [`@cloudflare/kumo`](https://www.npmjs.com/package/@cloudflare/kumo), TanStack Query
 - **Backend:** Hono on Cloudflare Workers, [D1](https://developers.cloudflare.com/d1/) (SQLite) via [Drizzle ORM](https://orm.drizzle.team/), [R2](https://developers.cloudflare.com/r2/), Cloudflare [Email Routing](https://developers.cloudflare.com/email-routing/)
-- **AI agent:** Cloudflare [Workers AI](https://developers.cloudflare.com/workers-ai/) by default (or any OpenAI-compatible endpoint), with tool calling and SSE streaming
+- **Assistant:** Cloudflare [Workers AI](https://developers.cloudflare.com/workers-ai/) by default (or any OpenAI-compatible endpoint), with tool calling and SSE streaming
 - **Sending:** the [Resend](https://resend.com) REST API
 
-## Architecture
+### How a request moves
 
 ```text
   Browser -- React 19 + React Router v7 (SSR shell, client-side data)
@@ -251,98 +365,9 @@ Run `wrangler deploy` (or `npx wrangler deploy`) by hand and you will silently s
     Bearer agk_… -> POST /mcp | GET /tools | POST /tools/call (tool gateway)
 ```
 
-Beyond the above, the Worker binds nothing else on Cloudflare -- no KV, no Queues, no Durable Objects, no Vectorize, and no Cron triggers. The MCP server and the HTTP tool gateway are **hand-written and stateless** and add no bindings: they authenticate with an API key (a D1 row), read and write the same D1 and R2 as the rest of the app, and reuse the exact same 14 tool definitions the built-in agent uses.
+The Worker binds nothing else on Cloudflare — no KV, no Queues, no Durable Objects, no Vectorize, and no Cron triggers. The MCP server and the HTTP tool gateway are hand-written and stateless: they authenticate with an API key (a database row), read and write the same database and file storage as the rest of the app, and reuse the same 14 tool definitions. Each mailbox's settings are its own file in R2, and its messages in D1 are keyed by mailbox.
 
-## External access
-
-An outside LLM or MCP client can call the built-in tools directly — the same **14 tools** the in-app agent uses, with the same definitions — through a **global Agent API key** instead of a browser session.
-
-**Create a key.** Sign in and open **Settings** → **Agent API Keys** (`/api/v1/agent-api-keys`, session-cookie authenticated). Keys look like `agk_` followed by 64 hex characters, are stored in D1 as a SHA-256 hash, are **shown exactly once** when created, and can be revoked at any time. Every use is recorded for auditing.
-
-**Call a tool.** Authenticate with `Authorization: Bearer <key>` on either of two surfaces:
-
-- **MCP server** — `POST /mcp`, a minimal, hand-written, **stateless** JSON-RPC 2.0 endpoint supporting `initialize`, `tools/list`, `tools/call` and `ping`. It needs no session id and no Durable Object — any instance can serve any request.
-- **HTTP tool gateway** — `GET /tools` returns the tool schemas (OpenAI `functions` shape) and `POST /tools/call` executes one, for callers that do not speak MCP.
-
-Both surfaces reuse the same tool definitions as the built-in agent, but external calls take the **deterministic path**: draft and send tools skip the agent's AI body-rewriting check, so a reply is sent exactly as written. Read-only results are **reshaped to a public field whitelist** — internal identifiers, raw message headers and other internal fields are not returned.
-
-> This is separate from the old per-domain `mb_…` sending keys, which were removed along with `POST /api/v1/send`. There is no send-only HTTP endpoint today; external callers go through the tool gateway (or MCP) above.
-
-## How this fork differs from upstream
-
-Mailboxes is a fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Since the fork point (2026-04-17) there have been **155 commits across 139 files (+18,663 / -8,139 lines)**. The main differences:
-
-- **Sending moved to Resend.** The Cloudflare `send_email` binding was dropped — it requires a paid Workers plan — in favour of the [Resend](https://resend.com) API, which runs on the free plan. Keys are configured per domain in the UI.
-- **No Durable Objects.** Upstream used three Durable Objects for mailbox state, the AI agent and its MCP server; here it is a stateless Worker plus D1, and the assistant calls Workers AI in-request with function calling. This was about dropping a layer of framework, **not about cost** — SQLite-backed Durable Objects run on the free plan, and that is the kind upstream used. An MCP server does exist here, but it is hand-written and **stateless** (see [External access](#external-access)) — no Durable Objects, and no new Cloudflare bindings.
-- **Its own login instead of Cloudflare Access.** Upstream required `POLICY_AUD` / `TEAM_DOMAIN`; here the first run creates an admin account whose PBKDF2-SHA256 password is stored in D1.
-- **Configuration lives in the database and the UI.** Domains, mailboxes and keys are managed in D1 and edited on screen rather than through `wrangler.jsonc` environment variables.
-- **Multiple domains.** One instance can serve several domains, each with its own routing and sending settings.
-- **New pages:** first-run setup, login, platform settings (Cloudflare credentials), domain details, add-domain wizard, catch-all settings, and the AI panel.
-- **Tooling:** `migrations/` (12 SQL files), guided first-time deploy via `npm run setup`, e2e tests and CI.
-
-### Why it can stay at $0 a month
-
-- There is no always-on server — the whole app is a single Worker.
-- Sending avoids the binding that needs a paid plan and stays inside Resend's free tier.
-- Metadata goes to D1 and attachments to R2, whose egress is free.
-- The assistant uses Workers AI's free daily allocation by default, so no extra API key is needed; you can point it at your own OpenAI-compatible provider instead.
-- Inbound mail uses Cloudflare Email Routing, or Resend's inbound webhook when the domain is not hosted on Cloudflare.
-
-See [What it costs](#what-it-costs) for the individual quotas.
-
-## FAQ
-
-### Is it really free?
-
-Yes, for personal use and small products. There is nothing to pay Mailboxes itself. The app runs inside **your own** Cloudflare account, and Cloudflare's and Resend's free tiers cover a personal inbox or an early-stage product — see [What it costs](#what-it-costs) for the exact limits. There is no per-seat or per-mailbox fee, so adding a tenth mailbox costs the same as the first: nothing.
-
-### Adding a domain fails with "the domain is registered to another team"
-
-When you add a domain, Resend may return:
-
-> Failed to create domain on Resend: The `yourdomain.com` domain is registered to another team. You can claim it using the Domain Claim API.
-
-This error comes from **Resend**, not from Mailboxes. A domain can only ever be active on **one Resend team at a time**, and `yourdomain.com` was already added (and most likely verified) on a different Resend team — usually an old account, a teammate's personal account, or a throwaway test account.
-
-**Fix it in one of two ways:**
-
-1. **You control the other team** — sign in to that Resend team, open **Domains**, delete the domain, then add it again from Mailboxes. Make sure you're switched to the correct team in the top-left team switcher.
-2. **You don't have access to that team** — claim the domain by proving ownership:
-   - **Dashboard:** Domains → **Add Domain** → enter the domain → **Start claim** → add the returned **TXT** record to your DNS (a one-click option is offered for some registrars) → click **I've added the records**.
-   - **API:** `POST https://api.resend.com/domains/claim` with `{ "name": "yourdomain.com" }`, add the returned TXT record, then verify and poll until `status` is `completed`.
-   - A successful claim **releases the domain from the previous team and transfers it to yours**. Claims expire after **7 days**.
-   - If the claim is `blocked` with a reason such as `recent_owner_activity` or `pending_scheduled_emails`, the other team is still actively sending from the domain — contact [Resend support](https://resend.com/help) to release it.
-
-Once the domain is released (or claimed) in Resend, add it again from the Mailboxes app.
-
-> **Note:** This only affects **outbound** sending via Resend. Inbound mail arrives through **Cloudflare Email Routing** (a catch-all rule → this Worker), or the Resend inbound webhook for domains off Cloudflare DNS. Keep your domain's MX records pointed at Cloudflare Email Routing — do not repoint the root MX to Resend or inbound mail will break.
-
-See: [Resend — Claim Domain](https://resend.com/docs/api-reference/domains/claim-domain) · [Domain already registered by another account](https://resend.com/docs/knowledge-base/domain-already-registered)
-
-## Roadmap
-
-**Done ✅** is what already ships in the current version (v0.2.1) — see [Features](#features) above for the details. **Planned** is not started yet.
-
-### Done ✅
-
-- ✅ **Guided first-time deploy** — `npm run setup` creates the R2 bucket and D1 database, writes `database_id` for you, builds and deploys, and initializes the schema when it has just created an empty database; later migrations stay opt-in (`--migrate`)
-- ✅ **Automatic inbound setup** — save a Cloudflare API Token and Account ID in Platform Settings, and adding a domain turns on Email Routing and writes the catch-all rule (`*@your-domain` → Worker) for you, with no dashboard clicking. Fully automatic only for domains whose DNS is on Cloudflare; other DNS providers get a step-by-step guide instead
-- ✅ **Automatic outbound setup** — save a per-domain Resend API Key and the app creates the domain on Resend, writes the required MX/TXT/CNAME records into your Cloudflare DNS, and triggers a verification pass, so you never copy records by hand. Without Cloudflare credentials it falls back to listing the records for you to add manually
-- ✅ **Setup wizard with no default password** — salted PBKDF2-SHA256 hash stored in D1
-- ✅ **Self-hosted login and sessions** — HttpOnly cookie, 7 days, sessions in D1
-- ✅ **Multiple domains** — each with its own mailbox addresses and sending key
-- ✅ **Catch-all routing** — point a domain's catch-all at any mailbox
-- ✅ **Full email client** — rich-text composer, threading, reply/forward, folders, drafts, search, attachments
-- ✅ **Sender display-name parsing** — including RFC 2047 encoded words, with a data migration
-
-### Planned
-
-- [ ] **Auto-replies** — send a reply automatically when mail arrives, with no human confirmation. Today you can only draft in the side panel and send after confirming.
-- [ ] **Shared team mailboxes** — multiple people collaborating on one mailbox, with members and permissions. Today it is single-admin.
-- [ ] **More sending providers** — sending currently supports Resend only.
-- [ ] **Contact/CRM light layer** — there is no contact entity today; only participants parsed from message headers.
-
-Have an idea? Open an issue.
+The admin password is a salted PBKDF2-SHA256 hash, 100,000 iterations (workerd's ceiling for PBKDF2), stored in D1 with the parameters alongside the value. An earlier revision kept it in plain text, on the premise that the free plan caps CPU at 10 ms per request and a slow hash would trip Error 1102. Measuring a real free-plan deployment showed the practical ceiling is nearer 2,000 ms, and the hash costs 21–26 ms, so hashing was put back. Details: [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
@@ -362,8 +387,8 @@ Please do not open public issues for security problems — see [SECURITY.md](SEC
 
 **AGPL-3.0-only** — the work as a whole, including every addition and modification made in this repository, is distributed under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified version as a network service for others, you must offer them the corresponding complete source code (AGPL section 13).
 
-This work is a derivative of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) and therefore contains upstream Apache-2.0 code: upstream portions are Copyright (c) Cloudflare, Inc. and remain under the [Apache License 2.0](LICENSE-APACHE) (full text in that file), while additions and modifications in this repository are Copyright (c) 2026 Doforu and licensed under the AGPL-3.0. Per-file copyright and license notices are kept in the file headers. See [NOTICE](NOTICE) for the complete attribution.
+This work builds on [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) and therefore contains upstream Apache-2.0 code. Upstream portions are Copyright (c) Cloudflare, Inc. and remain under the [Apache License 2.0](LICENSE-APACHE) (full text in that file). Additions and modifications in this repository are Copyright (c) 2026 Doforu and licensed under the AGPL-3.0. Per-file copyright and license notices stay in the file headers. See [NOTICE](NOTICE) for the complete attribution.
 
 ## Acknowledgements
 
-A fork of [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Built on [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/), [D1](https://developers.cloudflare.com/d1/), [R2](https://developers.cloudflare.com/r2/), [Workers AI](https://developers.cloudflare.com/workers-ai/) and [Resend](https://resend.com). Learn more about the email-inbox pattern in Cloudflare's blog post [Email for Agents](https://blog.cloudflare.com/email-for-agents/). For what this fork changes relative to upstream, see [How this fork differs from upstream](#how-this-fork-differs-from-upstream).
+Built on [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox). Runs on [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/), [D1](https://developers.cloudflare.com/d1/), [R2](https://developers.cloudflare.com/r2/), [Workers AI](https://developers.cloudflare.com/workers-ai/), and [Resend](https://resend.com). Cloudflare's blog post [Email for Agents](https://blog.cloudflare.com/email-for-agents/) is the longer story of this kind of inbox. For the product differences, see [Compared with agentic-inbox](#compared-with-agentic-inbox).
