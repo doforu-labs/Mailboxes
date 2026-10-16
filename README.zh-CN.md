@@ -93,11 +93,11 @@ npm install
 npm run setup
 ```
 
-这些资源就绪之后，平时重新部署用 `npm run deploy`（见[生产部署](#生产部署)）。
+这些资源就绪之后，平时重新部署用 `npm run deploy`（见[生产部署](#生产部署)）。这条命令也会应用远程迁移；已经打过的会跳过。
 
 脚本可以**反复运行**。已经建好的会跳过。加上 `-- --dry-run` 可以先看它打算做什么。
 
-> 顶部的 **Deploy to Cloudflare** 按钮也能用，但它只创建应用本身。存储桶、数据库和数据库 ID 要你自己补。见本节末尾。
+> 顶部的 **Deploy to Cloudflare** 按钮是给新账号的一键路径。Cloudflare 会克隆本仓库，创建 R2 桶和 D1 数据库，然后部署 Worker。这一步备好的是基础设施。要能收信、发信，还得打开 Worker 地址，走完 `/setup`，打开邮件路由（或在 Platform Settings 里保存凭据后用 **Add Domain**），发信再接上 Resend。在自己检出的仓库里，引导式首次部署仍然是 `npm run setup`。
 
 1. **打开收信。** 在 Cloudflare 面板里进入域名 → **Email Routing**，建一条 **catch-all**（全收：这个域名下任何地址的信都收下），转发到这个应用。域名**不在** Cloudflare DNS 上时，可以改走 Resend 收信 Webhook：`/api/v1/inbound/resend`。
 
@@ -110,18 +110,17 @@ npm run setup
 4. **建一个邮箱。** 登录后，给域名下任意地址建一个邮箱，比如 `hello@yourdomain.com`。
 
 <details>
-<summary>想改用 <strong>Deploy to Cloudflare</strong> 按钮？</summary>
+<summary>用 <strong>Deploy to Cloudflare</strong> 按钮</summary>
 
-按钮只会创建 Worker。应用还需要一个 R2 桶和 D1 数据库。本仓库的 `wrangler.jsonc` 指向的是作者账号里的资源，直接点按钮会失败。要用按钮的话：
+按钮适合不想走命令行的新 Cloudflare 账号。Cloudflare 会把本仓库克隆到你的 GitHub 或 GitLab，读取 `wrangler.jsonc`，创建 R2 桶（`mailboxes`）和 D1 数据库（`mailboxes-db`），把新的 `database_id` 写进那份克隆，然后部署。`deploy` 脚本会在 `wrangler deploy` 之前执行 `wrangler d1 migrations apply DB --remote`，所以空库会建好表。已经应用过的迁移会跳过。
 
-1. 先 **fork** 本仓库。
-2. 在你的 fork 里建好资源，并让配置指向它们：
-   - `wrangler r2 bucket create mailboxes`
-   - `wrangler d1 create mailboxes-db`，把返回的 `database_id` 填进 `wrangler.jsonc` 的 `d1_databases`
-   - `wrangler d1 migrations apply mailboxes-db --remote`
-3. 在**你的 fork** 上点按钮（本 README 里的按钮指向本仓库，会用到作者的 `database_id`）。
+按钮停在基础设施。收件箱要能收发，还得做这几步：
 
-比这省事的做法是上面的 `npm run setup`。
+1. 打开 Worker 地址。第一次访问是 `/setup` 向导，在这里创建管理员账号。没有默认密码。
+2. 打开收信。在 Cloudflare 面板里：你的域名 → **Email Routing** → 一条 catch-all（全收）规则，转发到这个 Worker。走完向导后，也可以在 **Settings → Platform Settings** 保存 Cloudflare API Token 和 Account ID，再 **Add Domain**——域名的 DNS 已经在 Cloudflare 上时，应用会写好全收规则。
+3. 发信是可选的。添加域名时填入 Resend API Key，之后也能在域名菜单里补。
+
+在自己检出的仓库里，引导式首次部署仍然是 `npm run setup`。同名的 R2 桶和 D1 数据库会沿用，本地 `wrangler.jsonc` 里的占位 `database_id` 会被写成这个账号的真实 ID。这个改动留在本地，不要提交。
 
 </details>
 
@@ -129,7 +128,7 @@ npm run setup
 
 大部分由 `npm run setup` 填好，或者登录后在应用里改。
 
-- **`wrangler.jsonc`** —— 数据库 ID（D1 的 `database_id`）、文件存储的桶名（R2），以及其它绑定。`npm run setup` 会把 `database_id` 填上。
+- **`wrangler.jsonc`** —— 仓库里提交的 D1 `database_id` 是占位符 `00000000-0000-0000-0000-000000000000`，Deploy 按钮会据此创建数据库并填上真实 ID。命令行部署时，`npm run setup` 做同样的写回。R2 桶名保持 `mailboxes`。
 - **Cloudflare 凭据（Platform Settings）** —— 登录后打开 **Settings**（`/settings`）→ **Platform Settings**，填 **Cloudflare API Token** 和 **Cloudflare Account ID**。点 **Verify & Save** 会先检查再保存（成功提示里有账号名，以及找到了几个域名），徽章变成 `Configured`。这两个值存在数据库里。
   - 面板里「创建预配置的 Token →」会替你勾好其中 3 项权限，还有 1 项要自己加上：点 Add more，选 Zone → Email Routing Rules → Edit，再把 Token 粘回去。
   - 保存之后，添加域名时会自动打开邮件路由、建好转发规则，不用再去面板里点。没填凭据的话，按[快速开始](#快速开始)第 1 步手动做。
@@ -165,7 +164,7 @@ npm run setup
    wrangler d1 create mailboxes-db
    ```
 
-4. 把返回的 `database_id` 填进 `wrangler.jsonc` 的 `d1_databases`。
+4. 把返回的 `database_id` 填进 `wrangler.jsonc` 的 `d1_databases`，替换占位符 `00000000-0000-0000-0000-000000000000`。
 
 5. 创建文件存储桶（R2）：
 
@@ -187,21 +186,21 @@ npm run setup
 
 ### 生产部署
 
-**第一次部署用 `npm run setup`。** 它会补上还没有的资源（R2 桶、D1 数据库），把 `database_id` 写回配置，然后构建并部署。默认**不会**把迁移打到你已经在用的生产库上：它只做一次只读的 `wrangler d1 migrations list <db> --remote`，发现有待应用的迁移就**停下来**，列出文件名，让你加上 `--migrate` 再跑。唯一的例外是这次刚建出来的空库——没有旧数据可损坏，会直接初始化。`bash deploy.sh` 和 `npm run setup` 是一回事。
+**第一次部署用 `npm run setup`。** 它会补上还没有的资源（R2 桶、D1 数据库），把 `database_id` 写回配置，然后构建并部署。默认**不会**把迁移打到你已经在用的生产库上：它只做一次只读的 `wrangler d1 migrations list DB --remote`，发现有待应用的迁移就**停下来**，列出文件名，让你加上 `--migrate` 再跑。唯一的例外是这次刚建出来的空库——没有旧数据可损坏，会直接初始化。`bash deploy.sh` 和 `npm run setup` 是一回事。
 
-**平时重新部署用 `npm run deploy`。** 只构建和部署，不动迁移，也不创建资源。
+**平时重新部署用 `npm run deploy`。** 它会构建、应用远程 D1 迁移，然后部署。已经应用过的迁移会跳过，所以重复部署不会重做表结构；打到空库上的第一次部署会把表建出来。创建 R2 桶和 D1 数据库仍由 `npm run setup` 或 Deploy to Cloudflare 按钮负责。仓库里的 `database_id` 是按钮会替换的全零占位符。已经在跑这个应用的机器上，拉取之后先跑一次 `npm run setup`，让它把真实 ID 写回本地 `wrangler.jsonc`，这个改动不要提交。
 
 ```bash
 npm run deploy
 ```
 
-**给生产库打迁移。** `npm run setup -- --migrate` 会在 setup 里应用还没打上的远程迁移。只想单独打迁移：
+**给生产库打迁移。** `npm run deploy` 和 `npm run db:migrate` 都会应用还没打上的远程迁移（`wrangler d1 migrations apply DB --remote`）。`npm run setup -- --migrate` 是在 setup 里做同一件事。单独跑 setup 时，如果已有的生产库还有待应用迁移，它仍会停下来，让你加上 `--migrate` 再跑。只想单独打迁移：
 
 ```bash
 npm run db:migrate
 ```
 
-**一步做完。** `npm run deploy:full` 会构建、部署，并应用远程迁移：
+**先部署、再迁移。** `npm run deploy:full` 会构建、部署，然后再对同一个 `DB` 绑定应用远程迁移。`npm run deploy` 是先迁移，这是 [Workers Builds](https://developers.cloudflare.com/workers/platform/deploy-buttons/) 用的顺序，新库会在 Worker 发布前就有表。
 
 ```bash
 npm run deploy:full
@@ -215,7 +214,7 @@ npm run deploy:full
 
 **原因。** 本项目用的是 `@cloudflare/vite-plugin`。`npm run build` 会写出 `.wrangler/deploy/config.json`，把 wrangler 指到 `build/server/wrangler.json`（`main: index.js`、`assets.directory: ../client`、`no_bundle: true`，而且没有 `build` 这一项）。裸跑 `wrangler deploy` 会顺着这个指向，把 `build/` 里现成的文件传上去——**完全不会重新构建**。没有报错，也没有警告。这已经真实发生过一次。
 
-**应该跑的命令：** 平时用 `npm run deploy`；第一次部署、以及要创建资源时，用 `npm run setup` 或 `bash deploy.sh`；部署再加迁移，用 `npm run deploy:full`。
+**应该跑的命令：** 平时用 `npm run deploy`（构建、应用远程迁移、再部署）；第一次部署、创建资源、或写回 `database_id` 时，用 `npm run setup` 或 `bash deploy.sh`；先部署再迁移，用 `npm run deploy:full`。
 
 **现在有一道检查。** `npm run build` 会往生成的 `build/server/wrangler.json` 里注入一段新鲜度检查（见 [`scripts/deploy-freshness-guard.mjs`](scripts/deploy-freshness-guard.mjs)）。`build/` 比源码旧时，裸跑 `wrangler deploy` 会直接失败，并告诉你该跑什么（确实要发旧构建时，用 `ALLOW_STALE_DEPLOY=1`）。支持的入口仍然是 `npm run deploy` 和 `bash deploy.sh`。
 
@@ -302,7 +301,7 @@ curl -s https://YOUR_APP/mcp \
 
 ### 已完成 ✅
 
-- ✅ **引导式首次部署** —— `npm run setup` 创建 R2 桶和 D1 数据库、写入 `database_id`、构建并部署；刚建出空库时会把表建好。之后的迁移仍要显式加上 `--migrate`
+- ✅ **引导式首次部署** —— `npm run setup` 创建 R2 桶和 D1 数据库、写入 `database_id`、构建并部署；刚建出空库时会把表建好。这条路径上之后的迁移仍要显式加上 `--migrate`。平时的 `npm run deploy` 会自己应用远程迁移，已经打过的会跳过
 - ✅ **收信可以自动配好** —— 在 Platform Settings 存入 Cloudflare API Token 和 Account ID 后，添加域名会打开邮件路由，并写入全收规则（`*@你的域名` → 这个应用）。只有 DNS 在 Cloudflare 上才是全自动；其它 DNS 服务商会给逐步说明
 - ✅ **发信可以自动配好** —— 按域名存入 Resend API Key 后，应用会在 Resend 创建域名、把 MX/TXT/CNAME 写进你的 Cloudflare DNS，并开始一次验证。没填 Cloudflare 凭据时，则列出记录让你自己加
 - ✅ **没有默认密码的首次向导** —— 加盐 PBKDF2-SHA256 哈希，存在数据库里

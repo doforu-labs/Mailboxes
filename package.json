@@ -31,7 +31,7 @@
 		"label": "Mailboxes",
 		"products": [
 			"Workers",
-			"Durable Objects",
+			"D1",
 			"R2",
 			"Workers AI"
 		]
@@ -40,11 +40,11 @@
 		"build": "react-router build && node scripts/inject-deploy-guard.mjs",
 		"cf-typegen": "wrangler types",
 		"db:create": "wrangler d1 create mailboxes-db",
-		"db:migrate": "wrangler d1 migrations apply mailboxes-db --remote",
-		"db:migrate:local": "wrangler d1 migrations apply mailboxes-db --local",
-		"db:preview": "wrangler d1 migrations apply mailboxes-db --preview",
-		"deploy": "npm run build && wrangler deploy",
-		"deploy:full": "npm run build && wrangler deploy && wrangler d1 migrations apply mailboxes-db --remote",
+		"db:migrate": "wrangler d1 migrations apply DB --remote",
+		"db:migrate:local": "wrangler d1 migrations apply DB --local",
+		"db:preview": "wrangler d1 migrations apply DB --preview",
+		"deploy": "npm run build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+		"deploy:full": "npm run build && wrangler deploy && wrangler d1 migrations apply DB --remote",
 		"postinstall": "npx --yes patch-package",
 		"predev": "npx --yes patch-package",
 		"dev": "react-router dev",

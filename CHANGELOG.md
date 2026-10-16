@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Deploy to Cloudflare can provision D1 and R2.** `wrangler.jsonc` ships the
+  all-zero D1 `database_id` (`00000000-0000-0000-0000-000000000000`) so the
+  Deploy button can create the database and rewrite the id in the clone.
+  `npm run deploy` applies remote migrations before `wrangler deploy`
+  (already-applied migrations are skipped), and every `wrangler d1 migrations
+  apply` script targets the `DB` binding. `npm run setup` treats that
+  placeholder as unset and writes the real id for a database that already
+  exists under the same name. `package.json` `cloudflare.products` lists
+  Workers, D1, R2, and Workers AI.
+
 - **New agent API keys use the `mbx_` prefix.** Fresh keys are `mbx_` followed
   by 64 lowercase hex characters (32 random bytes, the same entropy as
   before). Verification still accepts existing `agk_` + 64 hex keys, so a
@@ -17,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the 401 hint names the new shape.
 
 ### Documentation
+
+- **Deploy button.** Both READMEs describe the button as cloning the repo and
+  provisioning R2 and D1. The admin wizard, Email Routing (or Platform
+  Settings + Add Domain), and optional Resend remain after that. `npm run
+  deploy` is documented as applying remote migrations.
 
 - **README screenshots.** `demo_app.png` and `demo_domains.png` are replaced
   with the current three-pane inbox (AI assistant draft, Review & send) and

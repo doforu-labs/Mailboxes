@@ -121,6 +121,16 @@ const wrangler = (args, { withConfig = true, ...opts } = {}) => {
 		: sh("npx", ["wrangler", ...full], opts);
 };
 
+/**
+ * Cloudflare's Deploy to Cloudflare button treats this UUID as "provision a
+ * new D1 and rewrite the id". It is not a database on any account.
+ */
+const PLACEHOLDER_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
+
+function isConfiguredDatabaseId(id) {
+	return typeof id === "string" && id.length > 0 && id.toLowerCase() !== PLACEHOLDER_DATABASE_ID;
+}
+
 /** Replace an existing `database_id` value, or insert the key after `database_name`. */
 function withDatabaseId(text, databaseId) {
 	const keyed = /("database_id"\s*:\s*")[^"]*(")/;
@@ -181,10 +191,18 @@ const valueOf = (key) => new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(configTex
 const workerName = valueOf("name") ?? "mailboxes";
 const databaseName = valueOf("database_name") ?? "mailboxes-db";
 const currentDatabaseId = valueOf("database_id");
+// Missing id and the all-zero Deploy-button placeholder both mean "not configured":
+// resolving the database by name must write the real id back.
+const configuredDatabaseId = isConfiguredDatabaseId(currentDatabaseId) ? currentDatabaseId : undefined;
+const d1Section = /"d1_databases"\s*:\s*\[[\s\S]*?\]/.exec(configText)?.[0] ?? "";
+const databaseBinding = /"binding"\s*:\s*"([^"]*)"/.exec(d1Section)?.[1] || "DB";
 const bucketName = valueOf("bucket_name");
 
 done(`Worker：${workerName}`);
-done(`D1：${databaseName}（当前 database_id：${currentDatabaseId ?? "未设置"}）`);
+done(`D1：${databaseName}（当前 database_id：${configuredDatabaseId ?? "未设置"}）`);
+if (currentDatabaseId && !configuredDatabaseId) {
+	note("database_id 是 Deploy 按钮用的全零占位符，解析到真实库后会写回");
+}
 done(bucketName ? `R2：${bucketName}` : "R2：配置里没有固定桶名，wrangler 会自动创建");
 
 // ── 4. R2 bucket ───────────────────────────────────────────────────────────
@@ -238,7 +256,9 @@ if (!record && DRY_RUN) {
 	const res = wrangler(["d1", "create", databaseName], { capture: true });
 	record = findDatabase(listDatabases());
 	if (!record) {
-		const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(res.out)?.[0];
+		const uuid = [...res.out.matchAll(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)]
+			.map((match) => match[0])
+			.find((id) => isConfiguredDatabaseId(id));
 		if (uuid) record = { uuid };
 	}
 	if (!record) abort(`创建 D1 数据库 ${databaseName} 失败`, asBlock(res.out));
@@ -254,12 +274,13 @@ const databaseId = record?.uuid ?? record?.id ?? record?.database_id;
 
 heading("写入 database_id");
 
-if (!databaseId) {
+if (!isConfiguredDatabaseId(databaseId)) {
 	note("无法确定 database_id，跳过写回 —— 请手动检查配置");
-} else if (databaseId === currentDatabaseId) {
+} else if (databaseId === configuredDatabaseId) {
 	done("配置已指向该数据库，无需修改");
 } else if (DRY_RUN) {
-	note(`会把 database_id 从 ${currentDatabaseId ?? "(缺失)"} 改成 ${databaseId}`);
+	const from = configuredDatabaseId ?? (currentDatabaseId ? "全零占位符" : "(缺失)");
+	note(`会把 database_id 从 ${from} 改成 ${databaseId}`);
 } else {
 	const updated = withDatabaseId(configText, databaseId);
 	if (updated === configText) abort("无法自动写入 database_id", "请手动把 database_id 填进 wrangler.jsonc");
@@ -274,7 +295,7 @@ heading("数据库迁移");
 /**
  * Read-only probe: asks wrangler which migrations are still pending.
  *
- * Real `wrangler d1 migrations list <db> --remote` output is one of:
+ * Real `wrangler d1 migrations list <binding> --remote` output is one of:
  *
  *   ✅ No migrations to apply!                     (nothing pending)
  *
@@ -291,7 +312,7 @@ heading("数据库迁移");
  * says so; a non-zero exit is always a failure, never "no migrations".
  */
 function listPendingMigrations() {
-	const res = wrangler(["d1", "migrations", "list", databaseName, "--remote"], { capture: true });
+	const res = wrangler(["d1", "migrations", "list", databaseBinding, "--remote"], { capture: true });
 	if (res.status !== 0) return { ok: false, out: res.out, pending: [] };
 
 	const pending = [];
@@ -307,7 +328,7 @@ function listPendingMigrations() {
 	return { ok: true, out: res.out, pending };
 }
 
-const applyMigrationArgs = ["d1", "migrations", "apply", databaseName, "--remote"];
+const applyMigrationArgs = ["d1", "migrations", "apply", databaseBinding, "--remote"];
 
 if (DRY_RUN) {
 	if (dbJustCreated) note("本次会新建数据库，届时会自动应用迁移");
