@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import MessageAddressLines from "~/components/email-panel/MessageAddressLines";
 import { useTranslation } from "react-i18next";
 import { formatSenderFull } from "shared/participants";
 import { isLocale } from "shared/i18n/config";
@@ -130,9 +131,11 @@ export default function ThreadMessage({
 								</span>
 								{isDraft && <Badge variant="outline">{t("message.draftBadge")}</Badge>}
 							</div>
-							<div className="text-xs text-kumo-subtle">
-								{t("message.toLabel", { email: email.recipient })}
-							</div>
+							<MessageAddressLines
+								senderName={email.sender_name}
+								sender={email.sender}
+								recipient={email.recipient}
+							/>
 						</div>
 					</div>
 					<div className="flex items-center gap-1 shrink-0">

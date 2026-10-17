@@ -31,6 +31,7 @@
 		"draftReply": "草稿回复",
 		"you": "你",
 		"draftBadge": "草稿",
+		"fromLabel": "发件人：{{email}}",
 		"toLabel": "收件人：{{email}}",
 		"collapse": "折叠邮件",
 		"viewSource": "查看原始内容",

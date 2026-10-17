@@ -31,6 +31,7 @@
 		"draftReply": "Draft reply",
 		"you": "You",
 		"draftBadge": "Draft",
+		"fromLabel": "From: {{email}}",
 		"toLabel": "To: {{email}}",
 		"collapse": "Collapse message",
 		"viewSource": "View source",

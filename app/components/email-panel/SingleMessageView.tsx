@@ -6,6 +6,7 @@
 
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import MessageAddressLines from "~/components/email-panel/MessageAddressLines";
 import { useTranslation } from "react-i18next";
 import { formatSenderFull } from "shared/participants";
 import { isLocale } from "shared/i18n/config";
@@ -23,7 +24,7 @@ export default function SingleMessageView({
 	mailboxId,
 	onPreviewImage,
 }: SingleMessageViewProps) {
-	const { t, i18n } = useTranslation("mailPanel");
+	const { i18n } = useTranslation("mailPanel");
 	// Follow the active UI language so the detail header matches the list.
 	const locale = isLocale(i18n.language) ? i18n.language : "en";
 	return (
@@ -38,9 +39,11 @@ export default function SingleMessageView({
 							<div className="text-sm font-medium text-kumo-default truncate">
 								{formatSenderFull(email.sender_name, email.sender)}
 							</div>
-							<div className="text-xs text-kumo-subtle">
-								{t("message.toLabel", { email: email.recipient })}
-							</div>
+							<MessageAddressLines
+								senderName={email.sender_name}
+								sender={email.sender}
+								recipient={email.recipient}
+							/>
 						</div>
 					</div>
 					<span className="text-xs text-kumo-subtle shrink-0">
