@@ -45,6 +45,25 @@ export interface CopyEmailLabels {
 const MESSAGE_DIVIDER = "----------------------------------------";
 
 /**
+ * Flatten the whitespace an HTML template leaves behind.
+ *
+ * `htmlToPlainText` turns `</p>` into a blank line and `</div>` into a newline,
+ * so a nested marketing template (divs inside divs inside tables) comes out as
+ * long runs of empty lines and trailing spaces. That reads as broken once
+ * pasted into a document or a reply, so collapse runs of three or more
+ * newlines and drop trailing spaces. Paragraph structure survives; the air
+ * does not.
+ */
+function normalizeBody(text: string): string {
+	return text
+		.replace(/\u00a0/g, " ")
+		.replace(/[ \t]+$/gm, "")
+		.replace(/^[ \t]+/gm, "")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+}
+
+/**
  * Render one message as a `Label: value` header block followed by its body.
  *
  * Header values are inserted verbatim (not escaped): the result is plain text
@@ -65,7 +84,7 @@ function formatMessage(email: Email, labels: CopyEmailLabels, locale?: Locale): 
 
 	if (email.date) lines.push(`${labels.date}: ${formatDetailDate(email.date, locale)}`);
 
-	const body = email.body ? htmlToPlainText(email.body) : "";
+	const body = email.body ? normalizeBody(htmlToPlainText(email.body)) : "";
 	return body ? `${lines.join("\n")}\n\n${body}` : lines.join("\n");
 }
 
