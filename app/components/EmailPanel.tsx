@@ -15,11 +15,13 @@ import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
 import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
 import { splitEmailList, toEmailListValue } from "~/lib/utils";
+import { buildEmailClipboardText, copyTextToClipboard } from "~/lib/copy-email";
 import api from "~/services/api";
 import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
+import { isLocale } from "shared/i18n/config";
 import type { Email, Folder, Mailbox } from "~/types";
 
 function EmailPanelSkeleton() {
@@ -33,7 +35,10 @@ function EmailPanelSkeleton() {
 }
 
 export default function EmailPanel({ emailId }: { emailId: string }) {
-	const { t } = useTranslation("mailPanel");
+	const { t, i18n } = useTranslation("mailPanel");
+	// Copy payloads carry formatted dates, so they follow the active UI language
+	// like the rest of the panel.
+	const locale = isLocale(i18n.language) ? i18n.language : "en";
 	const { mailboxId, folder } = useParams<{ mailboxId: string; folder: string }>();
 	const { data: email } = useEmail(mailboxId, emailId) as { data?: Email };
 	const { data: threadRepliesRaw } = useThreadReplies(mailboxId, email?.thread_id) as {
@@ -94,6 +99,29 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const toggleStar = () => { if (mailboxId) updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } }); };
 	const handleMove = (folderId: string) => { if (mailboxId) { moveEmailMut.mutate({ mailboxId, id: email.id, folderId }); closePanel(); } };
 	const handleDelete = () => { if (mailboxId) { if (!window.confirm(t("desc.confirmDelete"))) return; deleteEmailMut.mutate({ mailboxId, id: email.id }); closePanel(); } };
+
+	// 正文渲染在沙箱 iframe（无 allow-same-origin）里，选区和 Ctrl+A 都是 per-document 的，
+	// 所以键盘永远只能拿到「iframe 里的正文」或「父页面的 UI」其中一个。这里把整封邮件
+	// （主题 + 发件人 + 收件人 + 时间 + 纯文本正文，会话则包含全部邮件）拼出来直接写剪贴板。
+	const handleCopyAll = async () => {
+		const text = buildEmailClipboardText(
+			allMessages,
+			{
+				subject: t("copy.subject"),
+				from: t("copy.from"),
+				to: t("copy.to"),
+				cc: t("copy.cc"),
+				date: t("copy.date"),
+			},
+			locale,
+		);
+		const ok = await copyTextToClipboard(text);
+		toastManager.add(
+			ok
+				? { title: t("desc.copyAllSuccess") }
+				: { title: t("desc.copyAllFailed"), variant: "error" },
+		);
+	};
 
 	const handleEditDraft = (draftMsg?: Email) => {
 		const target = draftMsg || email;
@@ -176,6 +204,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				}}
 				onMove={handleMove}
 				onViewSource={() => setSourceViewEmail(email)}
+				onCopyAll={handleCopyAll}
 				onDelete={handleDelete}
 			/>
 

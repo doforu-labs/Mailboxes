@@ -21,6 +21,7 @@
 	"unstar": "Unstar",
 	"markAsUnread": "Mark as unread",
 	"markAsRead": "Mark as read",
+	"copyAll": "Copy all (with subject and addresses)",
 	"viewSource": "View source",
 	"moveToFolder": "Move to folder",
 	"moveTo": "Move to"

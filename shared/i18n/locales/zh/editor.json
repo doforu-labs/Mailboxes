@@ -21,6 +21,7 @@
 	"unstar": "取消星标",
 	"markAsUnread": "标为未读",
 	"markAsRead": "标为已读",
+	"copyAll": "复制全文（含主题和收发件人）",
 	"viewSource": "查看源代码",
 	"moveToFolder": "移动到文件夹",
 	"moveTo": "移动到"

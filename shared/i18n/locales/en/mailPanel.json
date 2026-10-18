@@ -17,7 +17,16 @@
 		"sendFailed": "Failed to send email.",
 		"sendStatusSending": "Sending...",
 		"sendStatusSent": "Sent successfully",
-		"sendStatusFailed": "Delivery failed - email was not sent"
+		"sendStatusFailed": "Delivery failed - email was not sent",
+		"copyAllSuccess": "Copied the full email",
+		"copyAllFailed": "Copy failed — select the text and copy manually"
+	},
+	"copy": {
+		"subject": "Subject",
+		"from": "From",
+		"to": "To",
+		"cc": "Cc",
+		"date": "Date"
 	},
 	"source": {
 		"title": "Email Source Headers",

@@ -13,6 +13,7 @@ import {
 	ArrowLeft,
 	ReplyAll,
 	Code,
+	Copy,
 	MailOpen,
 	Mail,
 	Folder as FolderIcon,
@@ -41,6 +42,7 @@ interface EmailPanelToolbarProps {
 	onToggleRead: () => void;
 	onMove: (folderId: string) => void;
 	onViewSource: () => void;
+	onCopyAll: () => void;
 	onDelete: () => void;
 }
 
@@ -60,6 +62,7 @@ export default function EmailPanelToolbar({
 	onToggleRead,
 	onMove,
 	onViewSource,
+	onCopyAll,
 	onDelete,
 }: EmailPanelToolbarProps) {
 	const { t } = useTranslation("editor");
@@ -163,6 +166,18 @@ export default function EmailPanelToolbar({
 			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
 
 			<div className="ml-auto flex items-center gap-0.5">
+				{/* 正文在沙箱 iframe 里，Ctrl+A 只能选中 iframe 自身那个文档，
+				    拿不到主题 / 发件人。这里提供一次性把整封邮件（含标头）复制的入口。 */}
+				<Tooltip content={t("copyAll")} side="bottom" asChild>
+					<Button
+						variant="ghost"
+						shape="square"
+						size="sm"
+						icon={<Copy size={18} />}
+						onClick={onCopyAll}
+						aria-label={t("copyAll")}
+					/>
+				</Tooltip>
 				<Tooltip content={t("viewSource")} side="bottom" asChild>
 					<Button
 						variant="ghost"

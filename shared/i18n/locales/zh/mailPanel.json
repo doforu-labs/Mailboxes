@@ -17,7 +17,16 @@
 		"sendFailed": "发送邮件失败。",
 		"sendStatusSending": "正在发送...",
 		"sendStatusSent": "发送成功",
-		"sendStatusFailed": "投递失败 - 邮件未发送"
+		"sendStatusFailed": "投递失败 - 邮件未发送",
+		"copyAllSuccess": "已复制完整邮件内容",
+		"copyAllFailed": "复制失败，请手动选中后复制"
+	},
+	"copy": {
+		"subject": "主题",
+		"from": "发件人",
+		"to": "收件人",
+		"cc": "抄送",
+		"date": "时间"
 	},
 	"source": {
 		"title": "邮件原始标头",

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Copy the whole email from the message toolbar.** Ctrl+A cannot select the
+  subject, sender and body at once: the body is rendered in a sandboxed iframe
+  without `allow-same-origin`, so it lives in its own opaque-origin document,
+  and browser selection is per-document. With focus inside the body Ctrl+A
+  selects only the message text; with focus outside it, the body is
+  unreachable. A new toolbar button assembles subject, sender, recipient, cc,
+  date and the plain-text body (every message when the message is part of a
+  thread) and writes it to the clipboard, with a hidden-textarea fallback for
+  contexts where the async Clipboard API is unavailable.
+
 ### Changed
 
 - **Deploy to Cloudflare can provision D1 and R2.** `wrangler.jsonc` ships the
