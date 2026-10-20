@@ -505,7 +505,7 @@ describe("gateway discovery surface (real routes)", () => {
 		assert.strictEqual(body.ok, false);
 		assert.strictEqual(
 			body.error,
-			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@doforu.ai'), then retry.",
+			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@example.com'), then retry.",
 		);
 	});
 });
@@ -586,7 +586,7 @@ describe("read-only key scope (real routes)", () => {
 				body: JSON.stringify({
 					name: "send_email",
 					arguments: {
-						mailboxId: "hello@doforu.ai",
+						mailboxId: "hello@example.com",
 						to: "someone@example.com",
 						subject: "hi",
 						body: "hello",

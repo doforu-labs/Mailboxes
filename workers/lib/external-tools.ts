@@ -581,7 +581,7 @@ const FORBIDDEN_MAILBOX_ERROR = "forbidden: mailbox not allowed by this key";
  * errors (`emailNotFound`, `unknownFolder`, …) are unaffected.
  */
 export const MAILBOX_ID_REQUIRED_ERROR =
-	"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@doforu.ai'), then retry.";
+	"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@example.com'), then retry.";
 
 /**
  * Build the "unknown mailbox" error.

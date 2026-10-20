@@ -2479,11 +2479,11 @@ describe("mailboxId errors are self-correcting", () => {
 	it("the required-error names `list_mailboxes`, an example, and retry", async () => {
 		assert.strictEqual(
 			MAILBOX_ID_REQUIRED_ERROR,
-			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@doforu.ai'), then retry.",
+			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@example.com'), then retry.",
 		);
 		assert.ok(MAILBOX_ID_REQUIRED_ERROR.startsWith("mailboxId is required"));
 		assert.ok(MAILBOX_ID_REQUIRED_ERROR.includes("list_mailboxes"));
-		assert.ok(MAILBOX_ID_REQUIRED_ERROR.includes("hello@doforu.ai"));
+		assert.ok(MAILBOX_ID_REQUIRED_ERROR.includes("hello@example.com"));
 	});
 
 	it("the not-found error echoes the rejected id and names the fix", async () => {
