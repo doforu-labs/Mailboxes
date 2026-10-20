@@ -1,6 +1,9 @@
 <div align="center">
   <h1><picture><source media="(prefers-color-scheme: dark)" srcset="./logo-rounded-dark.png"><img src="./logo-rounded.png" alt="The Mailboxes icon: a white letter M whose middle valley doubles as an envelope flap, on a black tile" width="48" align="absmiddle"></picture>&nbsp;&nbsp;Mailboxes</h1>
-  <p><em>Use your own domain for product email, plus an AI assistant that asks before it sends. Runs on Cloudflare's free tiers.</em></p>
+  <p><strong>Email for your product and your agents.</strong><br>Free on your own Cloudflare.</p>
+  <p>Give your AI agent a real inbox.</p>
+  <p><strong>support@yourdomain, $0/month, AI drafts every reply.</strong><br>AI drafts, you hit send.</p>
+  <p>「你的产品邮箱，也是你 AI 的邮箱」<br>「0 元自托管，AI 起草，你点发送」</p>
 
   <p>
     <a href="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml/badge.svg"></a>
@@ -18,11 +21,19 @@
 
 > **English** · [简体中文](./README.zh-CN.md)
 
-`support@` and `hello@` should live on the domain you already own. A hosted inbox charges for every seat, and a mailbox on its own still leaves you writing every reply.
+`support@yourdomain` is the inbox. Mailboxes runs it in **your Cloudflare account** — Workers, [D1](https://developers.cloudflare.com/d1/), and [R2](https://developers.cloudflare.com/r2/) — on the free tiers, so a personal inbox or an early product stays at **$0/month**. Incoming mail uses [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/). Outgoing mail uses [Resend](https://resend.com). You open a thread and ask. The assistant reads it and drafts the reply into Drafts. **AI drafts, you hit send.** It does not answer mail on its own.
 
-Mailboxes is that inbox, with an assistant beside it. It runs in **your Cloudflare account**, on the free tiers — nothing to rent, and nothing to pay Mailboxes. Incoming mail arrives through [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/). Outgoing mail goes out through [Resend](https://resend.com), with SPF, DKIM, and DMARC so it is set up to reach Gmail and Outlook. The assistant can read what came in, search older threads, and draft a reply. **It does not send until you confirm.**
+The same inbox is open to agents. An `mbx_` key on the built-in MCP and HTTP tool gateway lets an outside agent read and send from the domain. That call is the send. In the app, a draft stays in Drafts until you send it, or until you tell the assistant to.
 
-A personal inbox or a small product stays at **$0 a month**. The allowances are in [What it costs](#what-it-costs).
+## Why Mailboxes
+
+- **Your domain, no per-seat price.** `support@`, `hello@`, and a catch-all live on a domain you already own. Google Workspace and Zoho Mail charge per person. Mailboxes does not. A tenth mailbox costs the same as the first. Allowances are in [What it costs](#what-it-costs).
+- **One click, no server.** The Deploy button above creates the Worker, the D1 database, and the R2 bucket in your Cloudflare account. There is no machine to keep running.
+- **Domains, in the app.** Add more than one. Each has its own addresses, catch-all, and sending key. With a Cloudflare API token saved, adding a domain turns on Email Routing and writes the catch-all when the zone is already on Cloudflare. With that domain's Resend key, the app creates it on Resend and writes the DNS records. Otherwise it lists the records for you.
+- **Ready for agents.** MCP (`POST /mcp`) and an HTTP tool gateway (`GET /tools`, `POST /tools/call`), both behind `mbx_` keys, with the same 14 tools as the in-app assistant. See [External access](#external-access).
+- **AGPL-3.0.** This repository is [AGPL-3.0](LICENSE). It builds on [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox); the upstream portions stay Apache-2.0. See [License](#license) and [Compared with agentic-inbox](#compared-with-agentic-inbox).
+
+Auto-replies and shared team mailboxes are on the [roadmap](#roadmap). Today there is one admin. Nothing goes out until you send it, or an agent you gave a key calls send.
 
 ## What you get
 
@@ -30,7 +41,7 @@ Everything here ships in **v0.2.1**. For what is not built yet, see the [roadmap
 
 - **Addresses on your domain.** `support@`, `hello@`, `sales@`, a catch-all, or several domains from one screen. Each domain has its own addresses, its own forwarding rule, and its own sending key. Add another with **Add Domain** in **Settings**.
 - **An inbox you can work in.** Rich-text composer, reply and forward, threads, folders, search, and attachments.
-- **An assistant that waits for you.** The side panel reads mail, searches conversations, and drafts replies — 14 tools. The reply streams in, and you can see each tool it calls. Drafts land in that mailbox's Drafts folder. **Sending always needs your confirmation.** Each mailbox can have its own prompt, and the chat is saved.
+- **An assistant that waits for you.** The side panel reads mail, searches conversations, and drafts replies — 14 tools. The reply streams in, and you can see each tool it calls. Drafts land in that mailbox's Drafts folder. **You hit send.** The assistant calls send only when you tell it to. The chat is saved.
 - **Your own model, if you want one.** The default is Cloudflare's built-in AI (Workers AI — no key). Any mailbox can use an OpenAI-compatible endpoint instead, and falls back to the default if that endpoint is unreachable.
 - **Adding a domain can set itself up.** Save a Cloudflare API token and account id, and adding a domain turns on Email Routing and writes the catch-all for you. Save that domain's Resend key, and the app creates the domain on Resend, writes the DNS records, and starts verification. This is fully automatic when the domain's DNS is already on Cloudflare; otherwise the app lists the records for you to add.
 - **Mail stays in your Cloudflare account.** Messages live in a database ([D1](https://developers.cloudflare.com/d1/)). Mailbox settings and attachments live in file storage ([R2](https://developers.cloudflare.com/r2/)).
@@ -55,7 +66,7 @@ Cloudflare publishes [agentic-inbox](https://github.com/cloudflare/agentic-inbox
 | Domains | Add several in the app. Each has its own addresses, catch-all, and sending key. | A deploy-time setting (`DOMAINS` in the Worker config), not a screen in the app. |
 | License | [AGPL-3.0](LICENSE). If you run a modified version as a service for other people, you must offer them the source. | [Apache-2.0](https://github.com/cloudflare/agentic-inbox/blob/main/LICENSE). |
 
-Two things the table does not mean. Dropping Durable Objects is a simpler shape, **not a lower bill** — the SQLite-backed kind agentic-inbox uses already runs on the free plan. And both products wait for a person before anything is sent. agentic-inbox can draft a reply when mail arrives; Mailboxes drafts when you ask, and automatic replies are still on the [roadmap](#roadmap).
+Two things the table does not mean. Dropping Durable Objects is a simpler shape, **not a lower bill** — the SQLite-backed kind agentic-inbox uses already runs on the free plan. The in-app assistant waits for you before it sends. agentic-inbox can draft a reply when mail arrives; Mailboxes drafts when you ask, and automatic replies are still on the [roadmap](#roadmap). An outside agent with an `mbx_` key can send; that call is the send. See [External access](#external-access).
 
 Mailboxes builds on agentic-inbox and includes its code. How the licenses sit together is under [License](#license).
 
