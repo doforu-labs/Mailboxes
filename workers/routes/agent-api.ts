@@ -156,8 +156,25 @@ const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [DEFAULT_PROTOCOL_VERSION
  */
 const GATEWAY_VERSION = "0.2.1";
 
+/**
+ * The deployable's own name, reported by every discovery surface.
+ *
+ * Same single-source rule as `GATEWAY_VERSION`, for the same reason: the two
+ * surfaces used to be independent literals — `initialize` said `mailboxes`
+ * while `GET /tools` said `mailboxes-tool-gateway` — so a client that probed
+ * one endpoint and then the other had no way to tell whether it was looking at
+ * one service or two. The version agreeing while the name disagreed is the
+ * worst case of the two, because the mismatch reads as a deployment detail
+ * rather than the bug it is.
+ *
+ * `mailboxes` wins over the longer form: it is what `package.json` calls this
+ * thing, and it is what an MCP client shows the user in its server list — the
+ * place where a name earns its keep by being short.
+ */
+const GATEWAY_NAME = "mailboxes";
+
 /** Identity reported to MCP clients during `initialize`. */
-const SERVER_INFO = { name: "mailboxes", version: GATEWAY_VERSION } as const;
+const SERVER_INFO = { name: GATEWAY_NAME, version: GATEWAY_VERSION } as const;
 
 /**
  * The MCP `instructions` field returned by `initialize` (MCP 2025-06-18 §
@@ -213,7 +230,7 @@ function mcpInstructions(scope: ApiKeyScope): string {
  * address that route actually serves.
  */
 const TOOL_GATEWAY_INFO = {
-	name: "mailboxes-tool-gateway",
+	name: GATEWAY_NAME,
 	version: GATEWAY_VERSION,
 	auth: {
 		scheme: "bearer",

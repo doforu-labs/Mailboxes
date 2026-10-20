@@ -435,7 +435,7 @@ describe("gateway discovery surface (real routes)", () => {
 		// look, and no key removed.
 		assert.deepStrictEqual(Object.keys(body).sort(), ["info", "tools"]);
 
-		assert.strictEqual(body.info!.name, "mailboxes-tool-gateway");
+		assert.strictEqual(body.info!.name, "mailboxes");
 		assert.strictEqual(body.info!.version, "0.2.1");
 		// Anti-regression: the key set is EXACTLY these three. A `docs` field
 		// pointing at `/.well-known/api-catalog` used to sit here, but that
@@ -467,12 +467,15 @@ describe("gateway discovery surface (real routes)", () => {
 		assert.strictEqual(body.info!.version, pkg.version);
 	});
 
-	it("initialize and /tools report the same deployment version", { skip: sqliteSkip }, async () => {
-		// Two discovery surfaces, one deployment. `serverInfo.version` used to be
-		// an independent literal (1.0.0) from `info.version` (0.2.1), so a client
-		// that hit them in different orders was entitled to think it had found
-		// two different services. Both now read one constant, and this is what
-		// keeps them from drifting apart again.
+	it("initialize and /tools report the same deployment identity", { skip: sqliteSkip }, async () => {
+		// Two discovery surfaces, one deployment. Both halves of the identity used
+		// to be independent literals: `serverInfo.version` said 1.0.0 while
+		// `info.version` said 0.2.1, and `serverInfo.name` said `mailboxes` while
+		// `info.name` said `mailboxes-tool-gateway`. A client that hit them in
+		// different orders was entitled to think it had found two services. Both
+		// now read one constant each, and this is what keeps them from drifting
+		// apart again — fixing the version alone would have left the name free to
+		// rot, which is the same bug wearing a quieter coat.
 		const { env } = await createEnv();
 		const initBody = (await (
 			await mcpRequest(
@@ -488,9 +491,14 @@ describe("gateway discovery surface (real routes)", () => {
 			result?: { serverInfo?: { name?: string; version?: string } };
 		};
 		const infoBody = (await (await gatewayGet("/tools", env)).json()) as {
-			info?: { version?: string };
+			info?: { name?: string; version?: string };
 		};
 
+		assert.strictEqual(
+			initBody.result?.serverInfo?.name,
+			infoBody.info?.name,
+			"MCP serverInfo.name and GET /tools info.name must agree",
+		);
 		assert.strictEqual(
 			initBody.result?.serverInfo?.version,
 			infoBody.info?.version,
