@@ -505,7 +505,7 @@ describe("gateway discovery surface (real routes)", () => {
 		assert.strictEqual(body.ok, false);
 		assert.strictEqual(
 			body.error,
-			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@example.com'), then retry.",
+			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId, then retry.",
 		);
 	});
 });

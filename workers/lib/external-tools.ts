@@ -562,11 +562,18 @@ const FORBIDDEN_MAILBOX_ERROR = "forbidden: mailbox not allowed by this key";
  * `list_mailboxes` reports. A caller told only that its value was wrong has no
  * next move, and a model chaining tool calls will retry the same guess.
  *
- * Each message now carries the three things a caller needs to fix itself —
- * what went wrong, what a valid value looks like, and the exact call that
- * produces one — while keeping the ORIGINAL leading sentence and the exact
- * `mailboxId` field name, so existing substring assertions and any client that
- * pattern-matched the old prefix keep working.
+ * Each message now carries what a caller needs to fix itself — what went
+ * wrong, and the exact call that produces a valid value — while keeping the
+ * ORIGINAL leading sentence and the exact `mailboxId` field name, so existing
+ * substring assertions and any client that pattern-matched the old prefix keep
+ * working.
+ *
+ * Deliberately no worked example of an address. `list_mailboxes` is the only
+ * authority on what a valid id is, so naming that call IS the instruction, and
+ * any literal planted here would be worse than useless: either an operator's
+ * real mailbox (handed to every caller that merely forgot the field) or a
+ * placeholder that does not exist (which a model will dutifully try, then eat
+ * a `mailbox not found`).
  *
  * `mailbox not found` names the rejected id back (`: <id>`) — the caller sent
  * an arbitrary string and needs to see which one — and then redirects to
@@ -581,7 +588,7 @@ const FORBIDDEN_MAILBOX_ERROR = "forbidden: mailbox not allowed by this key";
  * errors (`emailNotFound`, `unknownFolder`, …) are unaffected.
  */
 export const MAILBOX_ID_REQUIRED_ERROR =
-	"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@example.com'), then retry.";
+	"mailboxId is required. Call list_mailboxes first to get a valid mailboxId, then retry.";
 
 /**
  * Build the "unknown mailbox" error.

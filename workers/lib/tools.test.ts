@@ -2476,14 +2476,18 @@ describe("MCP tool annotations", () => {
 // keeping the original leading sentence and the `mailboxId` field name intact.
 
 describe("mailboxId errors are self-correcting", () => {
-	it("the required-error names `list_mailboxes`, an example, and retry", async () => {
+	it("the required-error names `list_mailboxes` and drops any planted example", async () => {
 		assert.strictEqual(
 			MAILBOX_ID_REQUIRED_ERROR,
-			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@example.com'), then retry.",
+			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId, then retry.",
 		);
 		assert.ok(MAILBOX_ID_REQUIRED_ERROR.startsWith("mailboxId is required"));
 		assert.ok(MAILBOX_ID_REQUIRED_ERROR.includes("list_mailboxes"));
-		assert.ok(MAILBOX_ID_REQUIRED_ERROR.includes("hello@example.com"));
+		// No worked example: the only authority on a valid id is the call named
+		// just above, and a literal here would either leak a real address or
+		// send a model to a placeholder it cannot use.
+		assert.ok(!MAILBOX_ID_REQUIRED_ERROR.includes("e.g."));
+		assert.ok(!MAILBOX_ID_REQUIRED_ERROR.includes("@"));
 	});
 
 	it("the not-found error echoes the rejected id and names the fix", async () => {
