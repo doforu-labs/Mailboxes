@@ -109,12 +109,13 @@ export const TOOL_DEFINITIONS = [
 	{
 		name: "list_mailboxes",
 		description:
-			"List all available mailboxes/email accounts. Call this first to obtain a valid `mailboxId` before calling any other tool that requires it.",
+			"List all available mailboxes/email accounts. Call this first to obtain a valid `mailboxId` before calling any other tool that requires it. An entry whose address starts with `*@` is that domain's CATCH-ALL mailbox: `catch_all` is true on it, and its folders hold every message sent to any address on the domain, not one person's mail.",
 		parameters: { type: "object", properties: {}, required: [] },
 	},
 	{
 		name: "list_emails",
-		description: "List emails in a folder. Use this to browse the user's inbox, sent, drafts, archive, or trash.",
+		description:
+			"List emails in a folder. Use this to browse the user's inbox, sent, drafts, archive, or trash. The result carries `count` (total emails in the folder, across all pages), `returned` (how many this page holds) and `has_more` (whether another page exists) — compare `count` with `returned`, never `returned` with the page size, to decide whether to paginate.",
 		parameters: {
 			type: "object",
 			properties: {
@@ -136,7 +137,8 @@ export const TOOL_DEFINITIONS = [
 	},
 	{
 		name: "search_emails",
-		description: "Search emails across all folders by keyword, sender, subject, etc.",
+		description:
+			"Search emails across all folders by keyword, sender, subject, etc. Like list_emails, the result reports `count` (total matches), `returned` (this page) and `has_more`.",
 		parameters: {
 			type: "object",
 			properties: {

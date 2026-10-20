@@ -28,6 +28,7 @@ import {
 	type AiToolCall,
 } from "./tool-dispatch";
 import type { ApiKeyScope } from "./api-key-utils";
+import { countEmails, countSearchResults } from "../db";
 import { stripHtmlToText } from "./email-helpers";
 import { getFolderDisplayName } from "../../shared/folders";
 import { DEFAULT_LOCALE } from "../../shared/i18n/config";
@@ -508,7 +509,16 @@ export async function dispatchExternalTool(
 		// `list_mailboxes` is the only reshaped output affected by the allow-list:
 		// it has no `mailboxId` to check up front, so its result is restricted
 		// after reshaping. Every other tool was already authorized above.
-		const reshaped = reshapeToolOutput(toolName, result);
+		// Reshape for the caller. The two list tools need one number the tool
+		// itself does not return: how many rows match in total. `emails.length`
+		// is a page, not an answer, and a caller that reads it as a total
+		// concludes "three emails in this inbox" and stops paginating.
+		const total = await countMatchingEmails(env, toolName, mailboxId, normalizedArgs);
+		const reshaped = reshapeToolOutput(toolName, result, {
+			total,
+			limit: normalizedArgs.limit,
+			page: normalizedArgs.page,
+		});
 		return {
 			ok: true,
 			result:
@@ -657,20 +667,78 @@ function isErrorResult(result: unknown): result is { error: unknown } {
 // ── Output reshaping (pure) ────────────────────────────────────────
 
 /**
+ * Count the rows a list tool's page was cut from.
+ *
+ * A courtesy, never a precondition: any failure (unknown folder, D1 hiccup,
+ * a tool that is not a list tool) returns `undefined`, and the response
+ * degrades to what the page itself proves rather than turning a working list
+ * call into an error.
+ */
+async function countMatchingEmails(
+	env: { DB: D1Database },
+	toolName: string,
+	mailboxId: string | undefined,
+	args: Record<string, unknown>,
+): Promise<number | undefined> {
+	if (!mailboxId) return undefined;
+	const folder =
+		typeof args.folder === "string" && args.folder.trim().length > 0
+			? args.folder
+			: undefined;
+	try {
+		if (toolName === "list_emails") {
+			return await countEmails(env.DB, mailboxId, folder);
+		}
+		if (toolName === "search_emails") {
+			// Same guard as the tool itself: an empty query is not "everything",
+			// so there is no honest total to report.
+			const query = typeof args.query === "string" ? args.query : "";
+			if (query.trim().length === 0) return undefined;
+			return await countSearchResults(env.DB, mailboxId, { query, folder });
+		}
+	} catch (e: any) {
+		console.error("countMatchingEmails failed:", e?.message ?? e);
+		return undefined;
+	}
+	return undefined;
+}
+
+/**
+ * Extra facts a list response needs but the raw tool output cannot supply.
+ *
+ * `list_emails` / `search_emails` return a *page* of rows and have no total to
+ * report, so the dispatcher counts the matching rows separately and hands the
+ * number down. `undefined` means the count was unavailable (not a list tool,
+ * or the count query failed): the reshaping then degrades to what the page
+ * itself proves rather than inventing a total.
+ */
+export interface ReshapeContext {
+	/** Rows matching the query across ALL pages. */
+	total?: number;
+	/** Paging knobs as the caller sent them, already normalised. */
+	limit?: unknown;
+	page?: unknown;
+}
+
+/**
  * Reshape a raw tool output into an LLM-friendly shape.
  *
  * Only the five read-only tools are reshaped (internal identifiers and raw
  * fields are dropped). Every other tool already returns a small status object
  * and is passed through untouched.
  */
-export function reshapeToolOutput(toolName: string, raw: unknown): unknown {
+export function reshapeToolOutput(
+	toolName: string,
+	raw: unknown,
+	ctx: ReshapeContext = {},
+): unknown {
 	switch (toolName) {
 		case "list_mailboxes":
 			return reshapeListMailboxes(raw);
 		case "list_emails":
-			return reshapeEmailList(raw, false);
+			return reshapeEmailList(raw, false, ctx);
 		case "search_emails":
-			return reshapeEmailList(raw, true);
+			return reshapeEmailList(raw, true, ctx);
 		case "get_email":
 			return reshapeGetEmail(raw);
 		case "get_thread":
@@ -755,10 +823,19 @@ function publicAttachment(att: any): {
 
 function reshapeListMailboxes(raw: unknown): unknown {
 	const list = Array.isArray(raw) ? raw : [];
-	const mailboxes = list.map((m: any) => ({
-		email: m?.email ?? m?.id ?? null,
-		created_at: m?.created_at ?? null,
-	}));
+	const mailboxes = list.map((m: any) => {
+		const email = m?.email ?? m?.id ?? null;
+		const base = { email, created_at: m?.created_at ?? null };
+		// A `*@domain` mailbox is that domain's catch-all: it collects every
+		// message addressed to ANY local part on the domain, which is a very
+		// different thing from one person's inbox. Nothing in the address itself
+		// says so — it looks like any other mailbox id — so the flag is spelled
+		// out. It matters most for scoped keys: "read support@" and "read
+		// everything on the domain" should not look like the same decision.
+		return typeof email === "string" && email.startsWith("*@")
+			? { ...base, catch_all: true }
+			: base;
+	});
 	return { mailboxes, count: mailboxes.length };
 }
 
@@ -766,7 +843,11 @@ function reshapeListMailboxes(raw: unknown): unknown {
  * Shared projection for `list_emails` / `search_emails` summaries.
  * When `withFolder` is true, the `search_emails` `folder_name` is surfaced.
  */
-function reshapeEmailList(raw: unknown, withFolder: boolean): unknown {
+function reshapeEmailList(
+	raw: unknown,
+	withFolder: boolean,
+	ctx: ReshapeContext = {},
+): unknown {
 	const list = Array.isArray(raw) ? raw : [];
 	const emails = list.map((e: any) => {
 		const base: Record<string, unknown> = {
@@ -790,7 +871,37 @@ function reshapeEmailList(raw: unknown, withFolder: boolean): unknown {
 		}
 		return base;
 	});
-	return { emails, count: emails.length };
+	return { emails, ...pageFacts(emails.length, ctx) };
+}
+
+/**
+ * The three numbers a paginated list owes its caller.
+ *
+ * `count` is the TOTAL number of matches, because that is what the name
+ * promises and what a caller needs to answer "how many emails do I have?" —
+ * it used to be `emails.length`, i.e. the size of one page, which reads as a
+ * total and quietly tells an agent it has seen everything. `returned` is this
+ * page, and `has_more` is derived rather than left to the caller to work out
+ * from `page` / `limit` (which most callers do not send at all).
+ *
+ * When the total is unavailable the honest answer is "at least this many":
+ * `count` falls back to `returned`, and `has_more` only claims more exists
+ * when the page came back full.
+ */
+function pageFacts(returned: number, ctx: ReshapeContext) {
+	const limit =
+		typeof ctx.limit === "number" && ctx.limit > 0 ? ctx.limit : undefined;
+	const page = typeof ctx.page === "number" && ctx.page > 0 ? ctx.page : 1;
+	const total = typeof ctx.total === "number" ? ctx.total : undefined;
+
+	const has_more =
+		total !== undefined
+			? total > (limit !== undefined ? (page - 1) * limit + returned : returned)
+			: limit !== undefined
+				? returned === limit
+				: false;
+
+	return { count: total ?? returned, returned, has_more };
 }
 
 /** Project a single full email into the public, LLM-friendly shape. */

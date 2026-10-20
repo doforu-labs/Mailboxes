@@ -140,8 +140,24 @@ const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
  */
 const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [DEFAULT_PROTOCOL_VERSION];
 
+/**
+ * The deployable's own version, reported by every discovery surface.
+ *
+ * Single source: `MCP initialize`'s `serverInfo.version` and `GET /tools`'s
+ * `info.version` used to be two independent literals (`1.0.0` and `0.2.1`),
+ * which read like two different services depending on which endpoint you
+ * happened to call first. `package.json` is the source of truth; the gateway
+ * tests assert this constant against it, so a release bump that forgets this
+ * line fails the build rather than shipping a lie.
+ *
+ * Kept as a literal (not an import of package.json): package.json imports are
+ * not available in every Workers bundling mode, and a duplicated constant is
+ * only a problem when nothing checks it — which something now does.
+ */
+const GATEWAY_VERSION = "0.2.1";
+
 /** Identity reported to MCP clients during `initialize`. */
-const SERVER_INFO = { name: "mailboxes", version: "1.0.0" } as const;
+const SERVER_INFO = { name: "mailboxes", version: GATEWAY_VERSION } as const;
 
 /**
  * The MCP `instructions` field returned by `initialize` (MCP 2025-06-18 §
@@ -198,12 +214,7 @@ function mcpInstructions(scope: ApiKeyScope): string {
  */
 const TOOL_GATEWAY_INFO = {
 	name: "mailboxes-tool-gateway",
-	// Matches `package.json`'s `version` (the deployable's own version). Kept
-	// as a literal: import.meta.json / package.json imports are not available
-	// in every Workers bundling mode and a wrong version is worse than a
-	// duplicated constant — this one is asserted against package.json by the
-	// gateway tests.
-	version: "0.2.1",
+	version: GATEWAY_VERSION,
 	auth: {
 		scheme: "bearer",
 		header: "Authorization",

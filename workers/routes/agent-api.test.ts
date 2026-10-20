@@ -287,7 +287,9 @@ describe("gateway discovery surface (real routes)", () => {
 		// no client needs a protocolVersion bump to keep working.
 		assert.strictEqual(result.protocolVersion, "2025-06-18");
 		assert.deepStrictEqual(result.capabilities, { tools: {} });
-		assert.deepStrictEqual(result.serverInfo, { name: "mailboxes", version: "1.0.0" });
+		// `version` is the deployable's own, shared with `GET /tools`'s
+		// `info.version` — not a separate MCP-only number that can drift.
+		assert.deepStrictEqual(result.serverInfo, { name: "mailboxes", version: "0.2.1" });
 
 		assert.strictEqual(typeof result.instructions, "string");
 		const instructions = result.instructions as string;
@@ -463,6 +465,37 @@ describe("gateway discovery surface (real routes)", () => {
 			readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
 		) as { version?: string };
 		assert.strictEqual(body.info!.version, pkg.version);
+	});
+
+	it("initialize and /tools report the same deployment version", { skip: sqliteSkip }, async () => {
+		// Two discovery surfaces, one deployment. `serverInfo.version` used to be
+		// an independent literal (1.0.0) from `info.version` (0.2.1), so a client
+		// that hit them in different orders was entitled to think it had found
+		// two different services. Both now read one constant, and this is what
+		// keeps them from drifting apart again.
+		const { env } = await createEnv();
+		const initBody = (await (
+			await mcpRequest(
+				{
+					jsonrpc: "2.0",
+					id: 1,
+					method: "initialize",
+					params: { protocolVersion: "2025-06-18" },
+				},
+				env,
+			)
+		).json()) as {
+			result?: { serverInfo?: { name?: string; version?: string } };
+		};
+		const infoBody = (await (await gatewayGet("/tools", env)).json()) as {
+			info?: { version?: string };
+		};
+
+		assert.strictEqual(
+			initBody.result?.serverInfo?.version,
+			infoBody.info?.version,
+			"MCP serverInfo.version and GET /tools info.version must agree",
+		);
 	});
 
 	it("the tools array keeps the OpenAI function shape", { skip: sqliteSkip }, async () => {
