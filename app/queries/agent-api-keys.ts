@@ -19,6 +19,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api, {
 	type AgentApiKeyPublic,
+	type CreateAgentApiKeyInput,
 	type CreatedAgentApiKey,
 } from "~/services/api";
 import { queryKeys } from "./keys";
@@ -40,8 +41,8 @@ export function useAgentApiKeys() {
  */
 export function useCreateAgentApiKey() {
 	const qc = useQueryClient();
-	return useMutation<CreatedAgentApiKey, Error, { name: string }>({
-		mutationFn: ({ name }) => api.agentApiKeys.create(name),
+	return useMutation<CreatedAgentApiKey, Error, CreateAgentApiKeyInput>({
+		mutationFn: (input) => api.agentApiKeys.create(input),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queryKeys.agentApiKeys.all });
 		},

@@ -39,7 +39,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { Hono } from "hono";
 import { agentApiRoute } from "./agent-api";
-import { listMcpTools } from "../lib/external-tools";
+import { listMcpTools, readOnlyToolNames } from "../lib/external-tools";
 import type { Env } from "../types";
 
 // ── node:sqlite (optional engine) ───────────────────────────────────
@@ -136,6 +136,7 @@ function unwrapDriverValue(arg: unknown): unknown {
  */
 async function createEnv(
 	apiKey: string = API_KEY,
+	seed: { scopes?: string; allowedMailboxes?: string | null } = {},
 ): Promise<{ env: Env; sqlite: InstanceType<DatabaseSyncLike> }> {
 	const Ctor = DatabaseSyncCtor;
 	if (!Ctor) throw new Error("node:sqlite unavailable");
@@ -151,9 +152,9 @@ async function createEnv(
 			"route test key",
 			await sha256Hex(apiKey),
 			apiKey.slice(0, 12),
-			"all",
+			seed.scopes ?? "all",
 			// `null` = unrestricted, which is what most cases want.
-			null,
+			seed.allowedMailboxes ?? null,
 			new Date().toISOString(),
 		);
 
@@ -506,5 +507,148 @@ describe("gateway discovery surface (real routes)", () => {
 			body.error,
 			"mailboxId is required. Call list_mailboxes first to get a valid mailboxId (e.g. 'hello@doforu.ai'), then retry.",
 		);
+	});
+});
+
+// ── Read-only scope ─────────────────────────────────────────────────
+//
+// `read` is what makes a key safe to hand to an agent that is not fully
+// trusted, and it holds only if THREE places agree:
+//
+//   • the advertised list (`tools/list` AND `/tools`) hides what it cannot run,
+//   • the executor refuses a call to a hidden tool anyway — a stale client, or a
+//     model replaying a plan it built before the key was narrowed, still asks,
+//   • an unreadable stored value fails CLOSED to `read`, never open to `all`.
+//
+// Each is asserted below against the real route with a real key row.
+
+describe("read-only key scope (real routes)", () => {
+	it("advertises exactly the read-only tools — over MCP and over /tools", { skip: sqliteSkip }, async () => {
+		const { env } = await createEnv(API_KEY, { scopes: "read" });
+
+		const mcpBody = (await (
+			await mcpRequest({ jsonrpc: "2.0", id: 10, method: "tools/list" }, env)
+		).json()) as { result?: { tools: Array<{ name: string }> } };
+		const mcpNames = mcpBody.result!.tools.map((t) => t.name);
+
+		const openAiBody = (await (await gatewayGet("/tools", env)).json()) as {
+			tools: Array<{ function: { name: string } }>;
+		};
+		const openAiNames = openAiBody.tools.map((t) => t.function.name);
+
+		// Derived from the annotation table, never a literal: the read-only set IS
+		// "whatever carries `readOnlyHint: true`", so a new tool cannot be added
+		// to one side of this contract and forgotten on the other.
+		assert.deepStrictEqual([...mcpNames].sort(), readOnlyToolNames().sort());
+		assert.deepStrictEqual([...openAiNames].sort(), readOnlyToolNames().sort());
+
+		for (const gone of ["send_email", "send_reply", "delete_email", "draft_email"]) {
+			assert.ok(!mcpNames.includes(gone), `${gone} must not be advertised to a read-only key`);
+			assert.ok(!openAiNames.includes(gone), `${gone} must not be advertised on /tools either`);
+		}
+	});
+
+	it("initialize tells the model the key cannot send", { skip: sqliteSkip }, async () => {
+		// The advertised count and the destructive-tool warning both have to flip
+		// with the scope. A read-only key still receiving "confirm intent before
+		// calling send_email" would prime the model to attempt exactly the call
+		// the executor is about to refuse.
+		const { env } = await createEnv(API_KEY, { scopes: "read" });
+		const body = (await (
+			await mcpRequest(
+				{ jsonrpc: "2.0", id: 11, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+				env,
+			)
+		).json()) as { result?: { instructions?: string } };
+		const instructions = body.result!.instructions ?? "";
+
+		assert.ok(instructions.includes("READ-ONLY"), `instructions must state the scope: ${instructions}`);
+		assert.ok(
+			instructions.includes(`${readOnlyToolNames().length} tools`),
+			`the count must follow the filtered list: ${instructions}`,
+		);
+		assert.ok(
+			!instructions.includes("confirm intent before calling"),
+			"a read-only key must not be primed with the send warning",
+		);
+	});
+
+	it("refuses a mutating tool call it never advertised", { skip: sqliteSkip }, async () => {
+		const { env } = await createEnv(API_KEY, { scopes: "read" });
+		const res = await createApp().request(
+			"/tools/call",
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${API_KEY}`,
+				},
+				body: JSON.stringify({
+					name: "send_email",
+					arguments: {
+						mailboxId: "hello@doforu.ai",
+						to: "someone@example.com",
+						subject: "hi",
+						body: "hello",
+					},
+				}),
+			},
+			env,
+		);
+
+		// Still a tool-level failure (HTTP 200), like every other refusal.
+		assert.strictEqual(res.status, 200);
+		const body = (await res.json()) as { ok?: boolean; error?: string };
+		assert.strictEqual(body.ok, false);
+		// The refusal is written for the model: name the tool, name the scope
+		// that would allow it, and list what IS available — so the next turn
+		// can pick a legal tool instead of retrying unchanged.
+		assert.ok(body.error?.startsWith("forbidden:"), `expected a scope refusal, got: ${body.error}`);
+		assert.ok(body.error?.includes("send_email"));
+		assert.ok(body.error?.includes('"all"'));
+		for (const name of readOnlyToolNames()) {
+			assert.ok(body.error?.includes(name), `the refusal must list the usable tool ${name}`);
+		}
+	});
+
+	it("an unreadable stored scope fails closed to read-only", { skip: sqliteSkip }, async () => {
+		// A row written by an older draft, or hand-edited. Guessing `all` here
+		// would hand full send/delete rights to a key whose stored permission
+		// nobody can parse — the one failure mode a permission parser must not
+		// have. Downgrading instead makes the key visibly refuse to send mail.
+		const { env } = await createEnv(API_KEY, { scopes: "mail:read,mail:send" });
+		const body = (await (await gatewayGet("/tools", env)).json()) as {
+			tools: Array<{ function: { name: string } }>;
+		};
+		const names = body.tools.map((t) => t.function.name);
+		assert.deepStrictEqual([...names].sort(), readOnlyToolNames().sort());
+		assert.ok(!names.includes("send_email"));
+	});
+});
+
+// ── Protocol version negotiation ────────────────────────────────────
+//
+// `initialize` used to echo whatever revision the client asked for. A client
+// requesting `2024-11-05` — the SSE-only transport this server does not speak —
+// was therefore told "yes", then had `GET /mcp` answered with 405, a failure it
+// could only read as our bug. MCP's rule is the opposite: answer with a
+// revision you DO support and let the client decide.
+
+describe("protocol version negotiation", () => {
+	it("answers an unsupported revision with one this server implements", { skip: sqliteSkip }, async () => {
+		const { env } = await createEnv();
+		for (const requested of ["2024-11-05", "1999-01-01"]) {
+			const body = (await (
+				await mcpRequest(
+					{ jsonrpc: "2.0", id: 20, method: "initialize", params: { protocolVersion: requested } },
+					env,
+				)
+			).json()) as { result?: { protocolVersion?: string } };
+			assert.strictEqual(
+				body.result!.protocolVersion,
+				"2025-06-18",
+				`a client asking for ${requested} must not be told we speak it`,
+			);
+		}
 	});
 });

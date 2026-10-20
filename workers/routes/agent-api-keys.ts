@@ -31,7 +31,13 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { TFunction } from "i18next";
 import * as db from "../db";
-import { generateApiKey } from "../lib/api-key-utils";
+import {
+	API_KEY_SCOPES,
+	DEFAULT_API_KEY_SCOPE,
+	generateApiKey,
+	isApiKeyScope,
+	type ApiKeyScope,
+} from "../lib/api-key-utils";
 import type { D1MailboxContext } from "../lib/d1-middleware";
 import { DEFAULT_LOCALE, isLocale, resolveLocale } from "../../shared/i18n/config";
 import { getBackendT } from "../../shared/i18n/translate";
@@ -53,6 +59,102 @@ const I18N_NAMESPACE = "apiAgentKey";
 
 /** Longest accepted key name; keeps list responses and D1 rows sane. */
 const MAX_NAME_LENGTH = 64;
+
+/** Longest mailbox address accepted in an allow-list (RFC 5321 path limit). */
+const MAX_MAILBOX_ID_LENGTH = 254;
+
+/**
+ * How many mailboxes one key may be restricted to.
+ *
+ * A key restricted to every mailbox is the same thing as an unrestricted key,
+ * so a huge list is always a mistake — it just makes the row unreadable in the
+ * UI while granting as much as `null` would. Twenty is comfortably more than
+ * a real deployment's mailbox count (the free tier's realistic ceiling) and
+ * small enough to render.
+ */
+const MAX_ALLOWED_MAILBOXES = 20;
+
+/** `true` for a JSON object (arrays and null are not). */
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A parse that either yields a value or a ready-to-return 400 message. */
+type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
+
+/**
+ * Read the optional `scopes` field.
+ *
+ * Absent → the default (`all`, matching every key minted before scopes were
+ * enforced). Present but unknown → **400**, not a silent downgrade: this is an
+ * operator typing a value, not a stored row, so the right answer is to tell
+ * them the two legal values rather than quietly hand them a read-only key that
+ * then refuses to send mail.
+ */
+function readScope(body: unknown, t: TFunction): Parsed<ApiKeyScope> {
+	const raw = isRecord(body) ? body.scopes : undefined;
+	if (raw === undefined || raw === null || raw === "") {
+		return { ok: true, value: DEFAULT_API_KEY_SCOPE };
+	}
+	if (!isApiKeyScope(raw)) {
+		return {
+			ok: false,
+			error: t("scopeInvalid", { allowed: API_KEY_SCOPES.join(", ") }),
+		};
+	}
+	return { ok: true, value: raw };
+}
+
+/**
+ * Read the optional `allowedMailboxes` field.
+ *
+ * Absent / null → unrestricted. Everything else is validated strictly:
+ *
+ *   • `[]` is a **400**, not "unrestricted". The two readings of an empty list
+ *     are "no mailbox at all" (a key that can do nothing) and "no restriction"
+ *     (a key that can do everything); neither is what an operator meant, and
+ *     the second is a privilege escalation hiding in an empty array. Making it
+ *     invalid forces the caller to say which.
+ *   • Addresses are trimmed and lower-cased here, because the dispatcher
+ *     compares them to the `mailboxId` a client got from `list_mailboxes`,
+ *     which is the normalized address. A mixed-case entry would otherwise sit
+ *     in the list looking correct while matching nothing.
+ *   • Duplicates are collapsed, so the stored row is exactly what is enforced.
+ */
+function readAllowedMailboxes(
+	body: unknown,
+	t: TFunction,
+): Parsed<string[] | null> {
+	const raw = isRecord(body) ? body.allowedMailboxes : undefined;
+	if (raw === undefined || raw === null) return { ok: true, value: null };
+
+	if (!Array.isArray(raw)) {
+		return { ok: false, error: t("mailboxesInvalid") };
+	}
+	if (raw.length === 0) {
+		return { ok: false, error: t("mailboxesEmpty") };
+	}
+	if (raw.length > MAX_ALLOWED_MAILBOXES) {
+		return {
+			ok: false,
+			error: t("mailboxesTooMany", { max: MAX_ALLOWED_MAILBOXES }),
+		};
+	}
+
+	const list: string[] = [];
+	for (const entry of raw) {
+		if (typeof entry !== "string") {
+			return { ok: false, error: t("mailboxesInvalid") };
+		}
+		const normalized = entry.trim().toLowerCase();
+		if (!normalized || normalized.length > MAX_MAILBOX_ID_LENGTH) {
+			return { ok: false, error: t("mailboxesInvalid") };
+		}
+		if (!list.includes(normalized)) list.push(normalized);
+	}
+
+	return { ok: true, value: list };
+}
 
 type AppContext = Context<D1MailboxContext>;
 
@@ -88,9 +190,16 @@ function readName(body: unknown): string | null {
 /**
  * POST / — mint a new global API key.
  *
- * Body: `{ name: string }`. The plaintext key is generated here, hashed, and
- * only the hash is handed to D1; the plaintext appears in this response and
- * nowhere else, ever again.
+ * Body: `{ name: string, scopes?: "read" | "all", allowedMailboxes?: string[] }`.
+ * The plaintext key is generated here, hashed, and only the hash is handed to
+ * D1; the plaintext appears in this response and nowhere else, ever again.
+ *
+ * The two optional fields are what make a key safe to hand to an agent that is
+ * not fully trusted: `scopes: "read"` makes the gateway advertise and accept
+ * only the five read-only tools, and `allowedMailboxes` pins the key to a
+ * subset of mailboxes. Both are enforced in `dispatchExternalTool` (the
+ * executor) and reflected in the advertised tool list (the transport), so the
+ * model never even sees a capability it does not have.
  */
 export async function handleCreateAgentApiKey(c: AppContext) {
 	const t = agentKeyT(c);
@@ -105,6 +214,15 @@ export async function handleCreateAgentApiKey(c: AppContext) {
 			return c.json({ error: t("nameTooLong", { max: MAX_NAME_LENGTH }) }, 400);
 		}
 
+		const scope = readScope(body, t);
+		if (!scope.ok) {
+			return c.json({ error: scope.error }, 400);
+		}
+		const mailboxes = readAllowedMailboxes(body, t);
+		if (!mailboxes.ok) {
+			return c.json({ error: mailboxes.error }, 400);
+		}
+
 		const id = crypto.randomUUID();
 		const { plainText, prefix, hash } = await generateApiKey();
 
@@ -113,7 +231,10 @@ export async function handleCreateAgentApiKey(c: AppContext) {
 			name,
 			keyHash: hash,
 			prefix,
-			scopes: "all",
+			scopes: scope.value,
+			allowedMailboxes: mailboxes.value
+				? JSON.stringify(mailboxes.value)
+				: null,
 		});
 
 		return c.json(
@@ -121,6 +242,8 @@ export async function handleCreateAgentApiKey(c: AppContext) {
 				id,
 				name,
 				prefix,
+				scopes: scope.value,
+				allowed_mailboxes: mailboxes.value,
 				// Shown once. Not stored, not recoverable through any other endpoint.
 				api_key: plainText,
 				message: t("createdOnce", { prefix }),

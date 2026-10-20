@@ -306,8 +306,24 @@ export interface CreatedAgentApiKey {
 	id: string;
 	name: string;
 	prefix: string;
+	/** `read` or `all` — what the backend actually stored and will enforce. */
+	scopes?: AgentApiKeyScope;
+	/** Normalized allow-list, or null/absent when the key is unrestricted. */
+	allowed_mailboxes?: string[] | null;
 	api_key: string;
 	message: string;
+}
+
+/** The two permission profiles the gateway enforces. */
+export type AgentApiKeyScope = "read" | "all";
+
+/** Body of `POST /api/v1/agent-api-keys`. */
+export interface CreateAgentApiKeyInput {
+	name: string;
+	/** Absent → `all`, matching every key minted before scopes were enforced. */
+	scopes?: AgentApiKeyScope;
+	/** Absent → unrestricted. An empty array is rejected by the backend. */
+	allowedMailboxes?: string[];
 }
 
 const api = {
@@ -325,8 +341,8 @@ const api = {
 	agentApiKeys: {
 		list: () =>
 			get<{ api_keys: AgentApiKeyPublic[] }>("/api/v1/agent-api-keys"),
-		create: (name: string) =>
-			post<CreatedAgentApiKey>("/api/v1/agent-api-keys", { name }),
+		create: (input: CreateAgentApiKeyInput) =>
+			post<CreatedAgentApiKey>("/api/v1/agent-api-keys", input),
 		revoke: (id: string) =>
 			del<{ ok: boolean }>(`/api/v1/agent-api-keys/${id}`),
 	},

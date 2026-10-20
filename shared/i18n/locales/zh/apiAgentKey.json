@@ -6,5 +6,9 @@
 	"idRequired": "缺少 API Key ID",
 	"createFailed": "创建 API Key 失败",
 	"listFailed": "加载 API Key 列表失败",
-	"revokeFailed": "吊销 API Key 失败"
+	"revokeFailed": "吊销 API Key 失败",
+	"scopeInvalid": "权限范围无效，只能是：{{allowed}}",
+	"mailboxesInvalid": "邮箱限制格式无效，需要邮箱地址字符串数组",
+	"mailboxesEmpty": "邮箱限制不能是空数组——请要么不填（不限制），要么至少填一个邮箱",
+	"mailboxesTooMany": "邮箱限制最多 {{max}} 个"
 }

@@ -6,5 +6,9 @@
 	"idRequired": "API key id is required",
 	"createFailed": "Failed to create the API key",
 	"listFailed": "Failed to load the API keys",
-	"revokeFailed": "Failed to revoke the API key"
+	"revokeFailed": "Failed to revoke the API key",
+	"scopeInvalid": "Invalid scope — allowed values are: {{allowed}}",
+	"mailboxesInvalid": "Invalid mailbox restriction: expected an array of email address strings",
+	"mailboxesEmpty": "The mailbox restriction cannot be an empty array — omit it for no restriction, or list at least one mailbox",
+	"mailboxesTooMany": "A key can be restricted to at most {{max}} mailboxes"
 }

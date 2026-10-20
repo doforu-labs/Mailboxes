@@ -83,7 +83,12 @@ import type { Context } from "hono";
 import type { TFunction } from "i18next";
 import type { Env } from "../types";
 import * as db from "../db";
-import { extractBearerToken, hashApiKey } from "./api-key-utils";
+import {
+	extractBearerToken,
+	hashApiKey,
+	parseApiKeyScope,
+	type ApiKeyScope,
+} from "./api-key-utils";
 import { DEFAULT_LOCALE, isLocale, resolveLocale } from "../../shared/i18n/config";
 import { getBackendT } from "../../shared/i18n/translate";
 
@@ -131,8 +136,14 @@ const CHALLENGE_INVALID_TOKEN = `Bearer realm="${AUTH_REALM}", error="${INVALID_
 export interface ApiKeyInfo {
 	id: string;
 	name: string;
-	/** Raw scope string from the row, e.g. `"all"` or `"mail:read,mail:send"`. */
-	scopes: string;
+	/**
+	 * Enforced scope, already parsed: `"read"` or `"all"`.
+	 *
+	 * Handlers pass this straight to `dispatchExternalTool`, which is the only
+	 * place that decides whether a tool may run. Parsing (and the fail-closed
+	 * default for an unreadable column) lives in `parseApiKeyScope`.
+	 */
+	scopes: ApiKeyScope;
 	/** Parsed `allowed_mailboxes`, or null when the key is unrestricted. */
 	allowedMailboxes: string[] | null;
 }
@@ -322,7 +333,7 @@ export const requireGlobalApiKey = createMiddleware<ApiKeyContext>(
 		c.set("apiKeyInfo", {
 			id: row.id,
 			name: row.name,
-			scopes: row.scopes,
+			scopes: parseApiKeyScope(row.scopes),
 			allowedMailboxes: parseAllowedMailboxes(row.allowed_mailboxes),
 		});
 

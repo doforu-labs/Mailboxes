@@ -268,3 +268,47 @@ export function timingSafeEqualHex(a: string, b: string): boolean {
 	}
 	return diff === 0;
 }
+
+// ── Scopes ─────────────────────────────────────────────────────────
+
+/**
+ * The permission profiles a key can carry.
+ *
+ * Two, not three, on purpose. `read` is exactly the MCP read-only set
+ * (`readOnlyHint: true` in `external-tools.ts`), i.e. the five tools that only
+ * SELECT: `list_mailboxes`, `list_emails`, `search_emails`, `get_email`,
+ * `get_thread`. Everything else — drafting, sending, moving, deleting — needs
+ * `all`. There is deliberately no `write` value: a write-only key could not
+ * call `list_mailboxes`, so it could not name a `mailboxId` and would be
+ * unusable in practice.
+ *
+ * The values are rows in the existing `scopes` TEXT column, which shipped
+ * alongside the keys it describes. No migration is needed: rows minted before
+ * scopes were enforced all read `"all"`, which is the behaviour they already
+ * had.
+ */
+export const API_KEY_SCOPES = ["read", "all"] as const;
+
+export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
+
+/** Scope written when a caller does not choose one. Matches legacy rows. */
+export const DEFAULT_API_KEY_SCOPE: ApiKeyScope = "all";
+
+/** `true` for a value this deployment knows how to enforce. */
+export function isApiKeyScope(value: unknown): value is ApiKeyScope {
+	return value === "read" || value === "all";
+}
+
+/**
+ * Parse the stored `scopes` column into a value the dispatcher can enforce.
+ *
+ * Fails CLOSED: anything unrecognised — a NULL from a row written before the
+ * column existed, a typo, a hand-edited `"mail:read,mail:send"` from an older
+ * draft — becomes `read`, never `all`. Silently upgrading an unreadable
+ * permission to "full access" is the one failure mode a permission parser
+ * must not have; downgrading instead makes the key visibly refuse to send
+ * mail, which the operator can debug from the tool error in one step.
+ */
+export function parseApiKeyScope(raw: string | null | undefined): ApiKeyScope {
+	return isApiKeyScope(raw) ? raw : "read";
+}

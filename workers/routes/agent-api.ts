@@ -86,12 +86,14 @@ import {
 	type ApiKeyVariables,
 } from "../lib/api-key-middleware";
 import { KEY_PREFIX } from "../lib/api-key-utils";
+import * as db from "../db";
 import {
 	listMcpTools,
 	listOpenAiTools,
 	dispatchExternalTool,
 	type ExternalToolResult,
 } from "../lib/external-tools";
+import type { ApiKeyScope } from "../lib/api-key-utils";
 import type { Env } from "../types";
 
 /**
@@ -121,6 +123,23 @@ const TOOL_LOCALE: Locale = DEFAULT_LOCALE;
  */
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 
+/**
+ * The MCP revisions this server's surface actually implements.
+ *
+ * `initialize` used to echo whatever the client asked for. That is a
+ * correctness bug in both directions: a client requesting an OLDER revision
+ * (e.g. `2024-11-05`, the SSE-only transport) was told we speak it, then had
+ * `GET /mcp` answered with 405 — a failure it could only read as our bug. A
+ * client requesting a NEWER revision was told we implement semantics we have
+ * never seen.
+ *
+ * MCP's rule is that a server which does not support the requested version
+ * MUST answer with one it does support, and the client decides whether to
+ * proceed. So: echo a supported version back verbatim, otherwise fall back to
+ * the newest one implemented here.
+ */
+const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [DEFAULT_PROTOCOL_VERSION];
+
 /** Identity reported to MCP clients during `initialize`. */
 const SERVER_INFO = { name: "mailboxes", version: "1.0.0" } as const;
 
@@ -147,11 +166,15 @@ const SERVER_INFO = { name: "mailboxes", version: "1.0.0" } as const;
  * `listMcpTools().length` is interpolated so the count cannot drift from the
  * list it describes.
  */
-function mcpInstructions(): string {
+function mcpInstructions(scope: ApiKeyScope): string {
+	const count = listMcpTools(scope).length;
+	const readOnly = scope === "read";
 	return [
-		`Mailboxes tool gateway: ${listMcpTools().length} tools for reading, searching, drafting and sending email in the mailboxes this API key can access.`,
+		`Mailboxes tool gateway: ${count} tools for ${readOnly ? "reading and searching" : "reading, searching, drafting and sending"} email in the mailboxes this API key can access.`,
 		"Call list_mailboxes first to obtain a valid `mailboxId`; almost every other tool requires one, and the value cannot be guessed.",
-		"Tools are read-only unless marked otherwise: check each tool's `annotations` in tools/list. delete_email, discard_draft and update_draft are destructive (update_draft replaces the draft with a new id), and send_email / send_reply deliver real mail to external recipients — confirm intent before calling them.",
+		readOnly
+			? "This key is READ-ONLY: it can list, read, search and thread mail, and nothing else. Drafting, sending, moving and deleting are not available, so do not promise the user an action this key cannot take."
+			: "Tools are read-only unless marked otherwise: check each tool's `annotations` in tools/list. delete_email, discard_draft and update_draft are destructive (update_draft replaces the draft with a new id), and send_email / send_reply deliver real mail to external recipients — confirm intent before calling them.",
 		"A tool failure is returned as `{ error }` inside the result; read it and correct the call instead of retrying unchanged.",
 	].join("\n\n");
 }
@@ -319,6 +342,37 @@ function readMailboxId(args: Record<string, unknown>): string | undefined {
 export const agentApiRoute = new Hono<Ctx>();
 
 /**
+ * Record WHICH tool a key ran — not just that it hit the gateway.
+ *
+ * The auth middleware already logs one row per request (`POST /mcp`), which
+ * answers "was this key used" but not "what did it do". For a key that may
+ * delete mail or send it, the second question is the one an operator asks
+ * after something goes wrong, and the path alone cannot answer it.
+ *
+ * Best-effort by construction: an audit write must never turn a working tool
+ * call into a failure, so every error is swallowed. The mailbox is recorded
+ * because it is the blast radius (`-` for `list_mailboxes`), and `ok` because
+ * a refusal is as interesting as a success.
+ */
+async function auditToolCall(
+	c: AppContext,
+	toolName: string,
+	mailboxId: string | undefined,
+	ok: boolean,
+): Promise<void> {
+	try {
+		await db.insertAgentApiKeyAudit(c.env.DB, {
+			id: crypto.randomUUID(),
+			keyId: c.var.apiKeyInfo.id,
+			action: "tool",
+			detail: `${toolName} mailbox=${mailboxId ?? "-"} ok=${ok}`,
+		});
+	} catch {
+		// ignore — audit is observability, not authorization
+	}
+}
+
+/**
  * Every path this gateway guards against unauthenticated access.
  *
  * Hono `use()` pattern semantics (verified against hono 4.12.28):
@@ -476,17 +530,19 @@ async function handleMcp(c: AppContext) {
 			// `Mcp-Session-Id` header is ignored (never read).
 			const params = isPlainObject(request.params) ? request.params : {};
 			const requested = params.protocolVersion;
+			const protocolVersion =
+				typeof requested === "string" &&
+				SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+					? requested
+					: DEFAULT_PROTOCOL_VERSION;
 			return rpcOk(c, request.id ?? null, {
-				protocolVersion:
-					typeof requested === "string" && requested.length > 0
-						? requested
-						: DEFAULT_PROTOCOL_VERSION,
+				protocolVersion,
 				capabilities: { tools: {} },
 				serverInfo: SERVER_INFO,
 				// MCP's optional server-level self-description — see
 				// `mcpInstructions`. Additive: clients that ignore it are
 				// unaffected, which is why it took no protocolVersion bump.
-				instructions: mcpInstructions(),
+				instructions: mcpInstructions(c.var.apiKeyInfo.scopes),
 			});
 		}
 
@@ -499,7 +555,11 @@ async function handleMcp(c: AppContext) {
 			return rpcOk(c, request.id ?? null, {});
 
 		case "tools/list":
-			return rpcOk(c, request.id ?? null, { tools: listMcpTools() });
+			// Scoped: a read-only key is never shown a tool it cannot run. The
+			// dispatcher still enforces it (a stale client may ask anyway).
+			return rpcOk(c, request.id ?? null, {
+				tools: listMcpTools(c.var.apiKeyInfo.scopes),
+			});
 
 		case "tools/call": {
 			const params = isPlainObject(request.params) ? request.params : {};
@@ -527,12 +587,15 @@ async function handleMcp(c: AppContext) {
 			}
 
 			const args = isPlainObject(params.arguments) ? params.arguments : {};
+			const mailboxId = readMailboxId(args);
 			const outcome = await dispatchExternalTool(
 				{ DB: c.env.DB, BUCKET: c.env.BUCKET, AI: c.env.AI },
-				{ name, arguments: args, mailboxId: readMailboxId(args) },
+				{ name, arguments: args, mailboxId },
 				TOOL_LOCALE,
 				c.var.apiKeyInfo.allowedMailboxes,
+				c.var.apiKeyInfo.scopes,
 			);
+			await auditToolCall(c, name, mailboxId, outcome.ok);
 
 			// Tool-level failure → 200 with `isError: true` content; success →
 			// 200 with the tool's payload. Both are plain JSON-RPC results:
@@ -589,7 +652,15 @@ agentApiRoute.delete("/mcp", (c) =>
  * `listMcpTools`. `info` is the OpenAI-shaped equivalent of discoverability,
  * not a place to smuggle MCP fields.
  */
-agentApiRoute.get("/tools", (c) => c.json({ info: TOOL_GATEWAY_INFO, tools: listOpenAiTools() }, 200));
+agentApiRoute.get("/tools", (c) =>
+	c.json(
+		{
+			info: TOOL_GATEWAY_INFO,
+			tools: listOpenAiTools(c.var.apiKeyInfo.scopes),
+		},
+		200,
+	),
+);
 
 /**
  * `POST /tools/call` → run one tool.
@@ -649,6 +720,13 @@ agentApiRoute.post("/tools/call", async (c) => {
 		},
 		TOOL_LOCALE,
 		c.var.apiKeyInfo.allowedMailboxes,
+		c.var.apiKeyInfo.scopes,
+	);
+	await auditToolCall(
+		c,
+		name,
+		explicitMailboxId ?? readMailboxId(args),
+		outcome.ok,
 	);
 
 	if (!outcome.ok) {

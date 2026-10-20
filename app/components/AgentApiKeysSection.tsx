@@ -24,6 +24,7 @@ import {
 	Dialog,
 	Input,
 	Loader,
+	Radio,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
@@ -91,10 +92,32 @@ function CreateKeyDialog({
 	const toastManager = useKumoToastManager();
 	const createKey = useCreateAgentApiKey();
 	const [name, setName] = useState("");
+	// Default `all`: identical to every key minted before scopes were enforced,
+	// so the dialog's default does not narrow an existing workflow.
+	const [scope, setScope] = useState<"all" | "read">("all");
+	const [mailboxes, setMailboxes] = useState("");
 
 	const trimmed = name.trim();
+
+	/**
+	 * The allow-list, parsed the way the backend parses it: split on commas AND
+	 * whitespace (both are what people actually type), trimmed, lower-cased,
+	 * de-duplicated. Empty → `undefined`, i.e. no restriction. The backend
+	 * rejects `[]` on purpose, so an empty box must mean "omit the field".
+	 */
+	const allowedMailboxes = [
+		...new Set(
+			mailboxes
+				.split(/[\s,]+/)
+				.map((entry) => entry.trim().toLowerCase())
+				.filter(Boolean),
+		),
+	];
+
 	const close = () => {
 		setName("");
+		setScope("all");
+		setMailboxes("");
 		onOpenChange(false);
 	};
 
@@ -104,8 +127,14 @@ function CreateKeyDialog({
 			return;
 		}
 		try {
-			const result = await createKey.mutateAsync({ name: trimmed });
+			const result = await createKey.mutateAsync({
+				name: trimmed,
+				scopes: scope,
+				allowedMailboxes: allowedMailboxes.length ? allowedMailboxes : undefined,
+			});
 			setName("");
+			setScope("all");
+			setMailboxes("");
 			onOpenChange(false);
 			onCreated(result.api_key, result.prefix);
 		} catch (err) {
@@ -136,13 +165,33 @@ function CreateKeyDialog({
 						value={name}
 						onChange={(e) => setName(e.target.value)}
 					/>
+					<Radio.Group
+						legend={t("createKeyScopes")}
+						value={scope}
+						onValueChange={(value) => setScope(value === "read" ? "read" : "all")}
+						appearance="card"
+						description={t("createKeyScopeHint")}
+					>
+						<Radio.Item
+							value="all"
+							label={t("createKeyScopeAll")}
+							description={t("createKeyScopeAllDescription")}
+						/>
+						<Radio.Item
+							value="read"
+							label={t("createKeyScopeRead")}
+							description={t("createKeyScopeReadDescription")}
+						/>
+					</Radio.Group>
 					<div>
-						<div className="mb-1 text-xs font-medium text-kumo-default">
-							{t("createKeyScopes")}
-						</div>
-						<Badge variant="secondary">all</Badge>
+						<Input
+							label={t("createKeyMailboxes")}
+							placeholder={t("createKeyMailboxesPlaceholder")}
+							value={mailboxes}
+							onChange={(e) => setMailboxes(e.target.value)}
+						/>
 						<div className="mt-1 text-xs text-kumo-subtle">
-							{t("createKeyScopeHint")}
+							{t("createKeyMailboxesHint")}
 						</div>
 					</div>
 				</div>

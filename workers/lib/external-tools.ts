@@ -27,6 +27,7 @@ import {
 	normalizeToolArguments,
 	type AiToolCall,
 } from "./tool-dispatch";
+import type { ApiKeyScope } from "./api-key-utils";
 import { stripHtmlToText } from "./email-helpers";
 import { getFolderDisplayName } from "../../shared/folders";
 import { DEFAULT_LOCALE } from "../../shared/i18n/config";
@@ -240,6 +241,56 @@ export function mcpToolAnnotations(toolName: string): McpToolAnnotations {
 }
 
 /**
+ * Is this a tool that only reads? Drives the `read` key scope.
+ *
+ * Derived from the annotation table rather than a second hand-maintained list,
+ * so "what MCP clients are told is safe" and "what a read-only key may run"
+ * cannot drift apart. An unmapped (future) tool is not read-only here, exactly
+ * as it is not advertised as read-only there.
+ */
+export function isReadOnlyTool(toolName: string): boolean {
+	return mcpToolAnnotations(toolName).readOnlyHint;
+}
+
+/** The names a `read`-scoped key can call, in definition order. */
+export function readOnlyToolNames(): string[] {
+	return TOOL_DEFINITIONS.filter((tool) => isReadOnlyTool(tool.name)).map(
+		(tool) => tool.name,
+	);
+}
+
+/**
+ * Does a key scope permit this tool?
+ *
+ * `all` permits everything; `read` permits the read-only set and nothing else.
+ * The single predicate is used by both the advertised tool list and the
+ * executor, so a tool can never be visible-but-refused or hidden-but-runnable.
+ */
+export function scopeAllowsTool(
+	scope: ApiKeyScope,
+	toolName: string,
+): boolean {
+	if (scope === "all") return true;
+	return isReadOnlyTool(toolName);
+}
+
+/**
+ * The refusal a `read`-scoped key gets when it calls a mutating tool.
+ *
+ * Written for the calling MODEL, not the operator: it names the tool, the
+ * scope that would allow it, and the exact list of tools that ARE available,
+ * so the next turn can either give up cleanly or pick a legal tool instead of
+ * retrying the same call.
+ */
+export function readOnlyKeyError(toolName: string): string {
+	return (
+		`forbidden: this API key is read-only, so "${toolName}" is not available. ` +
+		`It requires a key with the "all" scope. Read-only tools: ` +
+		`${readOnlyToolNames().join(", ")}.`
+	);
+}
+
+/**
  * MCP `tools/list` compatible tools array.
  * Each entry carries the (mailboxId-injected) schema on `inputSchema`, plus
  * the MCP-only `annotations` object.
@@ -247,13 +298,13 @@ export function mcpToolAnnotations(toolName: string): McpToolAnnotations {
  * `annotations` is added HERE and only here — `listOpenAiTools`, which feeds
  * `GET /tools`, deliberately omits it (see `MCP_TOOL_ANNOTATIONS`).
  */
-export function listMcpTools(): Array<{
+export function listMcpTools(scope: ApiKeyScope = "all"): Array<{
 	name: string;
 	description: string;
 	inputSchema: any;
 	annotations: McpToolAnnotations;
 }> {
-	return TOOL_DEFINITIONS.map((tool) => ({
+	return TOOL_DEFINITIONS.filter((tool) => scopeAllowsTool(scope, tool.name)).map((tool) => ({
 		name: tool.name,
 		description: tool.description,
 		inputSchema: buildParameters(tool.name, tool.parameters),
@@ -270,11 +321,11 @@ export function listMcpTools(): Array<{
  * `TOOL_DEFINITIONS` and `buildParameters`, so the schemas cannot drift — only
  * the MCP-exclusive extras differ.
  */
-export function listOpenAiTools(): Array<{
+export function listOpenAiTools(scope: ApiKeyScope = "all"): Array<{
 	type: "function";
 	function: { name: string; description: string; parameters: any };
 }> {
-	return TOOL_DEFINITIONS.map((tool) => ({
+	return TOOL_DEFINITIONS.filter((tool) => scopeAllowsTool(scope, tool.name)).map((tool) => ({
 		type: "function" as const,
 		function: {
 			name: tool.name,
@@ -348,6 +399,7 @@ export async function dispatchExternalTool(
 	call: ExternalToolCall,
 	locale: Locale = DEFAULT_LOCALE,
 	allowedMailboxes?: string[] | null,
+	keyScope: ApiKeyScope = "all",
 ): Promise<ExternalToolResult> {
 	try {
 		const toolName = call.name;
@@ -356,6 +408,15 @@ export async function dispatchExternalTool(
 		const known = TOOL_DEFINITIONS.some((tool) => tool.name === toolName);
 		if (!known) {
 			return { ok: false, error: `Unknown tool: ${toolName}` };
+		}
+
+		// 1b) Capability check, before any mailbox work: a read-only key must
+		//     not learn anything about the mailbox from this call either. The
+		//     advertised tool list is already filtered by scope, so reaching
+		//     here means the caller asked for something it was never shown
+		//     (a stale client, or a model replaying an old plan).
+		if (!scopeAllowsTool(keyScope, toolName)) {
+			return { ok: false, error: readOnlyKeyError(toolName) };
 		}
 
 		const rawArgs = call.arguments ?? {};
