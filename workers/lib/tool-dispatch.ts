@@ -144,6 +144,8 @@ export const TOOL_DEFINITIONS = [
 			properties: {
 				query: { type: "string", description: "Search query keywords" },
 				folder: folderSchema("Optional folder to narrow the search (see `enum`); omit to search every folder"),
+				limit: { type: "number", description: "Max matches to return this page (default 25, max 100)" },
+				page: { type: "number", description: "Page number (default 1)" },
 			},
 			required: ["query"],
 		},

@@ -344,7 +344,7 @@ export async function toolGetThread(
 export async function toolSearchEmails(
 	db: D1Database,
 	mailboxId: string,
-	params: { query: string; folder?: string },
+	params: { query: string; folder?: string; limit?: number; page?: number },
 	locale?: Locale,
 ): Promise<EmailSummary[] | { error: string }> {
 	// A missing / blank query is refused, because the alternative is not "no
@@ -378,6 +378,12 @@ export async function toolSearchEmails(
 	return dbService.searchEmails(db, mailboxId, {
 		query: params.query,
 		folder: params.folder,
+		// Forwarded, not defaulted here: `searchEmails` owns the cap (25 by
+		// default, 100 max) and silently ignoring a caller's page/limit — which
+		// this layer used to do — made `limit=1` return 25 rows and left the
+		// caller looping over the same page forever.
+		limit: params.limit,
+		page: params.page,
 	});
 }
 
