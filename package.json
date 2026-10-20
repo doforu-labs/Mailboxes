@@ -115,8 +115,8 @@
 		"@tiptap/extension-text": "3.32.0"
 	},
 	"devDependencies": {
-		"@cloudflare/vite-plugin": "^1.0.12",
-		"@cloudflare/workers-types": "^4.20251128.0",
+		"@cloudflare/vite-plugin": "^1.64.0",
+		"@cloudflare/workers-types": "^5.20261019.1",
 		"@playwright/test": "^1.61.1",
 		"@react-router/dev": "^7.18.4",
 		"@react-router/node": "^7.18.4",
@@ -131,6 +131,6 @@
 		"typescript": "^5.8.3",
 		"vite": "^6.3.3",
 		"vite-tsconfig-paths": "^5.1.4",
-		"wrangler": "^4.74.0"
+		"wrangler": "^4.151.2"
 	}
 }
