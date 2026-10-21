@@ -1,6 +1,9 @@
 <div align="center">
   <h1><picture><source media="(prefers-color-scheme: dark)" srcset="./logo-rounded-dark.png"><img src="./logo-rounded.png" alt="Mailboxes 图标：白色字母 M，中间谷底构成信封翻盖，黑色磁贴底" width="48" align="absmiddle"></picture>&nbsp;&nbsp;Mailboxes</h1>
-  <p><em>用你自己的域名做产品邮箱，再加上一个发信前会先问你的 AI 助手。跑在 Cloudflare 的免费额度上。</em></p>
+  <p><strong>你的产品邮箱，也是你 AI 的邮箱</strong><br>0 元自托管，AI 起草，你点发送</p>
+  <p>给你的 AI 一个真正的收件箱。</p>
+  <p><strong>support@yourdomain，每月 $0，回复都由 AI 起草。</strong><br>AI 起草，你点发送。</p>
+  <p><em>Email for your product and your agents. Free on your own Cloudflare.</em></p>
 
   <p>
     <a href="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml/badge.svg"></a>
@@ -18,11 +21,19 @@
 
 > **简体中文** · [English](./README.md)
 
-产品上线之后，`support@`、`hello@` 总得有地方收信。按人头租邮箱，邮箱一多就贵；光有一个收件箱，回复还是得自己一封封写。
+`support@yourdomain` 就是这个收件箱。Mailboxes 跑在**你自己的 Cloudflare 账号**里——Workers、[D1](https://developers.cloudflare.com/d1/)、[R2](https://developers.cloudflare.com/r2/)——用的是免费额度，个人使用或一个早期产品，每月 **$0**。来信走 [Cloudflare 邮件路由（Email Routing）](https://developers.cloudflare.com/email-routing/)，发信走 [Resend](https://resend.com)。你打开一封信，让助手起草。它读完会话，把回复放进草稿箱。**AI 起草，你点发送。** 来信不会被自动回复。
 
-Mailboxes 把这两件事放在一起：你域名上的邮箱，和一个会起草的助手。它跑在**你自己的 Cloudflare 账号**里，用的是免费额度，不用租服务器，Mailboxes 本身也不收费。来信走 [Cloudflare 邮件路由（Email Routing）](https://developers.cloudflare.com/email-routing/)，发信走 [Resend](https://resend.com)，并配好 SPF、DKIM、DMARC，方便进 Gmail 和 Outlook。助手能读新信、翻旧会话、起草回复。**你不确认，它就不会发送。**
+同一个收件箱也给外部智能体用。一把 `mbx_` 密钥，走内置的 MCP 和 HTTP 工具网关，就能读这个域名上的信，也能发信。那一次调用就是发送。在应用里，草稿会留在草稿箱，直到你自己发送，或你明确让助手发送。
 
-个人使用，或一个早期产品，每月就是 **$0**。具体额度见[要花多少钱](#要花多少钱)。
+## 为什么是 Mailboxes
+
+- **自己的域名，不按人头收费。** `support@`、`hello@` 和全收地址都在你已经拥有的域名上。Google Workspace 和 Zoho Mail 按人收费。Mailboxes 不按人、也不按邮箱收费。第十个邮箱和第一个一样。额度见[要花多少钱](#要花多少钱)。
+- **点一下，不用服务器。** 上面的 Deploy 按钮会在你的 Cloudflare 账号里建好 Worker、D1 数据库和 R2 桶。没有一台机器要一直开着。
+- **域名在应用里管。** 可以加多个。每个域名有自己的地址、全收规则和发信密钥。存好 Cloudflare API Token 后，添加域名会打开邮件路由；DNS 已经在 Cloudflare 上时，全收规则会写好。再存上这个域名的 Resend 密钥，应用会在 Resend 创建域名并写入 DNS 记录。否则就把要添加的记录列出来。
+- **给智能体用。** MCP（`POST /mcp`）和 HTTP 工具网关（`GET /tools`、`POST /tools/call`），都用 `mbx_` 密钥，工具和应用内助手是同一套 14 个。见[外部接入](#外部接入)。
+- **AGPL-3.0。** 本仓库是 [AGPL-3.0](LICENSE)。它建立在 [cloudflare/agentic-inbox](https://github.com/cloudflare/agentic-inbox) 之上，上游部分仍是 Apache-2.0。见[许可证](#许可证)和[跟官方 agentic-inbox 比](#跟官方-agentic-inbox-比)。
+
+自动回复和团队共享邮箱在[路线图](#路线图)里，这一版没有。现在只有一个管理员。信不会自己发出去，除非你发送，或你交给密钥的智能体调用了发送。
 
 ## 你能用它做什么
 
@@ -30,7 +41,7 @@ Mailboxes 把这两件事放在一起：你域名上的邮箱，和一个会起�
 
 - **用自己的域名收信。** `support@`、`hello@`、`sales@`，或者一个全收地址，也可以在同一个界面里加好几个域名。每个域名有自己的邮箱地址、转发规则和发信密钥。想再加一个，到 **Settings** 里点 **Add Domain**。
 - **收发都齐的邮箱。** 富文本写信、回复、转发、会话串、文件夹、搜索、附件。
-- **助手起草，发送要你点头。** 侧边栏能读信、搜索、写回复，一共 14 个工具。回复是一点点流出来的，调用了哪个工具也能看见。草稿进这个邮箱的草稿箱。**没经你确认，不会发出去。** 每个邮箱可以有自己的提示词，聊天记录会留下来。
+- **助手起草，你点发送。** 侧边栏能读信、搜索、写回复，一共 14 个工具。回复是一点点流出来的，调用了哪个工具也能看见。草稿进这个邮箱的草稿箱。**你点发送。** 只有你明确让它发，助手才会调用发送。聊天记录会留下来。
 - **模型可以换。** 默认用 Cloudflare 自带的 AI（Workers AI，不用另备密钥）。某个邮箱也可以改成任意 OpenAI 兼容接口；那边连不上时，会退回默认。
 - **添加域名可以自动配好。** 在设置里存好 Cloudflare API Token 和 Account ID，添加域名时就会打开邮件路由，并写好全收规则。再存上这个域名的 Resend 密钥，应用会在 Resend 创建域名、写入 DNS 记录，并开始验证。域名的 DNS 已经在 Cloudflare 上时，这一步是全自动的；否则应用会把要添加的记录列出来。
 - **邮件留在你的账号里。** 正文在数据库（[D1](https://developers.cloudflare.com/d1/)）里，邮箱配置和附件在文件存储（[R2](https://developers.cloudflare.com/r2/)）里。
@@ -55,7 +66,7 @@ Cloudflare 官方有一个开源的收件箱加助手，叫 [agentic-inbox](http
 | 多个域名 | 在应用里添加。每个域名有自己的地址、全收规则和发信密钥。 | 部署时写在 Worker 配置里（`DOMAINS`），应用里没有这个界面。 |
 | 许可证 | [AGPL-3.0](LICENSE)。如果你改过它、再当成网络服务给别人用，需要向对方提供源代码。 | [Apache-2.0](https://github.com/cloudflare/agentic-inbox/blob/main/LICENSE)。 |
 
-有两件事这张表容易让人误会。去掉 Durable Objects 是为了结构更简单，**不是为了省钱**——官方用的是可以跑在免费版上的 SQLite 版 Durable Objects。另外，两边都不会擅自把信发出去。官方可以在来信时自动起草；Mailboxes 是你开口才起草，自动回复还在[路线图](#路线图)里，这一版没有。
+有两件事这张表容易让人误会。去掉 Durable Objects 是为了结构更简单，**不是为了省钱**——官方用的是可以跑在免费版上的 SQLite 版 Durable Objects。应用里的助手要等你才会发送。官方可以在来信时自动起草；Mailboxes 是你开口才起草，自动回复还在[路线图](#路线图)里，这一版没有。外面的智能体拿着 `mbx_` 密钥可以直接发送，那一次调用就是发送。见[外部接入](#外部接入)。
 
 Mailboxes 建立在 agentic-inbox 之上，代码里包含它的部分。两套许可证怎么叠在一起，见[许可证](#许可证)。
 
