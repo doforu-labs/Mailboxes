@@ -26,7 +26,7 @@ brush-off — it is so the answer stays findable for the next person.
 
 Three steps answer most questions:
 
-1. Read the [FAQ](README.md#faq). It covers the free-tier quotas and the
+1. Read the [FAQ](README.md#faq). It covers the
    `"the domain is registered to another team"` error.
 2. Run what CI runs, and include the output:
    ```sh
@@ -58,7 +58,7 @@ instead of a request, read [`CONTRIBUTING.md`](CONTRIBUTING.md).
 Mailboxes is built to run inside Cloudflare's and Resend's free tiers. Those quotas belong
 to your accounts, not to this project, and nobody here can raise them. If you hit one, the
 fix is in your Cloudflare or Resend dashboard. The quotas this project relies on are listed
-under [What it costs](README.md#what-it-costs).
+under [Does it cost anything?](README.md#does-it-cost-anything).
 
 ## Not affiliated with Cloudflare
 

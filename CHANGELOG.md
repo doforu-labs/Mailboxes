@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Both READMEs rewritten as a pitch, not a manual.** The lead is now the
+  product's one sentence — a free mailbox for your agent — followed by what the
+  agent gets, a plain four-step setup, and the cost answer. Protocol and
+  architecture detail (the request map, the MCP surface, migration semantics)
+  moved into a collapsed block, so the page reads as a product rather than a
+  manual. The README no longer advertises the **Deploy to Cloudflare** button;
+  `npm run setup` is the only path it describes. Three inbound links were
+  repointed: `SUPPORT.md` → the cost section, by its new heading, and
+  `CHANGELOG.md` → the roadmap section, now "What is coming".
+
 - **Deploy to Cloudflare can provision D1 and R2.** `wrangler.jsonc` ships the
   all-zero D1 `database_id` (`00000000-0000-0000-0000-000000000000`) so the
   Deploy button can create the database and rewrite the id in the clone.
@@ -236,7 +246,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   being drafted automatically as mail arrives. No such trigger exists: the `EMAIL_AGENT`
   auto-draft path was removed and the D1 change detection named as its replacement was
   never built. Drafting is started from the agent panel, and automatic replies are listed
-  under [Roadmap → Planned](README.md#roadmap) rather than shipped. The v0.1.0 release
+  under [What is coming](README.md#what-is-coming) rather than shipped. The v0.1.0 release
   notes were corrected in place; the tag itself still points at the original commit.
 - **Stale links in the v0.1.0 release notes** — they pointed at `README.en.md` (renamed to
   `README.zh-CN.md`/`README.md`) and at a legacy repository URL.
