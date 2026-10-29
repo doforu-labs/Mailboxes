@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
 	useAgentApiKeys,
 	useCreateAgentApiKey,
@@ -48,6 +49,54 @@ import { ApiError, type AgentApiKeyPublic } from "~/services/api";
 
 /** Mirrors `MAX_NAME_LENGTH` in `workers/routes/agent-api-keys.ts`. */
 const MAX_NAME_LENGTH = 64;
+
+/**
+ * A just-minted key plus what the backend actually stored for it. The reveal
+ * dialog turns this into the "paste this to your agent" brief, so the scope and
+ * the allow-list it announces are the enforced ones, not the ones the form
+ * happened to be showing.
+ */
+interface CreatedKey {
+	apiKey: string;
+	prefix: string;
+	scopes: string;
+	mailboxes: string[] | null;
+}
+
+/**
+ * The one-time brief handed to an agent. It exists because the first thing a
+ * fresh agent gets is a key and no idea what to do with it: the gateway mounts
+ * at the app root (`/mcp`, `/tools`, `/tools/call`), not under `/api/v1`, and
+ * every tool below `list_mailboxes` needs a `mailboxId`. Both are discoverable
+ * but only by trial and error, so the text spells them out.
+ */
+function buildAgentBrief(
+	t: TFunction,
+	created: CreatedKey,
+	origin: string,
+): string {
+	const lines = [
+		t("briefIntro", { origin }),
+		t("briefKey", { key: created.apiKey }),
+		t("briefAuth", { key: created.apiKey }),
+		"",
+		t("briefHowTo"),
+		t("briefMcp", { mcpUrl: `${origin}/mcp` }),
+		t("briefHttp", {
+			toolsUrl: `${origin}/tools`,
+			callUrl: `${origin}/tools/call`,
+			example: '{"name":"list_mailboxes","arguments":{}}',
+		}),
+		"",
+		t("briefFirst"),
+		created.scopes === "read" ? t("briefScopeRead") : t("briefScopeAll"),
+	];
+	if (created.mailboxes?.length) {
+		lines.push(t("briefMailboxes", { list: created.mailboxes.join(", ") }));
+	}
+	lines.push(t("briefReview"));
+	return lines.join("\n");
+}
 
 /** Keys whose `revoked_at` is set stay in the list but are no longer usable. */
 function isRevoked(key: AgentApiKeyPublic): boolean {
@@ -86,7 +135,7 @@ function CreateKeyDialog({
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onCreated: (key: string, prefix: string) => void;
+	onCreated: (created: CreatedKey) => void;
 }) {
 	const { t } = useTranslation("agentApiKeys");
 	const toastManager = useKumoToastManager();
@@ -136,7 +185,14 @@ function CreateKeyDialog({
 			setScope("all");
 			setMailboxes("");
 			onOpenChange(false);
-			onCreated(result.api_key, result.prefix);
+			onCreated({
+				apiKey: result.api_key,
+				prefix: result.prefix,
+				scopes: result.scopes ?? scope,
+				mailboxes:
+					result.allowed_mailboxes ??
+					(allowedMailboxes.length ? allowedMailboxes : null),
+			});
 		} catch (err) {
 			toastManager.add({
 				title: t("createFailed"),
@@ -225,11 +281,12 @@ function RevealKeyDialog({
 	created,
 	onClose,
 }: {
-	created: { apiKey: string; prefix: string } | null;
+	created: CreatedKey | null;
 	onClose: () => void;
 }) {
 	const { t } = useTranslation("agentApiKeys");
 	const [copied, setCopied] = useState(false);
+	const [briefCopied, setBriefCopied] = useState(false);
 
 	const handleCopy = async () => {
 		if (!created) return;
@@ -243,6 +300,22 @@ function RevealKeyDialog({
 		}
 	};
 
+	// This dialog only ever renders from a mint result, i.e. on the client, but
+	// the guard keeps a future SSR pass from throwing on `window`.
+	const origin = typeof window === "undefined" ? "" : window.location.origin;
+	const brief = created ? buildAgentBrief(t, created, origin) : "";
+
+	const handleCopyBrief = async () => {
+		if (!brief) return;
+		try {
+			await navigator.clipboard.writeText(brief);
+			setBriefCopied(true);
+			setTimeout(() => setBriefCopied(false), 2000);
+		} catch {
+			// Same fallback as the key itself: the text stays selectable below.
+		}
+	};
+
 	return (
 		<Dialog.Root
 			open={created !== null}
@@ -250,11 +323,11 @@ function RevealKeyDialog({
 				if (!isOpen) onClose();
 			}}
 		>
-			<Dialog size="sm" className="p-6">
+			<Dialog size="lg" className="p-6">
 				<Dialog.Title className="text-base font-semibold text-kumo-default">
 					{t("createdTitle")}
 				</Dialog.Title>
-				<div className="flex flex-col gap-4 py-4">
+				<div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto py-4">
 					<p className="text-sm text-kumo-default">{t("createdSaveNow")}</p>
 					<div className="flex items-center justify-between gap-2 rounded border border-kumo-line bg-kumo-recessed p-3">
 						<code className="break-all font-mono text-sm text-kumo-default">
@@ -276,6 +349,38 @@ function RevealKeyDialog({
 					<div className="flex gap-2 rounded border border-red-200 bg-red-50 p-3 text-sm">
 						<TriangleAlert size={16} className="mt-0.5 shrink-0 text-red-500" />
 						<span className="text-kumo-default">{t("createdWarning")}</span>
+					</div>
+					{/* Ready-to-paste instructions, key included — the dialog is the one
+					    moment the plaintext exists, so it is the only place a complete
+					    brief can be assembled. */}
+					<div className="rounded border border-kumo-line bg-kumo-recessed p-3">
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0">
+								<div className="text-sm font-medium text-kumo-default">
+									{t("briefTitle")}
+								</div>
+								<div className="mt-0.5 text-xs text-kumo-subtle">
+									{t("briefHint")}
+								</div>
+							</div>
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={handleCopyBrief}
+								icon={
+									briefCopied ? (
+										<Check size={14} className="text-green-500" />
+									) : (
+										<Copy size={14} />
+									)
+								}
+							>
+								{briefCopied ? t("briefCopied") : t("briefCopy")}
+							</Button>
+						</div>
+						<pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-kumo-subtle">
+							{brief}
+						</pre>
 					</div>
 				</div>
 				<div className="flex justify-end">
@@ -368,9 +473,7 @@ export function AgentApiKeysSection() {
 	const { data: keys = [], isLoading, isError } = useAgentApiKeys();
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
-	const [created, setCreated] = useState<{ apiKey: string; prefix: string } | null>(
-		null,
-	);
+	const [created, setCreated] = useState<CreatedKey | null>(null);
 	const [revokeTarget, setRevokeTarget] = useState<{
 		id: string;
 		name: string;
@@ -514,8 +617,8 @@ export function AgentApiKeysSection() {
 			<CreateKeyDialog
 				open={isCreateOpen}
 				onOpenChange={setIsCreateOpen}
-				onCreated={(apiKey, prefix) => {
-					setCreated({ apiKey, prefix });
+				onCreated={(next) => {
+					setCreated(next);
 					toastManager.add({ title: t("createSuccess") });
 				}}
 			/>
