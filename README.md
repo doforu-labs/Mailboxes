@@ -1,6 +1,7 @@
 <div align="center">
   <h1><picture><source media="(prefers-color-scheme: dark)" srcset="./logo-rounded-dark.png"><img src="./logo-rounded.png" alt="The Mailboxes icon: a white letter M whose middle valley doubles as an envelope flap, on a black tile" width="48" align="absmiddle"></picture>&nbsp;&nbsp;Mailboxes</h1>
-  <p><em>A free mailbox for your agent.<br>An address of its own, on the domain you already own, for $0 a month.</em></p>
+  <p><strong>Your domain. A real mailbox for your AI. $0.</strong><br>
+  <em>It reads, searches and drafts. You press send.</em></p>
 
   <p>
     <a href="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml/badge.svg"></a>
@@ -10,17 +11,18 @@
   </p>
 
   <img src="./demo_app.png" alt="Mailboxes open on an inbox, with the assistant's draft waiting in the side panel" width="880">
+
+  <!-- DEMO_URL: public read-only demo site, fill in once the demo is live -->
+  [![30-second demo: mail arrives, the assistant drafts, you press send](./demo-30s.png)](./demo-30s.mp4)
 </div>
 
 ---
 
 > **English** · [简体中文](./README.zh-CN.md)
 
-Your agent can read, write, search and plan. What it does not have is an address.
+The address is a real one: `hello@yourdomain.com`, `support@`, `agent@`, or a catch-all that takes everything sent to the domain. Mail lands with its full thread and attachments, your agent reads it, searches what came before, and writes the reply as a draft in the mailbox it is working in — then stops. **Sending is the one step it cannot take alone.**
 
-Ask it to answer a customer, watch a newsletter, or sign up for a service, and it needs a real mailbox on a real domain — one a stranger can actually send to. A hosted inbox charges for every seat. An API-only inbox wants a subscription before your agent has sent a single message.
-
-Mailboxes is that mailbox, and it is free. Your agent gets `hello@yourdomain.com`. Mail arrives. It reads what came in, searches what came before, and writes the reply. **You press send.** It all runs in your own Cloudflare account on the free plans, so there is nothing to rent and nothing to pay us.
+It runs inside your own Cloudflare account, on Cloudflare's and Resend's free plans — no service of ours in the middle, nothing to rent, and nothing to pay us. 5 GB of mail, 10 GB of attachments, 100 outgoing emails a day; a tenth mailbox costs the same as the first.
 
 ## What your agent gets
 

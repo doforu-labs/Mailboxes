@@ -1,6 +1,7 @@
 <div align="center">
   <h1><picture><source media="(prefers-color-scheme: dark)" srcset="./logo-rounded-dark.png"><img src="./logo-rounded.png" alt="Mailboxes 图标：白色字母 M，中间的凹谷同时也是信封的封盖，黑底" width="48" align="absmiddle"></picture>&nbsp;&nbsp;Mailboxes</h1>
-  <p>给你的 agent 一个免费邮箱。<br>一个属于它自己的地址，用你自己的域名，每月 $0。</p>
+  <p><strong>你的域名，给你的 AI 一个真邮箱，$0。</strong><br>
+  <em>它读信、翻历史、写草稿。按发送的，是你。</em></p>
 
   <p>
     <a href="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/doforu-labs/Mailboxes/actions/workflows/ci.yml/badge.svg"></a>
@@ -10,17 +11,18 @@
   </p>
 
   <img src="./demo_app.png" alt="Mailboxes 打开在收件箱，助手写好的草稿在右侧面板等着确认" width="880">
+
+  <!-- DEMO_URL: 公开只读演示站，等演示站上线后回填 -->
+  [![三十秒演示：来信、助手写草稿、你来点发送](./demo-30s.png)](./demo-30s.mp4)
 </div>
 
 ---
 
 > [English](./README.md) · **简体中文**
 
-你的 agent 会读、会写、会查、会规划。但它没有地址。
+地址是真的：`hello@你的域名.com`、`support@`、`agent@`，或者一条 catch-all，把这个域名下的来信全收进来。信带着完整会话和附件落进收件箱，agent 读了、翻了以前的邮件、把回信写成草稿放在它正在处理的那个邮箱里 —— 然后停下。**它唯一不能自己走的一步，是发送。**
 
-让它回一封客户邮件、盯一个 newsletter、或者去注册一个服务，它都需要一个真邮箱 —— 在一个真域名上，陌生人是能真的把信发过来的那种。托管邮箱按人头收费；只给 API 的邮箱，则要你先订阅，才肯发第一封信。
-
-Mailboxes 就是这个邮箱，而且免费。你的 agent 拿到 `hello@你的域名.com`。信来了，它读，它翻以前的历史，它把回信写好。**按发送的，是你。** 整个东西跑在你自己的 Cloudflare 账号里、免费套餐内 —— 没有东西要租，也没有钱要付给我们。
+它跑在你自己的 Cloudflare 账号里，用的是 Cloudflare 和 Resend 的免费套餐 —— 中间没有我们的服务，没有东西要租，也没有钱要付给我们。5 GB 邮件、10 GB 附件、每天 100 封发信；第十个邮箱和第一个一样贵。
 
 ## 你的 agent 得到什么
 

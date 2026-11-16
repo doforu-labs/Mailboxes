@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the current three-pane inbox (AI assistant draft, Review & send) and
   the Settings → Domains list. The image paths in both READMEs are unchanged.
 
+- **README demo video.** Both READMEs now carry a 27-second screen recording
+  of real use — mail arriving, the assistant drafting the reply, the send
+  button left to you — directly under the first screenshot. GitHub does not
+  render `<video>`, so the block is a poster image (`demo-30s.png`) linked to
+  `demo-30s.mp4`, both at the repository root; only the alt text differs
+  between the English and Chinese versions.
+
 ## [0.2.1] - 2026-10-13
 
 ### Added
