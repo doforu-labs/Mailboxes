@@ -999,6 +999,59 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 
 // -- AI Chat (SSE streaming) -----------------------------------------
 
+/**
+ * Build the "currently viewing this email" context block.
+ *
+ * The ids are the point of this block. Every tool that acts on one message
+ * takes an identifier — `draft_reply` / `send_reply` / `get_email` /
+ * `mark_email_read` / `move_email` / `delete_email` take `id`, `get_thread`
+ * takes `thread_id` — and the chat loop grants exactly ONE tool round (a
+ * second, tool-less call then writes the reply to the user). A model that has
+ * to run `search_emails` first to discover the id has therefore spent its only
+ * round and can never reach `draft_reply`: the draft silently never happened,
+ * which is exactly what "reply to this email" used to do.
+ *
+ * `emailContext` supplies both ids even when the row itself cannot be loaded
+ * (deleted / moved out from under the panel), so the block degrades to "here is
+ * the id, fetch the body yourself" instead of disappearing.
+ */
+function buildViewingEmailContext(
+	emailContext: { emailId?: string; threadId?: string } | undefined,
+	email?: EmailFull | null,
+): string {
+	const emailId = email?.id ?? emailContext?.emailId;
+	const threadId = email?.thread_id ?? emailContext?.threadId;
+
+	const lines = [`Email ID: ${emailId}`];
+	if (threadId) lines.push(`Thread ID: ${threadId}`);
+	if (email?.folder_id) lines.push(`Folder: ${email.folder_id}`);
+
+	if (email) {
+		lines.push(
+			`From: ${formatSenderWithAddress(email.sender_name, email.sender)}`,
+			`Subject: ${email.subject}`,
+			`Date: ${email.date}`,
+			`Body: ${email.body?.substring(0, 2000)}`,
+		);
+	} else {
+		lines.push(
+			"The message body could not be loaded (the email may have been deleted or moved). Call get_email with the Email ID above if you need its contents.",
+		);
+	}
+
+	lines.push(
+		"",
+		// Chat history is replayed above, and a concrete id quoted in an earlier
+		// turn (the old "paste the id into your prompt" workaround does exactly
+		// that) will otherwise win over this block: the model replied to that
+		// older message instead of the one on screen. State the precedence.
+		"This block describes the email the user has open RIGHT NOW and supersedes any email discussed earlier in this conversation. Unless the user names a different message, these are the ids to act on.",
+		"The ids above are resolved and exact. To reply to, read, move, mark or delete THIS email, pass them straight to the tool (`draft_reply` / `send_reply` / `get_email` / `mark_email_read` / `move_email` / `delete_email` take `id`; `get_thread` takes `thread_id`). Do NOT call `search_emails` or `list_emails` first to look the ids up.",
+	);
+
+	return `The user is currently viewing this email:\n${lines.join("\n")}`;
+}
+
 function buildAiMessages(history: any[], emailContext?: any, email?: any, thread?: any[]): { role: string; content: string }[] {
 	// AI-facing: keep English. This prompt and the message templates below are
 	// instructions/context fed to the model, never rendered to the user, so they
@@ -1016,6 +1069,7 @@ You can search emails, read messages, manage folders, draft and send replies usi
 - Use list_emails to browse folders
 - Use get_email to read a specific email in full
 - Use draft_reply to compose a reply (saves to Drafts for user review)
+- When the user refers to the email on screen ("this email", "reply to this"), its Email ID and Thread ID are already in the currently-viewing context block below the conversation - pass them straight to the tool and never spend a tool call on search_emails to look up an id you were already given
 - Use send_reply / send_email only when the user explicitly says to send
 - If you don't know something, use tools to look it up before guessing
 - Always provide a helpful text response along with any tool actions
@@ -1027,10 +1081,10 @@ Keep responses concise and helpful.`;
 		...history.map((m: any) => ({ role: m.role, content: m.content })),
 	];
 
-	if (email) {
+	if (email || emailContext?.emailId) {
 		msgs.push({
 			role: "system",
-			content: `The user is currently viewing this email:\nFrom: ${formatSenderWithAddress(email.sender_name, email.sender)}\nSubject: ${email.subject}\nDate: ${email.date}\nBody: ${email.body?.substring(0, 2000)}`,
+			content: buildViewingEmailContext(emailContext, email),
 		});
 	}
 	if (thread && thread.length > 0) {

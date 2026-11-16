@@ -49,6 +49,21 @@ const MOCK_EMAIL = {
 	attachments: [],
 };
 
+/**
+ * The email a reader has open in the right-hand panel, used by the
+ * "reply to this" tests below. Unlike MOCK_EMAIL it carries a real
+ * `thread_id` and a display name, i.e. what a real inbound row looks like.
+ */
+const VIEWED_EMAIL = {
+	...MOCK_EMAIL,
+	id: "email-open-1",
+	folder_id: "inbox",
+	sender: "dana@client.example",
+	sender_name: "Dana Client",
+	subject: "Test Subject",
+	thread_id: "thread-9",
+};
+
 const MOCK_THREAD = [
 	{
 		...MOCK_EMAIL,
@@ -88,6 +103,12 @@ const mockGetThreadEmails = mock.fn<
 	(db: any, mailboxId: string, threadId: string) => Promise<any[]>
 >(async () => []);
 
+// `draft_reply` writes its draft through this; stubbed so the tool's write can
+// be asserted without a real D1 binding.
+const mockCreateEmail = mock.fn<
+	(db: any, mailboxId: string, folder: string, fields: any, attachments?: any[]) => Promise<any>
+>(async () => ({}));
+
 // ── Admin session used by every request ────────────────────────────
 //
 // Every /api/v1/mailboxes/:mailboxId/* route sits behind requireAuth
@@ -126,6 +147,7 @@ const dbMocks = {
 	clearAiChatHistory: mockClearAiChatHistory,
 	getEmail: mockGetEmail,
 	getThreadEmails: mockGetThreadEmails,
+	createEmail: mockCreateEmail,
 	getSession: mockGetSession,
 	deleteSession: mockDeleteSession,
 };
@@ -150,6 +172,7 @@ function resetMockCalls() {
 		mockClearAiChatHistory,
 		mockGetEmail,
 		mockGetThreadEmails,
+		mockCreateEmail,
 		mockGetSession,
 	mockDeleteSession,
 	]) {
@@ -345,9 +368,137 @@ describe("AI Chat SSE endpoint", async () => {
 			"Thread context should be included in system messages",
 		);
 
+		// The ids every single-message tool takes must be IN the context. Leaving
+		// them out is what made "reply to this" burn its only tool round on a
+		// search and never reach draft_reply.
+		const viewing = systemMsgs.find((m: any) =>
+			m.content.includes("currently viewing"),
+		);
+		assert.ok(viewing, "a 'currently viewing' block should be present");
+		assert.match(viewing.content, /^Email ID: email-123$/m);
+		assert.match(viewing.content, /^Thread ID: thread-1$/m);
+
 		// Verify db was queried for email and thread
 		assert.strictEqual(mockGetEmail.mock.calls.length, 1);
 		assert.strictEqual(mockGetThreadEmails.mock.calls.length, 1);
+	});
+
+	// ── Test: the open email's ids reach the model ───────────────────
+	//
+	// Regression: the assistant was handed the open email's sender, subject and
+	// body but not its id, while `draft_reply` requires an `id`. The model's
+	// only recourse was search_emails — which consumes the single tool round the
+	// chat loop allows, so the second (tool-less) call could only write prose and
+	// the draft never appeared. Here the model behaves like a correct one: it
+	// reads the id out of the context block and calls draft_reply immediately.
+	it("drafts a reply in one tool round using the id from the viewing context", async () => {
+		resetMockCalls();
+		const { env, mockAi } = createMockEnv();
+		// `ensureFoldersExist` reads the folder table before dispatch; one row is
+		// enough for it to return early without a real D1 binding.
+		env.DB = {
+			prepare: () => ({ bind: () => ({ first: async () => ({ cnt: 1 }) }) }),
+		} as any;
+
+		mockGetEmail.mock.mockImplementation(async () => VIEWED_EMAIL);
+		mockGetThreadEmails.mock.mockImplementation(async () => []);
+		mockCreateEmail.mock.mockImplementation(async () => ({}));
+
+		const calls: { withTools: boolean; messages: any[] }[] = [];
+		mockAi.run.mock.mockImplementation(async (_model, options) => {
+			const opts = options as { messages: any[]; tools?: unknown };
+			calls.push({ withTools: Boolean(opts.tools), messages: opts.messages });
+
+			if (calls.length === 1) {
+				// Read the id + recipient straight out of the context block, exactly
+				// as the model is expected to.
+				const viewing = opts.messages
+					.filter(
+						(m: any) =>
+							m.role === "system" && m.content.includes("currently viewing"),
+					)
+					.map((m: any) => m.content)
+					.join("\n");
+				const id = /^Email ID: (.+)$/m.exec(viewing)?.[1];
+				const to = /^From: .*<(.+)>$/m.exec(viewing)?.[1];
+				assert.ok(id, "the context block should carry the email id");
+
+				return {
+					choices: [
+						{
+							message: {
+								content: "",
+								tool_calls: [
+									{
+										id: "call_1",
+										type: "function",
+										function: {
+											name: "draft_reply",
+											arguments: JSON.stringify({
+												id,
+												to,
+												subject: "Re: Test Subject",
+												body: "Thanks Dana, I will take a look today.",
+											}),
+										},
+									},
+								],
+							},
+						},
+					],
+				};
+			}
+
+			return {
+				choices: [{ message: { content: "Draft saved to Drafts for review." } }],
+			};
+		});
+
+		const req = postReq(
+			"/api/v1/mailboxes/test@example.com/ai/chat",
+			{ message: "reply to this email", emailContext: { emailId: VIEWED_EMAIL.id } },
+			{ Accept: "text/event-stream" },
+		);
+		const res = await app.fetch(req, env);
+		assert.strictEqual(res.status, 200);
+
+		// Drain the SSE body: the stream's work (tool dispatch, second model
+		// call) runs while the body is being pulled, so assertions below are only
+		// valid once the response has been read to completion.
+		const body = await res.text();
+		assert.ok(
+			body.includes("[Using tool: draft_reply]"),
+			"the tool round should dispatch draft_reply, not search_emails",
+		);
+		// The reply text arrives as word-sized `token` events; join them back.
+		const streamed = body
+			.split("\n")
+			.filter((l) => l.startsWith("data: "))
+			.map((l) => {
+				try {
+					return (JSON.parse(l.slice(6)) as { token?: string }).token ?? "";
+				} catch {
+					return "";
+				}
+			})
+			.join("");
+		assert.ok(
+			streamed.includes("Draft saved to Drafts for review."),
+			"the assistant should report the saved draft",
+		);
+
+		// Exactly two model calls: the tool round, then the tool-less write-up.
+		// A third would mean the draft needed a second round (a search first).
+		assert.strictEqual(calls.length, 2, "the draft must fit in one tool round");
+		assert.strictEqual(calls[0].withTools, true);
+		assert.strictEqual(calls[1].withTools, false);
+
+		// The draft row was written against the id the model read from context.
+		assert.strictEqual(mockCreateEmail.mock.calls.length, 1);
+		const [, , folder, fields] = mockCreateEmail.mock.calls[0].arguments as any[];
+		assert.strictEqual(folder, "draft");
+		assert.strictEqual(fields.in_reply_to, VIEWED_EMAIL.id);
+		assert.strictEqual(fields.thread_id, VIEWED_EMAIL.thread_id);
 	});
 
 	// ── Test 3: POST - model fallback works ──────────────────────────

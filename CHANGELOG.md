@@ -48,6 +48,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keys stay rejected. `GET /tools` advertises `auth.prefix` as `mbx_`, and
   the 401 hint names the new shape.
 
+### Fixed
+
+- **"Reply to this email" now drafts instead of searching.** The assistant's
+  "currently viewing" context carried the open email's sender, subject and
+  body but neither of its ids, while `draft_reply` requires one. The model
+  therefore had to spend a tool call on `search_emails` to discover it — and
+  the chat loop allows a single tool round, so the follow-up call could no
+  longer draft anything and the draft silently never appeared. The context
+  block now leads with `Email ID` and `Thread ID` (read from the email row,
+  falling back to the panel's own ids when the row cannot be loaded) and says
+  they are exactly the arguments the tools take, so no lookup is needed.
+  `get_email`, `get_thread`, `draft_reply`, `send_reply`, `mark_email_read`,
+  `move_email` and `delete_email` say the same in their parameter
+  descriptions.
+
 ### Documentation
 
 - **Deploy button.** Both READMEs describe the button as cloning the repo and

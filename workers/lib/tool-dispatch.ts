@@ -159,7 +159,7 @@ export const TOOL_DEFINITIONS = [
 				id: {
 					type: "string",
 					description:
-						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result.",
+						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result. When the user means the email open in the reading pane, pass that email's `Email ID` from the context block instead.",
 				},
 			},
 			required: ["id"],
@@ -174,7 +174,7 @@ export const TOOL_DEFINITIONS = [
 				thread_id: {
 					type: "string",
 					description:
-						"The thread id, as returned in the `thread_id` field of list_emails / search_emails.",
+						"The thread id, as returned in the `thread_id` field of list_emails / search_emails. For the thread open in the reading pane, use its `Thread ID` from the context block.",
 				},
 			},
 			required: ["thread_id"],
@@ -189,7 +189,7 @@ export const TOOL_DEFINITIONS = [
 				id: {
 					type: "string",
 					description:
-						"The id of the email being replied to (the `id` field from list_emails / search_emails).",
+						"The id of the email being replied to (the `id` field from list_emails / search_emails). For the email open in the reading pane, pass its `Email ID` from the context block directly.",
 				},
 				to: { type: "string", description: "Recipient email address" },
 				subject: { type: "string", description: "Reply subject line" },
@@ -234,7 +234,7 @@ export const TOOL_DEFINITIONS = [
 				id: {
 					type: "string",
 					description:
-						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result.",
+						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result. When the user means the email open in the reading pane, pass that email's `Email ID` from the context block instead.",
 				},
 				read: { type: "boolean", description: "true = mark as read, false = mark as unread" },
 			},
@@ -250,7 +250,7 @@ export const TOOL_DEFINITIONS = [
 				id: {
 					type: "string",
 					description:
-						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result.",
+						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result. When the user means the email open in the reading pane, pass that email's `Email ID` from the context block instead.",
 				},
 				folder: folderSchema(
 					"Target folder, as returned in the `folder` field of list_emails / search_emails. One of the mailbox's folders (see `enum`).",
@@ -268,7 +268,7 @@ export const TOOL_DEFINITIONS = [
 				id: {
 					type: "string",
 					description:
-						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result.",
+						"The email's unique id, exactly as returned in the `id` field of a list_emails / search_emails / get_thread result. When the user means the email open in the reading pane, pass that email's `Email ID` from the context block instead.",
 				},
 			},
 			required: ["id"],
@@ -294,7 +294,7 @@ export const TOOL_DEFINITIONS = [
 				id: {
 					type: "string",
 					description:
-						"The id of the email being replied to (the `id` field from list_emails / search_emails).",
+						"The id of the email being replied to (the `id` field from list_emails / search_emails). For the email open in the reading pane, pass its `Email ID` from the context block directly.",
 				},
 				to: { type: "string", description: "Recipient email address" },
 				subject: { type: "string", description: "Reply subject line" },
