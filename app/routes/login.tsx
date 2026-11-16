@@ -4,7 +4,7 @@
 
 import { Button, Input, Loader, Text } from "@cloudflare/kumo";
 import { type FormEvent, useState } from "react";
-import { type MetaArgs } from "react-router";
+import { type MetaArgs, useRouteLoaderData } from "react-router";
 import { useTranslation } from "react-i18next";
 import { isLocale } from "shared/i18n/config";
 import { translate } from "shared/i18n/translate";
@@ -20,10 +20,30 @@ export function meta({ matches }: MetaArgs) {
 
 export default function LoginRoute() {
 	const { t } = useTranslation("auth");
+	// The public demo has no password to type: the root loader reports demo mode
+	// straight from the Worker binding, and the visitor gets a one-click guest
+	// session instead (see workers/demo/login.ts).
+	const rootData = useRouteLoaderData("root") as { demo?: boolean } | undefined;
+	const isDemo = rootData?.demo === true;
 	const [username, setUsername] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	async function handleDemoEnter() {
+		if (isSubmitting) return;
+		setError(null);
+		setIsSubmitting(true);
+		try {
+			await api.auth.demoLogin();
+			window.location.href = "/";
+		} catch (err) {
+			setError(
+				err instanceof Error && err.message ? err.message : t("demoError"),
+			);
+			setIsSubmitting(false);
+		}
+	}
 
 	async function handleSubmit(e: FormEvent) {
 		e.preventDefault();
@@ -80,6 +100,37 @@ export default function LoginRoute() {
 						</div>
 					</div>
 
+					{isDemo ? (
+						<div className="grid gap-4">
+							<p className="text-center text-sm text-kumo-subtle">
+								{t("demoSubtitle")}
+							</p>
+
+							{error && (
+								<Text variant="error" size="sm">
+									{error}
+								</Text>
+							)}
+
+							<Button
+								type="button"
+								variant="primary"
+								className="mt-1 w-full"
+								disabled={isSubmitting}
+								onClick={handleDemoEnter}
+							>
+								{isSubmitting ? (
+									<span className="inline-flex items-center gap-2">
+										<Loader size="sm" /> {t("demoEntering")}
+									</span>
+								) : (
+									t("demoEnter")
+								)}
+							</Button>
+
+							<p className="text-center text-xs text-kumo-subtle">{t("demoHint")}</p>
+						</div>
+					) : (
 					<form onSubmit={handleSubmit} className="grid gap-4">
 						<Input
 							label={t("username")}
@@ -120,6 +171,7 @@ export default function LoginRoute() {
 							)}
 						</Button>
 					</form>
+					)}
 				</div>
 
 				<p className="mt-4 text-center text-xs text-kumo-subtle">

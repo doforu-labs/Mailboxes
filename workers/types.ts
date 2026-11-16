@@ -31,4 +31,10 @@ export interface Env extends Cloudflare.Env {
 	DB: D1Database;
 	BUCKET: R2Bucket;
 	AI: Ai;
+	/**
+	 * `"1"` only on the public read-only demo instance (wrangler.demo.jsonc).
+	 * Absent on production — and the demo code branches on the exact string, so
+	 * a missing, empty or mistyped value keeps the production path.
+	 */
+	DEMO_MODE?: string;
 }

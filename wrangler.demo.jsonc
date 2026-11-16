@@ -1,0 +1,79 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+
+	// ─────────────────────────────────────────────────────────────────────
+	//  PUBLIC READ-ONLY DEMO INSTANCE
+	// ─────────────────────────────────────────────────────────────────────
+	//
+	// Same code, second deployment. This config describes a SEPARATE Worker
+	// with its OWN D1 database and its OWN R2 bucket, so wiping and re-seeding
+	// the demo can never touch a real mailbox. See docs/demo-site-plan.md §1.
+	//
+	// The only thing that makes the app read-only is `DEMO_MODE=1` (below):
+	// workers/demo/guard.ts returns `next()` on its first line when the
+	// variable is absent, so the production instance is unaffected. Do NOT copy
+	// this var into wrangler.jsonc.
+	//
+	// 🚫 `npx wrangler deploy -c wrangler.demo.jsonc` from the repo root is the
+	//    wrong entry point: .wrangler/deploy/config.json redirects any deploy to
+	//    build/server/wrangler.json (name: mailboxes), i.e. production. Build in
+	//    a temp directory instead — docs/demo-site-plan.md §1.4 / §6 step 3.
+	//
+	// Nothing here is created yet: the ids below are placeholders that
+	// `wrangler d1 create mailboxes-db-demo` prints on first setup.
+
+	"name": "mailboxes-demo",
+	"compatibility_date": "2025-11-28",
+	"main": "./workers/app.ts",
+	"observability": {
+		"enabled": true
+	},
+	"compatibility_flags": ["nodejs_compat"],
+
+	// The read-only switch. Read by workers/demo/guard.ts, workers/demo/login.ts
+	// and the lazy reset. Absent ⇒ the demo modules do nothing at all.
+	"vars": {
+		"DEMO_MODE": "1"
+	},
+
+	// Reset cadence: the Cron fires hourly and the reset function itself
+	// returns immediately unless 6 hours have passed (docs/demo-site-plan.md
+	// §2.5). Hourly ticks cost one request each and give the lazy
+	// demo-login fallback a cron-side backup without extra write budget.
+	"triggers": {
+		"crons": ["0 * * * *"]
+	},
+
+	"r2_buckets": [
+		{
+			"binding": "BUCKET",
+			"bucket_name": "mailboxes-demo",
+			"preview_bucket_name": "mailboxes-demo"
+		}
+	],
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "mailboxes-db-demo",
+			// Placeholder — `wrangler d1 create mailboxes-db-demo` prints the
+			// real id. Deliberately NOT the production id.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			// NOT "local": local dev keys its SQLite file on this value, and
+			// the production config already claims "local". Sharing it means
+			// `seed-demo.mjs --local` (which deletes every email) runs against the
+			// same scratch database a developer is using with `wrangler dev`.
+			"preview_database_id": "mailboxes-db-demo",
+			"migrations_dir": "migrations"
+		}
+	]
+
+	// No `ai` binding on purpose: Workers AI Neurons are shared per account, so
+	// one demo conversation can starve the production site for the rest of the
+	// day (docs/demo-site-plan.md §5). Without the binding there is nothing to
+	// bill even if a request ever reached the AI route — and POST .../ai/chat
+	// is 403 anyway.
+
+	// No `routes` / `custom_domains` on purpose: the demo hostname is bound at
+	// deploy time (docs/demo-site-plan.md §6 step 6), not from this file.
+}

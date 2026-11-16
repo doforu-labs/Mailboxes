@@ -22,5 +22,10 @@
 	"mailbox": {
 		"closeSidebar": "Close sidebar"
 	},
-	"languageAria": "Language"
+	"languageAria": "Language",
+	"demo": {
+		"bannerTitle": "Read-only demo",
+		"bannerBody": "Sample mailboxes with invented senders. Nothing can be sent, edited or deleted, and the data resets every 6 hours.",
+		"aiDisabled": "The AI assistant is switched off in the demo (it shares an account-wide quota with the production site), so this is a transcript of a sample conversation."
+	}
 }

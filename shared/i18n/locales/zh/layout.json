@@ -22,5 +22,10 @@
 	"mailbox": {
 		"closeSidebar": "关闭侧边栏"
 	},
-	"languageAria": "语言"
+	"languageAria": "语言",
+	"demo": {
+		"bannerTitle": "只读演示站",
+		"bannerBody": "这里的邮箱和发件人都是虚构的。不能发信、修改或删除任何内容；数据每 6 小时重置一次。",
+		"aiDisabled": "演示站不启用 AI 助手（它与生产站共用账号级额度），下面展示的是一段示例对话。"
+	}
 }

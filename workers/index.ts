@@ -43,6 +43,10 @@ import { TOOL_DEFINITIONS, executeToolCall } from "./lib/tool-dispatch";
 // cookie-based `requireAuth` that covers `/api/v1/*`.
 import { agentApiKeysRoute } from "./routes/agent-api-keys";
 import { agentApiRoute } from "./routes/agent-api";
+// Demo instance. Both imports are inert unless env.DEMO_MODE === "1": the
+// guard's first statement is `return next()`, and the login handler answers 404.
+import { demoGuard, isDemoMode } from "./demo/guard";
+import { handleDemoLogin } from "./demo/login";
 type AppContext = Context<D1MailboxContext>;
 
 // Local type for AI text generation output (available in CF Workers runtime)
@@ -167,11 +171,31 @@ app.use("/api/*", cors({
 	},
 }));
 
+// ====== Demo read-only guard ======
+//
+// Mounted on EVERY path, not just `/api/*`, because two of the surfaces it has
+// to close (`/mcp` and `/tools`) are mounted at the root. SPA requests are GETs
+// and fall straight through.
+//
+// It sits here — ahead of the auth routes and of `app.route("/", agentApiRoute)`
+// below — so a blocked write never reaches a handler, and ahead of
+// `requireAuth` so the 403 does not depend on being signed in: a visitor's
+// "compose" cannot work even with a valid demo session.
+//
+// On production `DEMO_MODE` is unset, the guard returns `next()` immediately and
+// nothing below this line applies. See workers/demo/guard.ts.
+app.use("*", demoGuard);
+
 // ====== Admin Authentication (login / logout / me) ======
 
 app.post("/api/v1/auth/login", handleLogin);
 app.post("/api/v1/auth/logout", handleLogout);
 app.get("/api/v1/auth/me", handleMe);
+
+// Guest entry for the public demo: no password, one session per visitor, 1h TTL.
+// Answers 404 on a production deployment, so the endpoint effectively does not
+// exist there (see workers/demo/login.ts).
+app.post("/api/v1/auth/demo-login", handleDemoLogin);
 
 // First-run admin setup. Public by design, but only usable while no admin
 // account exists yet: the insert is guarded by `WHERE NOT EXISTS`, and every
@@ -242,7 +266,13 @@ app.get("/api/v1/config", async (c) => {
 		const domain = m.id.split("@")[1];
 		if (domain) domainSet.add(domain);
 	}
-	return c.json({ domains: Array.from(domainSet), emailAddresses: allMailboxes.map(m => m.id) });
+	const payload = {
+		domains: Array.from(domainSet),
+		emailAddresses: allMailboxes.map(m => m.id),
+	};
+	// The flag is only added on the demo instance, so the production response
+	// stays byte-for-byte what it was.
+	return c.json(isDemoMode(c.env) ? { ...payload, demo: true } : payload);
 });
 
 // -- Mailboxes ------------------------------------------------------

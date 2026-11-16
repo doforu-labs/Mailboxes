@@ -27,8 +27,9 @@ import {
 import { useTranslation } from "react-i18next";
 import { ApiError } from "~/services/api";
 import api from "~/services/api";
-import { Navigate, useLocation } from "react-router";
+import { Navigate, useLoaderData, useLocation } from "react-router";
 import LanguageSwitcher from "~/components/LanguageSwitcher";
+import { cloudflareContext } from "shared/cloudflare-context";
 import { i18nextMiddleware, getLocale } from "~/middleware/i18next";
 import type { Route } from "./+types/root";
 import "./index.css";
@@ -79,9 +80,21 @@ export const middleware = [i18nextMiddleware];
  * Expose the request locale to the document shell. The `t` function itself is
  * delivered via `<I18nextProvider>` in entry.{server,client}.tsx, so we only
  * ship the small language tag as loader data here.
+ *
+ * `demo` is the read-only banner switch. It comes straight off the Worker
+ * binding through the shared context key rather than from the API: the login
+ * page has no session yet, and `GET /api/v1/config` requires one.
  */
 export function loader({ context }: Route.LoaderArgs) {
-	return { locale: getLocale(context as never) };
+	const bindings = (
+		context as unknown as {
+			get?(key: typeof cloudflareContext): { env?: { DEMO_MODE?: string } } | undefined;
+		}
+	).get?.(cloudflareContext);
+	return {
+		locale: getLocale(context as never),
+		demo: bindings?.env?.DEMO_MODE === "1",
+	};
 }
 
 /**
@@ -232,10 +245,32 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 	return isLoginPage ? children : <Navigate to="/login" replace />;
 }
 
+/**
+ * The demo chrome: a fixed notice above a viewport-height page area.
+ *
+ * Rendered ONLY when `demo` is true, so a production deployment gets the exact
+ * DOM it had before (no extra wrapper, no layout shift) — see `App` above.
+ */
+function DemoShell({ children }: { children: React.ReactNode }) {
+	const { t } = useTranslation("layout");
+	return (
+		<div className="flex h-screen flex-col">
+			<div className="flex shrink-0 items-center gap-2 border-b border-kumo-line bg-kumo-recessed px-4 py-2 text-xs text-kumo-subtle">
+				<span className="rounded bg-kumo-control px-1.5 py-0.5 font-semibold text-kumo-default">
+					{t("demo.bannerTitle")}
+				</span>
+				<span>{t("demo.bannerBody")}</span>
+			</div>
+			<div className="min-h-0 flex-1">{children}</div>
+		</div>
+	);
+}
+
 export default function App() {
 	// Use useState to ensure each SSR request gets a fresh client while the
 	// browser reuses the same singleton across navigations.
 	const [queryClient] = useState(getQueryClient);
+	const { demo } = (useLoaderData() ?? {}) as { locale?: string; demo?: boolean };
 	return (
 		<QueryClientProvider client={queryClient}>
 			<LinkProvider component={KumoLink}>
@@ -243,9 +278,17 @@ export default function App() {
 					<Toasty>
 						<>
 							<FloatingLanguageSwitcher key="language-switcher" />
-							<AuthGate key="auth-gate">
-								<Outlet />
-							</AuthGate>
+							{demo ? (
+								<DemoShell>
+									<AuthGate key="auth-gate">
+										<Outlet />
+									</AuthGate>
+								</DemoShell>
+							) : (
+								<AuthGate key="auth-gate">
+									<Outlet />
+								</AuthGate>
+							)}
 						</>
 					</Toasty>
 				</TooltipProvider>

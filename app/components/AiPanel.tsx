@@ -5,7 +5,7 @@
 // Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
 import { useState, useRef, useEffect } from "react";
-import { useParams } from "react-router";
+import { useParams, useRouteLoaderData } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@cloudflare/kumo";
 import {
@@ -30,6 +30,11 @@ interface ChatMessage {
 export default function AiPanel() {
 	const { t } = useTranslation("aiPanel");
 	const { mailboxId } = useParams<{ mailboxId: string }>();
+	// On the public demo the panel is a exhibit, not an input: `POST .../ai/chat`
+	// is 403 there and no `ai` binding exists, so the seeded transcript is shown
+	// with the composer disabled rather than offering a button that cannot work.
+	const rootData = useRouteLoaderData("root") as { demo?: boolean } | undefined;
+	const isDemo = rootData?.demo === true;
 	const { isAiPanelOpen, toggleAiPanel, selectedEmailId } = useUIStore();
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [input, setInput] = useState("");
@@ -251,6 +256,11 @@ export default function AiPanel() {
 
 			{/* Input */}
 			<div className="p-3 border-t border-kumo-line">
+				{isDemo ? (
+					<p className="text-xs text-kumo-subtle">
+						{t("layout:demo.aiDisabled")}
+					</p>
+				) : (
 				<div className="flex gap-2">
 					<input
 						ref={inputRef}
@@ -280,6 +290,7 @@ export default function AiPanel() {
 						aria-label={t("send")}
 					/>
 				</div>
+				)}
 			</div>
 		</div>
 	);

@@ -18,6 +18,17 @@ export class ApiError extends Error {
 		this.status = status;
 		this.body = body;
 	}
+
+	/**
+	 * The public demo refused a write (403 + `code: "demo_read_only"`).
+	 *
+	 * Callers should stay quiet for this one: the write was never supposed to
+	 * work there, so a red toast saying "failed" would be a lie about a
+	 * limitation the banner already explains. See workers/demo/guard.ts.
+	 */
+	get isDemoReadOnly(): boolean {
+		return this.status === 403 && this.body.code === "demo_read_only";
+	}
 }
 
 /**
@@ -331,6 +342,16 @@ const api = {
 	auth: {
 		login: (username: string, password: string) =>
 			post<{ authenticated: boolean; username: string }>("/api/v1/auth/login", { username, password }),
+		/**
+		 * Guest entry for the public demo: no credentials, one 1-hour session per
+		 * visitor. Answers 404 on a deployment without DEMO_MODE=1, so callers
+		 * only offer this when the root loader reported `demo: true`.
+		 */
+		demoLogin: () =>
+			post<{ authenticated: boolean; demo: boolean; username: string }>(
+				"/api/v1/auth/demo-login",
+				{},
+			),
 		logout: () => post<{ success: boolean }>("/api/v1/auth/logout"),
 		me: () => get<{ authenticated: boolean; username: string }>("/api/v1/auth/me"),
 	},
@@ -349,7 +370,7 @@ const api = {
 
 	// Config
 	getConfig: () =>
-		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),
+		get<{ domains: string[]; emailAddresses: string[]; demo?: boolean }>("/api/v1/config"),
 
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),

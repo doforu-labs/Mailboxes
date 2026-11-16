@@ -5,27 +5,26 @@
 // Modifications Copyright (c) 2026 Doforu, distributed under the AGPL-3.0-only (see LICENSE).
 
 import { Hono } from "hono";
-import {
-	createContext,
-	createRequestHandler,
-	RouterContextProvider,
-} from "react-router";
+import { createRequestHandler, RouterContextProvider } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
+import { handleDemoScheduled } from "./demo/reset";
+import { cloudflareContext } from "../shared/cloudflare-context";
 import type { Env } from "./types";
 
 /**
- * Context key for the Cloudflare bindings, exposed to React Router loaders
- * and middleware via `context.get(cloudflareContext)`.
+ * Context key for the Cloudflare bindings, exposed to React Router loaders and
+ * middleware via `context.get(cloudflareContext)`.
  *
  * With `future.v8_middleware` enabled, the request context is a
  * `RouterContextProvider` (not a plain object), and `createRequestHandler`
  * rejects any other shape — so the bindings now travel as a typed context
  * entry instead of a plain `AppLoadContext` object.
+ *
+ * The key itself is created in `shared/cloudflare-context.ts` so `app/root.tsx`
+ * can read `DEMO_MODE` without importing this server module; it is re-exported
+ * here so existing importers keep working.
  */
-export const cloudflareContext = createContext<{
-	env: Env;
-	ctx: ExecutionContext;
-}>();
+export { cloudflareContext };
 
 declare module "react-router" {
 	export interface AppLoadContext {
@@ -62,6 +61,22 @@ app.all("*", (c) => {
 // Export the Hono app as the default export with an email handler
 export default {
 	fetch: app.fetch,
+	/**
+	 * Cron Trigger — only the demo Worker has one (wrangler.demo.jsonc sets
+	 * `triggers.crons`); production carries no trigger, so this never fires
+	 * there. `handleDemoScheduled` returns immediately when DEMO_MODE is unset,
+	 * and it decides for itself whether 6 hours have passed, so an hourly tick
+	 * is a no-op most of the time (docs/demo-site-plan.md §2.5).
+	 */
+	async scheduled(
+		controller: { cron?: string; scheduledTime?: number },
+		env: Env,
+		ctx: ExecutionContext,
+	) {
+		// The reset must not be cut off by the event loop ending, so it runs
+		// under waitUntil rather than directly in the handler.
+		ctx.waitUntil(handleDemoScheduled(env, controller));
+	},
 	async email(
 		event: { raw: ReadableStream; rawSize: number },
 		env: Env,
