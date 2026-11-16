@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The public demo's guest sign-in is rate-limited per IP.**
+  `POST /api/v1/auth/demo-login` mints a `sessions` row per call and there is
+  no password to guess, so nothing stopped a script from minting them as fast
+  as it could send requests (12 calls in a row all answered 200). A new
+  `demo_login_rate_limit` table (`migrations/0015_demo_rate_limit.sql`) counts
+  attempts per client address per fixed 10-minute window in one atomic UPSERT —
+  no KV binding, no new dependency — and the eleventh attempt in a window
+  answers 429 with `{ code: "demo_rate_limited" }` and `Retry-After`. Clicking
+  "Enter as guest" is unaffected: a visitor makes one attempt, and `/login`
+  does not call the endpoint on page load. A script gets 10 per address per
+  window and then waits, which caps one address at roughly 1,440 sessions a day
+  instead of an unbounded number per second. When a request carries no client
+  IP at all (`vite preview`, a proxy that strips the header) the bucket becomes
+  a hash of the user agent — still limited, and never one bucket shared by
+  every visitor. Production is untouched: the check sits behind the same
+  `DEMO_MODE === "1"` guard as the rest of `workers/demo/`, and the handler
+  still answers 404 there before the table is read.
+
 - **Copy the whole email from the message toolbar.** Ctrl+A cannot select the
   subject, sender and body at once: the body is rendered in a sandboxed iframe
   without `allow-same-origin`, so it lives in its own opaque-origin document,

@@ -28,7 +28,7 @@
  * To run: npm test
  */
 import assert from "node:assert";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import { pathToFileURL } from "node:url";
 import type { Env } from "../types";
 import {
@@ -41,6 +41,12 @@ import {
 	type Sqlite,
 } from "./harness";
 import { DEMO_NOINDEX, DEMO_READ_ONLY_CODE, DEMO_READ_ONLY_ERROR } from "./guard";
+import {
+	DEMO_LOGIN_MAX_ATTEMPTS,
+	DEMO_LOGIN_WINDOW_MS,
+	DEMO_RATE_LIMIT_CODE,
+	demoLoginBucket,
+} from "./login";
 import { ensureDemoData } from "./reset";
 
 /** `app.request()` needs the real module; a bare `./index` breaks under `node --test`. */
@@ -160,6 +166,7 @@ function request(
 	path: string,
 	cookie?: string,
 	body: string | null = method === "GET" || method === "DELETE" ? null : "{}",
+	extraHeaders: Record<string, string> = {},
 ) {
 	// `app.fetch` (not `app.request`) so the ExecutionContext can be supplied:
 	// the inbound-webhook route reads `c.executionCtx`, which a bare
@@ -170,12 +177,27 @@ function request(
 			headers: {
 				"Content-Type": "application/json",
 				...(cookie ? { Cookie: cookie } : {}),
+				...extraHeaders,
 			},
 			...(body === null ? {} : { body }),
 		}),
 		env,
 		stubExecutionCtx,
 	);
+}
+
+/**
+ * `POST /api/v1/auth/demo-login` as a specific client.
+ *
+ * `cf-connecting-ip` is what Cloudflare puts on every real request; a test that
+ * wants two visitors has to say so explicitly, otherwise both land in the
+ * no-address fallback bucket.
+ */
+function demoLogin(env: Env, client: { ip?: string; ua?: string } = {}) {
+	return request(env, "POST", "/api/v1/auth/demo-login", undefined, "{}", {
+		...(client.ip ? { "CF-Connecting-IP": client.ip } : {}),
+		...(client.ua ? { "User-Agent": client.ua } : {}),
+	});
 }
 
 describe("demo read-only guard — DEMO_MODE=1", () => {
@@ -404,5 +426,152 @@ describe("demo guest sign-in", () => {
 			);
 			assert.strictEqual(res.status, 401, `login ${body} must fail on the demo`);
 		}
+	});
+});
+
+/**
+ * The guest sign-in is the demo's only writable surface, and before the limiter
+ * existed a script could mint sessions as fast as it could send requests. These
+ * cases pin the four things that make a limiter a limiter: it refuses, it lets
+ * go, it is absent off-demo, and it has a coherent answer when the client
+ * address is missing.
+ */
+describe("demo guest sign-in is rate-limited per IP", () => {
+	const IP = "203.0.113.7";
+
+	it("allows 10 in one window, then refuses with 429 + Retry-After and mints no session", { skip: sqliteSkip }, async () => {
+		const { demoEnv, sqlite } = await setup();
+
+		for (let attempt = 1; attempt <= DEMO_LOGIN_MAX_ATTEMPTS; attempt += 1) {
+			const res = await demoLogin(demoEnv, { ip: IP });
+			assert.strictEqual(res.status, 200, `attempt ${attempt} must be allowed`);
+		}
+		const sessionsBefore = count(sqlite, "SELECT COUNT(*) FROM sessions");
+		assert.strictEqual(sessionsBefore, DEMO_LOGIN_MAX_ATTEMPTS, "one session per allowed attempt");
+
+		const blocked = await demoLogin(demoEnv, { ip: IP });
+		const body = (await blocked.json()) as { code?: string; error?: string };
+		assert.strictEqual(blocked.status, 429, "the 11th attempt in the window is refused");
+		assert.strictEqual(body.code, DEMO_RATE_LIMIT_CODE, "the refusal carries a stable code");
+		assert.ok(body.error, "and a human-readable message");
+
+		const retryAfter = Number(blocked.headers.get("retry-after"));
+		assert.ok(Number.isInteger(retryAfter), "Retry-After is an integer number of seconds");
+		assert.ok(retryAfter > 0, `Retry-After must point forwards, got ${retryAfter}`);
+		assert.ok(
+			retryAfter <= DEMO_LOGIN_WINDOW_MS / 1000,
+			`Retry-After cannot exceed the window, got ${retryAfter}`,
+		);
+		assert.strictEqual(blocked.headers.get("x-robots-tag"), DEMO_NOINDEX, "a refusal is still noindex");
+
+		// A refused attempt must not have written anything.
+		assert.strictEqual(blocked.headers.get("set-cookie"), null, "no cookie on a refusal");
+		assert.strictEqual(
+			count(sqlite, "SELECT COUNT(*) FROM sessions"),
+			sessionsBefore,
+			"a refused attempt mints no session",
+		);
+
+		// Still refused on the next try — the window does not reset because the
+		// client tried again.
+		assert.strictEqual((await demoLogin(demoEnv, { ip: IP })).status, 429);
+
+		// ...and the bucket is per address, not global.
+		assert.strictEqual(
+			(await demoLogin(demoEnv, { ip: "198.51.100.9" })).status,
+			200,
+			"a second visitor is not affected by the first visitor's bucket",
+		);
+
+		// Reads keep working for everybody, refused or not.
+		const cookie = await guestCookie(demoEnv);
+		assert.strictEqual(
+			(await request(demoEnv, "GET", "/api/v1/mailboxes", cookie)).status,
+			200,
+			"the limiter is scoped to sign-in, not to the app",
+		);
+	});
+
+	it("lets the same address back in once the window rolls over", { skip: sqliteSkip }, async () => {
+		const { demoEnv } = await setup();
+		const base = Date.now();
+		// Only `Date` is mocked: the limiter's clock is `Date.now()`, and mocking
+		// it is the only honest way to watch a 10-minute window expire in a test
+		// that has to finish in milliseconds.
+		mock.timers.enable({ apis: ["Date"], now: base });
+		try {
+			for (let attempt = 1; attempt <= DEMO_LOGIN_MAX_ATTEMPTS; attempt += 1) {
+				assert.strictEqual((await demoLogin(demoEnv, { ip: IP })).status, 200);
+			}
+			assert.strictEqual((await demoLogin(demoEnv, { ip: IP })).status, 429);
+
+			// One millisecond into the next window is enough.
+			mock.timers.tick(DEMO_LOGIN_WINDOW_MS + 1);
+
+			const recovered = await demoLogin(demoEnv, { ip: IP });
+			assert.strictEqual(recovered.status, 200, "the next window starts with a fresh allowance");
+			assert.ok(recovered.headers.get("set-cookie"), "and issues a real session again");
+		} finally {
+			mock.timers.reset();
+		}
+	});
+
+	it("does not limit anything when DEMO_MODE is unset — and writes no counter rows", { skip: sqliteSkip }, async () => {
+		const { prodEnv, sqlite } = await setup();
+		// Production has no such endpoint at all, which is the strongest form of
+		// "not limited": 40 calls change nothing. The positive assertion is the
+		// table staying empty — a limiter that writes off-demo would be a
+		// production side effect even if it never refused anyone.
+		for (let attempt = 1; attempt <= 40; attempt += 1) {
+			const res = await demoLogin(prodEnv, { ip: IP });
+			assert.strictEqual(res.status, 404, `call ${attempt} must be a plain 404 in production`);
+			assert.notStrictEqual(res.status, 429);
+		}
+		assert.strictEqual(
+			count(sqlite, "SELECT COUNT(*) FROM demo_login_rate_limit"),
+			0,
+			"the limiter never runs (and never writes) outside demo mode",
+		);
+	});
+
+	it("without a client IP it still limits, on a per-user-agent bucket instead of one shared one", { skip: sqliteSkip }, async () => {
+		const { demoEnv, sqlite } = await setup();
+		const curl = { ua: "curl-demo-script/1.0" };
+
+		// Not a free pass: attempts still count.
+		for (let attempt = 1; attempt <= DEMO_LOGIN_MAX_ATTEMPTS; attempt += 1) {
+			assert.strictEqual((await demoLogin(demoEnv, curl)).status, 200, `attempt ${attempt}`);
+		}
+		assert.strictEqual((await demoLogin(demoEnv, curl)).status, 429, "a missing IP is not an exemption");
+
+		// Not one bucket for the whole internet either: other clients go through.
+		assert.strictEqual(
+			(await demoLogin(demoEnv, { ua: "Mozilla/5.0 (Macintosh) Firefox/128.0" })).status,
+			200,
+			"another client is not locked out by this one's fallback bucket",
+		);
+		assert.strictEqual(
+			count(sqlite, "SELECT COUNT(*) FROM demo_login_rate_limit"),
+			2,
+			"two clients, two buckets — nothing is shared",
+		);
+
+		// The bucketing itself: address wins, user-agent is the fallback, and the
+		// same client always lands in the same bucket.
+		assert.strictEqual(
+			await demoLoginBucket(new Headers({ "CF-Connecting-IP": IP })),
+			`ip:${IP}`,
+		);
+		assert.strictEqual(
+			await demoLoginBucket(new Headers({ "X-Forwarded-For": `${IP}, 10.0.0.1` })),
+			`ip:${IP}`,
+			"a local proxy's header is the second chance",
+		);
+		const first = await demoLoginBucket(new Headers({ "User-Agent": "curl-demo-script/1.0" }));
+		const again = await demoLoginBucket(new Headers({ "User-Agent": "curl-demo-script/1.0" }));
+		const different = await demoLoginBucket(new Headers({ "User-Agent": "curl-demo-script/1.1" }));
+		assert.match(first, /^ua:[0-9a-f]{16}$/, "the fallback names the user agent, not the request");
+		assert.strictEqual(first, again, "the same client keeps the same bucket");
+		assert.notStrictEqual(first, different, "different clients do not collide by default");
 	});
 });
