@@ -12,7 +12,7 @@
 
   <img src="./demo_app.png" alt="Mailboxes open on an inbox, with the assistant's draft waiting in the side panel" width="880">
 
-  <!-- DEMO_URL: public read-only demo site, fill in once the demo is live -->
+  **[Open the live demo →](https://mailboxes-demo.agate.workers.dev)** — read-only, no account, no password.
   [![30-second demo: mail arrives, the assistant drafts, you press send](./demo-30s.png)](./demo-30s.mp4)
 </div>
 

@@ -12,7 +12,7 @@
 
   <img src="./demo_app.png" alt="Mailboxes 打开在收件箱，助手写好的草稿在右侧面板等着确认" width="880">
 
-  <!-- DEMO_URL: 公开只读演示站，等演示站上线后回填 -->
+  **[打开在线演示 →](https://mailboxes-demo.agate.workers.dev)** —— 只读，不用注册，不用密码。
   [![三十秒演示：来信、助手写草稿、你来点发送](./demo-30s.png)](./demo-30s.mp4)
 </div>
 

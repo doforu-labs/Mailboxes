@@ -83,6 +83,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **Both READMEs link the live demo.** The `<!-- DEMO_URL ... -->` placeholder
+  under the first screenshot is now a link to
+  https://mailboxes-demo.agate.workers.dev, described as read-only with no
+  account and no password (same claim in both languages). The recording poster
+  block beneath it and the badges are unchanged.
+
 - **Deploy button.** Both READMEs describe the button as cloning the repo and
   provisioning R2 and D1. The admin wizard, Email Routing (or Platform
   Settings + Add Domain), and optional Resend remain after that. `npm run
