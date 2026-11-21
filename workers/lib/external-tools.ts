@@ -108,6 +108,18 @@ function buildParameters(toolName: string, parameters: unknown): ToolParameters 
 		if (!required.includes("mailboxId")) required.push("mailboxId");
 	}
 
+	// `get_email` can optionally hand back the raw HTML body. Off by default:
+	// the markup is large, unescaped and useless to most callers, so it would
+	// only inflate every response. The caller that needs to read a link out of
+	// a button-only email (no text/plain part) asks for it explicitly.
+	if (toolName === "get_email") {
+		properties.include_html = {
+			type: "boolean",
+			description:
+				"Also return the raw HTML body as `body_html` (default false; can be large)",
+		};
+	}
+
 	return {
 		type: source.type ?? "object",
 		properties,
@@ -518,6 +530,7 @@ export async function dispatchExternalTool(
 			total,
 			limit: normalizedArgs.limit,
 			page: normalizedArgs.page,
+			includeHtml: normalizedArgs.include_html === true,
 		});
 		return {
 			ok: true,
@@ -718,6 +731,8 @@ export interface ReshapeContext {
 	/** Paging knobs as the caller sent them, already normalised. */
 	limit?: unknown;
 	page?: unknown;
+	/** `get_email`: attach the raw HTML body (`body_html`) when true. */
+	includeHtml?: boolean;
 }
 
 /**
@@ -740,7 +755,7 @@ export function reshapeToolOutput(
 		case "search_emails":
 			return reshapeEmailList(raw, true, ctx);
 		case "get_email":
-			return reshapeGetEmail(raw);
+			return reshapeGetEmail(raw, ctx);
 		case "get_thread":
 			return reshapeGetThread(raw);
 		default:
@@ -905,9 +920,12 @@ function pageFacts(returned: number, ctx: ReshapeContext) {
 }
 
 /** Project a single full email into the public, LLM-friendly shape. */
-function reshapeEmailFull(e: any): Record<string, unknown> {
+function reshapeEmailFull(
+	e: any,
+	ctx: ReshapeContext = {},
+): Record<string, unknown> {
 	const attachments = Array.isArray(e?.attachments) ? e.attachments : [];
-	return {
+	const out: Record<string, unknown> = {
 		id: e?.id ?? null,
 		subject: e?.subject ?? null,
 		from: buildSender(e?.sender, e?.sender_name),
@@ -922,14 +940,18 @@ function reshapeEmailFull(e: any): Record<string, unknown> {
 		has_attachments: attachments.length > 0,
 		attachments: attachments.map(publicAttachment),
 	};
+	// Opt-in only: callers that need a link inside button-only markup. Never
+	// clamped — clamping would cut the very URL the caller came for.
+	if (ctx.includeHtml) out.body_html = e?.body_html ?? e?.body ?? null;
+	return out;
 }
 
-function reshapeGetEmail(raw: unknown): unknown {
+function reshapeGetEmail(raw: unknown, ctx: ReshapeContext = {}): unknown {
 	// Not found → the tool returns `{ error }`; pass the error through as-is.
 	if (isErrorResult(raw)) {
 		return { error: String(raw.error) };
 	}
-	return reshapeEmailFull(raw);
+	return reshapeEmailFull(raw, ctx);
 }
 
 function reshapeGetThread(raw: unknown): unknown {
